@@ -17,7 +17,7 @@ const USER_FILE_EXTS: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Expl
 
 pub fn backup_store_path() -> String {
     let program_data = std::env::var("ProgramData").unwrap_or_else(|_| "C:\\ProgramData".to_string());
-    format!("{}\\FileIconsManager\\backups.json", program_data)
+    format!("{}\\Wintune\\backups.json", program_data)
 }
 
 pub fn load_backup_store() -> BackupStore {
@@ -88,7 +88,7 @@ fn restore_reg_key(root: &RegKey, subkey_path: &str, snapshot: &RegistryKeySnaps
 
     let (key, _) = root
         .create_subkey(subkey_path)
-        .map_err(|e| format!("Création clé impossible {} : {}", subkey_path, e))?;
+        .map_err(|e| format!("Failed to create key {}: {}", subkey_path, e))?;
 
     if let Some(def) = &snapshot.default_value {
         let _ = key.set_value("", def);
@@ -163,7 +163,7 @@ fn create_initial_backup_if_needed(
         extension: ext_cfg.extension.clone(),
         custom_prog_id: ext_cfg.prog_id.clone(),
         icon_installed_path,
-        timestamp: "Snapshot initial".to_string(),
+        timestamp: "Initial Snapshot".to_string(),
         hklm_extension_key: hklm_ext_snap,
         hklm_previous_prog_id: prev_prog_id,
         user_overrides,
@@ -264,7 +264,7 @@ pub fn apply_extensions(
                     .create_subkey(format!("{}\\shell\\edit", prog_id_path))
                     .map_err(|e| e.to_string())?;
                 edit_key
-                    .set_value("", &"Modifier")
+                    .set_value("", &"Edit with VS Code")
                     .map_err(|e| e.to_string())?;
 
                 let (edit_cmd_key, _) = hklm
@@ -338,7 +338,7 @@ pub fn apply_extensions(
 
         match res {
             Ok(_) => success_count += 1,
-            Err(e) => errors.push(format!("{} : {}", ext_cfg.extension, e)),
+            Err(e) => errors.push(format!("{}: {}", ext_cfg.extension, e)),
         }
     }
 
@@ -363,7 +363,7 @@ pub fn rollback_selected_extensions(selected_extensions: &[String]) -> (usize, V
             let _ = hklm.delete_subkey_all(&custom_prog_path);
 
             if let Err(e) = restore_reg_key(&hklm, &ext_key_path, &backup.hklm_extension_key) {
-                errors.push(format!("{} : {}", ext, e));
+                errors.push(format!("{}: {}", ext, e));
                 continue;
             }
 

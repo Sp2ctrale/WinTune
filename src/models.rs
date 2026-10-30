@@ -1,3 +1,4 @@
+use crate::theme::ThemeMode;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -65,6 +66,8 @@ pub struct BackupStore {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
+    #[serde(default)]
+    pub theme: ThemeMode,
     pub code_executable: String,
     pub icon_source_folder: String,
     pub icon_destination_folder: String,
@@ -87,10 +90,11 @@ impl Default for AppConfig {
         };
 
         Self {
+            theme: ThemeMode::Dark,
             code_executable: String::new(),
             icon_source_folder: source_folder,
             icon_destination_folder: format!("{}\\ico", program_data),
-            pak_file_path: format!("{}\\FileIconsManager\\gallery.pak", program_data),
+            pak_file_path: format!("{}\\Wintune\\gallery.pak", program_data),
             extensions: default_extensions(),
         }
     }

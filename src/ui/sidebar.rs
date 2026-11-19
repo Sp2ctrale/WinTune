@@ -7,13 +7,17 @@ impl WinTuneApp {
     fn tab_subtitle(&self, tab: ActiveTab) -> String {
         match tab {
             ActiveTab::Associations => format!("{} rules", self.config.extensions.len()),
-            ActiveTab::Tweaks => format!(
-                "{} on",
-                self.tweak_statuses
-                    .values()
-                    .filter(|s| **s == crate::tweaks::TweakStatus::On)
-                    .count()
-            ),
+            ActiveTab::Tweaks | ActiveTab::StartPrivacy => {
+                let groups = WinTuneApp::tweak_groups_of(tab);
+                let on = crate::tweaks::catalog()
+                    .iter()
+                    .filter(|t| groups.contains(&t.group))
+                    .filter(|t| {
+                        self.tweak_statuses.get(t.id) == Some(&crate::tweaks::TweakStatus::On)
+                    })
+                    .count();
+                format!("{} on", on)
+            }
             ActiveTab::Gallery => format!("{} icons", self.gallery.names().len()),
             ActiveTab::Rollback => format!("{} backups", self.backup_store.backups.len()),
         }
@@ -165,7 +169,7 @@ impl WinTuneApp {
             if tab == ActiveTab::Associations && self.active_tab != tab {
                 self.request_status_refresh();
             }
-            if tab == ActiveTab::Tweaks && !self.is_busy() {
+            if matches!(tab, ActiveTab::Tweaks | ActiveTab::StartPrivacy) && !self.is_busy() {
                 self.reload_tweak_store();
                 self.refresh_tweak_statuses();
             }

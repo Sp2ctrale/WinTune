@@ -10,6 +10,9 @@ makes can be undone. It has two modules:
 - **Explorer & Taskbar**: per-user settings such as showing file extensions or
   hidden files, the classic right-click menu on Windows 11, and aligning the
   taskbar to the left.
+- **Start & Privacy**: per-user settings for the Start menu (recommendations,
+  layout, recently added apps) and for what Windows tracks (app launches,
+  recent files).
 
 Built with Rust and [egui](https://github.com/emilk/egui).
 
@@ -66,6 +69,23 @@ The **Explorer & Taskbar** tweaks change only the current user's settings
 | Align taskbar to the left (Windows 11) | `TaskbarAl` | 0 | 1 | instantly |
 | Hide the Task View button | `ShowTaskViewButton` | 0 | 1 | instantly |
 | Hide the taskbar search | `…\CurrentVersion\Search` → `SearchboxTaskbarMode` | 0 | 1 (search icon) | instantly |
+
+The **Start & Privacy** tweaks work the same way. Each one is a single
+REG_DWORD value, either under `…\CurrentVersion\Explorer\Advanced` or, where
+noted, under `…\CurrentVersion\Start`:
+
+| Tweak | Value | On | Off (Windows default) |
+| --- | --- | --- | --- |
+| Hide recommendations in Start (Windows 11) | `Start_IrisRecommendations` | 0 | 1 |
+| More pins in Start (Windows 11) | `Start_Layout` | 1 | 0 |
+| Hide recently added apps (Windows 11) | `…\Start` → `ShowRecentList` | 0 | 1 |
+| Show all pins by default (Windows 11) | `…\Start` → `ShowAllPinsList` | 1 | 0 |
+| Don't track app launches | `Start_TrackProgs` | 0 | 1 |
+| Don't show recent files | `Start_TrackDocs` | 0 | 1 |
+
+These values are documented in Microsoft's Windows settings reference.
+Settings that exist only as Group Policy (`HKCU\Software\Policies`) or under
+`HKLM` are deliberately left out.
 
 When you turn a tweak off, WinTune writes the Windows default shown in the
 table. **Restore original** instead puts back exactly what was there before

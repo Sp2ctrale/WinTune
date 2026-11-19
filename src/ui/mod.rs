@@ -86,15 +86,17 @@ impl AppEnv {
 pub(crate) enum ActiveTab {
     Associations,
     Tweaks,
+    StartPrivacy,
     Gallery,
     Rollback,
 }
 
 impl ActiveTab {
     /// Sidebar order.
-    pub(crate) const ALL: [ActiveTab; 4] = [
+    pub(crate) const ALL: [ActiveTab; 5] = [
         ActiveTab::Associations,
         ActiveTab::Tweaks,
+        ActiveTab::StartPrivacy,
         ActiveTab::Gallery,
         ActiveTab::Rollback,
     ];
@@ -103,6 +105,7 @@ impl ActiveTab {
         match self {
             ActiveTab::Associations => "File Associations",
             ActiveTab::Tweaks => "Explorer & Taskbar",
+            ActiveTab::StartPrivacy => "Start & Privacy",
             ActiveTab::Gallery => "Icon Gallery",
             ActiveTab::Rollback => "Selective Rollback",
         }
@@ -242,7 +245,7 @@ impl WinTuneApp {
 
         match self.active_tab {
             ActiveTab::Associations => self.show_associations_tab(ctx),
-            ActiveTab::Tweaks => self.show_tweaks_tab(ctx),
+            ActiveTab::Tweaks | ActiveTab::StartPrivacy => self.show_tweaks_tab(ctx),
             ActiveTab::Gallery => self.show_gallery_tab(ctx),
             ActiveTab::Rollback => self.show_rollback_tab(ctx),
         }

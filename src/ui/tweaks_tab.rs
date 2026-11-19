@@ -41,6 +41,21 @@ impl WinTuneApp {
             .collect();
     }
 
+    /// Tweaks of `group` matching the search box (title or description,
+    /// case-insensitive), in catalog order.
+    pub(super) fn visible_tweaks(&self, group: TweakGroup) -> Vec<&'static Tweak> {
+        let query = self.tweak_search.trim().to_lowercase();
+        catalog()
+            .iter()
+            .filter(|t| t.group == group)
+            .filter(|t| {
+                query.is_empty()
+                    || t.title.to_lowercase().contains(&query)
+                    || t.description.to_lowercase().contains(&query)
+            })
+            .collect()
+    }
+
     fn tweak_available(&self, tweak: &Tweak) -> bool {
         tweak.os == OsRequirement::Any || self.env.is_windows_11
     }
@@ -264,20 +279,48 @@ impl WinTuneApp {
                     .inner_margin(Margin::symmetric(16.0, 4.0)),
             )
             .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Search:").strong());
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.tweak_search)
+                            .hint_text("extensions, taskbar, quick access…")
+                            .desired_width(280.0),
+                    );
+                    if !self.tweak_search.is_empty() && ui.small_button("Clear").clicked() {
+                        self.tweak_search.clear();
+                    }
+                });
+                ui.add_space(6.0);
+
                 egui::ScrollArea::vertical().show(ui, |ui| {
+                    let mut shown = 0;
                     for (group, title) in [
                         (TweakGroup::FileExplorer, "File Explorer"),
                         (TweakGroup::Taskbar, "Taskbar"),
                     ] {
+                        let tweaks = self.visible_tweaks(group);
+                        if tweaks.is_empty() {
+                            continue;
+                        }
+                        shown += tweaks.len();
                         card_frame(self.config.theme).show(ui, |ui| {
                             ui.set_min_width(ui.available_width());
                             ui.label(RichText::new(title).size(15.0).strong());
-                            for tweak in catalog().iter().filter(|t| t.group == group) {
+                            for tweak in tweaks {
                                 ui.separator();
                                 self.tweak_row(ui, tweak, busy || blocked);
                             }
                         });
                         ui.add_space(10.0);
+                    }
+                    if shown == 0 {
+                        ui.label(
+                            RichText::new(format!(
+                                "No tweak matches \"{}\".",
+                                self.tweak_search.trim()
+                            ))
+                            .color(palette.text_secondary),
+                        );
                     }
                 });
             });
@@ -460,6 +503,46 @@ mod tests {
             "value did not exist before"
         );
         assert!(!app.tweak_store.has_backup("TEST\\user", "show_hidden"));
+    }
+
+    fn visible_ids(app: &WinTuneApp) -> Vec<&'static str> {
+        [TweakGroup::FileExplorer, TweakGroup::Taskbar]
+            .into_iter()
+            .flat_map(|g| app.visible_tweaks(g))
+            .map(|t| t.id)
+            .collect()
+    }
+
+    #[test]
+    fn search_filters_on_title_and_description_ignoring_case() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+
+        app.tweak_search = "TASK VIEW".into();
+        assert_eq!(visible_ids(&app), ["hide_task_view"]);
+
+        app.tweak_search = "quick access".into(); // matched in descriptions
+        let ids = visible_ids(&app);
+        assert!(
+            ids.contains(&"hide_recent_files") && ids.contains(&"open_this_pc"),
+            "{:?}",
+            ids
+        );
+
+        app.tweak_search = "   ".into();
+        assert_eq!(visible_ids(&app).len(), crate::tweaks::catalog().len());
+    }
+
+    #[test]
+    fn a_search_without_match_shows_nothing_and_still_renders() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        app.tweak_search = "zzz-no-such-tweak".into();
+
+        assert!(visible_ids(&app).is_empty());
+        frame(&mut app, &ctx, RawInput::default());
     }
 
     #[test]

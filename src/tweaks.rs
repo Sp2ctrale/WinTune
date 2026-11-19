@@ -77,6 +77,7 @@ pub struct Tweak {
     pub action: TweakAction,
 }
 
+const EXPLORER: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer";
 const ADVANCED: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced";
 const CLASSIC_MENU_CLSID: &str = "Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}";
 
@@ -134,6 +135,66 @@ static CATALOG: &[Tweak] = &[
             name: "FullPath",
             on: 1,
             off: 0,
+        },
+    },
+    Tweak {
+        id: "compact_mode",
+        title: "Compact view",
+        description: "Reduce the space between items in Explorer lists.",
+        group: TweakGroup::FileExplorer,
+        os: OsRequirement::Windows11,
+        refresh: Refresh::NewWindows,
+        unofficial: false,
+        action: TweakAction::Dword {
+            path: ADVANCED,
+            name: "UseCompactMode",
+            on: 1,
+            off: 0,
+        },
+    },
+    Tweak {
+        id: "item_checkboxes",
+        title: "Item check boxes",
+        description: "Show a check box on each item to select several files with the mouse.",
+        group: TweakGroup::FileExplorer,
+        os: OsRequirement::Any,
+        refresh: Refresh::NewWindows,
+        unofficial: false,
+        action: TweakAction::Dword {
+            path: ADVANCED,
+            name: "AutoCheckSelect",
+            on: 1,
+            off: 0,
+        },
+    },
+    Tweak {
+        id: "hide_recent_files",
+        title: "Hide recent files in Quick access",
+        description: "Stop listing recently used files on Home / Quick access.",
+        group: TweakGroup::FileExplorer,
+        os: OsRequirement::Any,
+        refresh: Refresh::NewWindows,
+        unofficial: false,
+        action: TweakAction::Dword {
+            path: EXPLORER,
+            name: "ShowRecent",
+            on: 0,
+            off: 1,
+        },
+    },
+    Tweak {
+        id: "hide_frequent_folders",
+        title: "Hide frequent folders in Quick access",
+        description: "Stop listing frequently used folders on Home / Quick access.",
+        group: TweakGroup::FileExplorer,
+        os: OsRequirement::Any,
+        refresh: Refresh::NewWindows,
+        unofficial: false,
+        action: TweakAction::Dword {
+            path: EXPLORER,
+            name: "ShowFrequent",
+            on: 0,
+            off: 1,
         },
     },
     Tweak {
@@ -663,6 +724,84 @@ mod tests {
 
     fn status(env: &Env, id: &str) -> TweakStatus {
         tweak_status(&env.target(), find_tweak(id).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn the_catalog_includes_the_verified_explorer_tweaks() {
+        for id in [
+            "compact_mode",
+            "item_checkboxes",
+            "hide_recent_files",
+            "hide_frequent_folders",
+        ] {
+            assert!(find_tweak(id).is_some(), "missing tweak {}", id);
+        }
+    }
+
+    #[test]
+    fn every_dword_tweak_has_distinct_on_and_off_values() {
+        for t in catalog() {
+            if let TweakAction::Dword { on, off, .. } = t.action {
+                assert_ne!(on, off, "{}", t.id);
+            }
+        }
+    }
+
+    /// The whole catalog, not only the hand-picked cases: on, off, then
+    /// restore must give back exactly what was there (here: nothing).
+    #[test]
+    fn every_tweak_round_trips_on_off_restore_in_the_sandbox() {
+        for t in catalog() {
+            let env = Env::new();
+            let before = regsnap::snapshot_key(&env.sb.root, &env.sb.path).unwrap();
+            let mut store = TweakBackupStore::default();
+
+            ok(&apply_tweaks(
+                &env.target(),
+                &mut store,
+                &[on(t.id)],
+                &env.opts("u"),
+            ));
+            assert_eq!(status(&env, t.id), TweakStatus::On, "{} not on", t.id);
+            ok(&apply_tweaks(
+                &env.target(),
+                &mut store,
+                &[off(t.id)],
+                &env.opts("u"),
+            ));
+            assert_eq!(status(&env, t.id), TweakStatus::Off, "{} not off", t.id);
+            ok(&restore_tweaks(
+                &env.target(),
+                &mut store,
+                &[t.id.to_string()],
+                &env.opts("u"),
+            ));
+
+            let after = regsnap::snapshot_key(&env.sb.root, &env.sb.path).unwrap();
+            assert_eq!(
+                values_of(&after),
+                values_of(&before),
+                "{} left values behind after restore",
+                t.id
+            );
+            assert!(store.users.is_empty(), "{} snapshot not dropped", t.id);
+        }
+    }
+
+    /// Every value in a snapshot tree, flattened (empty parent keys created by
+    /// a write are harmless; leftover values are not).
+    fn values_of(snap: &RegistryKeySnapshot) -> Vec<(String, u32, Vec<u8>)> {
+        fn walk(prefix: &str, s: &RegistryKeySnapshot, out: &mut Vec<(String, u32, Vec<u8>)>) {
+            for (name, (kind, data)) in &s.values {
+                out.push((format!("{}\\{}", prefix, name), *kind, data.clone()));
+            }
+            for (child, sub) in &s.subkeys {
+                walk(&format!("{}\\{}", prefix, child), sub, out);
+            }
+        }
+        let mut out = Vec::new();
+        walk("", snap, &mut out);
+        out
     }
 
     #[test]

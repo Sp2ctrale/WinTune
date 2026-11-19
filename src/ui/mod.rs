@@ -147,6 +147,8 @@ pub struct WinTuneApp {
     tweak_statuses: HashMap<&'static str, TweakStatus>,
     /// Checkbox states the user changed and has not applied yet.
     tweak_desired: HashMap<&'static str, bool>,
+    /// Filter typed in the tweaks tab (title / description).
+    tweak_search: String,
     /// Recent operations, newest first.
     history: Vec<crate::history::HistoryEntry>,
     show_history: bool,
@@ -220,6 +222,7 @@ impl WinTuneApp {
             tweak_store_error: None,
             tweak_statuses: HashMap::new(),
             tweak_desired: HashMap::new(),
+            tweak_search: String::new(),
             history: Vec::new(),
             show_history: false,
             config_error: None,

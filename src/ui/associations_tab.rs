@@ -1,4 +1,5 @@
 use super::{ActiveTab, WinTuneApp};
+use crate::associations::{find_rule_problems, validate_extension};
 use crate::detector::resolve_vscode_executable;
 use crate::models::{CustomContextCommand, DoubleClickMode, ExtensionConfig};
 use crate::theme::{accent_button, card_frame, draw_badge, get_palette};
@@ -47,14 +48,21 @@ impl WinTuneApp {
                             }
                         }
 
+                        let blockers = self.apply_blockers();
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui
-                                .add_enabled(
-                                    !busy,
-                                    accent_button("Apply Checked Extensions", self.config.theme),
-                                )
-                                .clicked()
-                            {
+                            let resp = ui.add_enabled(
+                                !busy && blockers.is_empty(),
+                                accent_button("Apply Checked Extensions", self.config.theme),
+                            );
+                            let resp = if blockers.is_empty() {
+                                resp
+                            } else {
+                                resp.on_disabled_hover_text(format!(
+                                    "Fix these rules first:\n{}",
+                                    blockers.join("\n")
+                                ))
+                            };
+                            if resp.clicked() {
                                 let rules = self.config.extensions.clone();
                                 self.start_apply(ctx, rules);
                             }
@@ -72,13 +80,18 @@ impl WinTuneApp {
         if !ext.starts_with('.') {
             ext = format!(".{}", ext);
         }
-        if self.config.extensions.iter().any(|e| e.extension == ext) {
+        if self
+            .config
+            .extensions
+            .iter()
+            .any(|e| e.extension.eq_ignore_ascii_case(&ext))
+        {
             self.set_status(format!("{} is already in the list.", ext));
             return;
         }
         let clean = ext.trim_start_matches('.').to_uppercase();
         let default_icon = ext.trim_start_matches('.').to_string();
-        self.config.extensions.push(ExtensionConfig {
+        let candidate = ExtensionConfig {
             enabled: true,
             extension: ext.clone(),
             prog_id: format!("Custom{}File", clean),
@@ -93,7 +106,12 @@ impl WinTuneApp {
             content_type: "text/plain".to_string(),
             preserve_existing_properties: true,
             extra_verbs: Vec::new(),
-        });
+        };
+        if let Err(e) = validate_extension(&candidate) {
+            self.set_status(format!("Cannot add {}: {}", ext, e));
+            return;
+        }
+        self.config.extensions.push(candidate);
         self.selected_ext_index = self.config.extensions.len() - 1;
         self.new_ext_input.clear();
     }
@@ -162,6 +180,11 @@ impl WinTuneApp {
                         .map(|(i, _)| i)
                         .collect();
 
+                    let problems: std::collections::HashMap<usize, String> =
+                        find_rule_problems(&self.config.extensions)
+                            .into_iter()
+                            .collect();
+
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         for idx in filtered_indices {
                             let is_selected = self.selected_ext_index == idx;
@@ -196,6 +219,11 @@ impl WinTuneApp {
                                 if is_script {
                                     draw_badge(ui, "Script", palette.warning);
                                 }
+                                if let Some(problem) = problems.get(&idx) {
+                                    let color = ui.visuals().error_fg_color;
+                                    ui.label(RichText::new("Invalid").strong().color(color))
+                                        .on_hover_text(problem);
+                                }
                             });
                         }
                     });
@@ -226,6 +254,11 @@ impl WinTuneApp {
                     .backup_store
                     .backups
                     .contains_key(&self.config.extensions[self.selected_ext_index].extension);
+
+                let problem = find_rule_problems(&self.config.extensions)
+                    .into_iter()
+                    .find(|(i, _)| *i == self.selected_ext_index)
+                    .map(|(_, msg)| msg);
 
                 let mut delete_current = false;
                 let mut open_gallery_picker = false;
@@ -266,7 +299,7 @@ impl WinTuneApp {
                                 |ui| {
                                     if ui
                                         .add_enabled(
-                                            !busy,
+                                            !busy && problem.is_none(),
                                             accent_button(
                                                 "Apply This Extension",
                                                 self.config.theme,
@@ -285,7 +318,13 @@ impl WinTuneApp {
                     });
 
                     ui.add_space(10.0);
-                    identity_card(ui, ext_cfg, self.config.theme, &mut open_gallery_picker);
+                    identity_card(
+                        ui,
+                        ext_cfg,
+                        self.config.theme,
+                        problem.as_deref(),
+                        &mut open_gallery_picker,
+                    );
                     ui.add_space(10.0);
                     behavior_card(ui, ext_cfg, self.config.theme);
                     ui.add_space(10.0);
@@ -303,13 +342,8 @@ impl WinTuneApp {
                     self.start_apply(ctx, vec![single]);
                 }
 
-                if delete_current && !self.config.extensions.is_empty() {
-                    self.config.extensions.remove(self.selected_ext_index);
-                    if self.selected_ext_index >= self.config.extensions.len()
-                        && !self.config.extensions.is_empty()
-                    {
-                        self.selected_ext_index = self.config.extensions.len() - 1;
-                    }
+                if delete_current {
+                    self.request_remove_rule(self.selected_ext_index);
                 }
             });
     }
@@ -319,6 +353,7 @@ fn identity_card(
     ui: &mut egui::Ui,
     ext_cfg: &mut ExtensionConfig,
     theme: crate::theme::ThemeMode,
+    problem: Option<&str>,
     open_gallery_picker: &mut bool,
 ) {
     card_frame(theme).show(ui, |ui| {
@@ -362,6 +397,14 @@ fn identity_card(
                 ui.text_edit_singleline(&mut ext_cfg.content_type);
                 ui.end_row();
             });
+
+        if let Some(problem) = problem {
+            ui.add_space(6.0);
+            ui.colored_label(
+                ui.visuals().error_fg_color,
+                format!("This rule cannot be applied: {}", problem),
+            );
+        }
     });
 }
 
@@ -483,4 +526,111 @@ fn verbs_card(ui: &mut egui::Ui, ext_cfg: &mut ExtensionConfig, theme: crate::th
             ext_cfg.extra_verbs.remove(idx);
         }
     });
+}
+
+/// Problems of the enabled rules only: a disabled rule is never applied, so
+/// it must not block the others.
+pub(super) fn problems_of_enabled(rules: &[ExtensionConfig]) -> Vec<String> {
+    let enabled: Vec<ExtensionConfig> = rules.iter().filter(|r| r.enabled).cloned().collect();
+    find_rule_problems(&enabled)
+        .into_iter()
+        .map(|(_, msg)| msg)
+        .collect()
+}
+
+impl WinTuneApp {
+    /// Why "Apply Checked Extensions" is blocked: problems of enabled rules.
+    pub(super) fn apply_blockers(&self) -> Vec<String> {
+        problems_of_enabled(&self.config.extensions)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_support::*;
+    use super::*;
+
+    #[test]
+    fn invalid_enabled_rule_blocks_apply_and_writes_nothing() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo", ".a b"]);
+
+        let rules = app.config.extensions.clone();
+        app.start_apply(&ctx, rules);
+
+        assert!(!app.is_busy(), "apply started despite an invalid rule");
+        assert!(
+            app.status_message.contains(".a b"),
+            "{}",
+            app.status_message
+        );
+        assert!(!fx.key_exists(&fx.classes(".foo")));
+        assert!(!app.apply_blockers().is_empty());
+    }
+
+    #[test]
+    fn duplicate_enabled_rules_block_apply() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo", ".FOO"]);
+
+        let rules = app.config.extensions.clone();
+        app.start_apply(&ctx, rules);
+
+        assert!(!app.is_busy());
+        assert!(
+            app.status_message.contains("more than once"),
+            "{}",
+            app.status_message
+        );
+    }
+
+    #[test]
+    fn disabled_invalid_rule_does_not_block_apply() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo", ".a b"]);
+        app.config.extensions[1].enabled = false;
+        assert!(app.apply_blockers().is_empty());
+
+        let rules = app.config.extensions.clone();
+        app.start_apply(&ctx, rules);
+        run_until_idle(&mut app, &ctx);
+
+        assert!(fx.key_exists(&fx.classes(".foo")), "{}", app.status_message);
+    }
+
+    #[test]
+    fn adding_an_invalid_extension_is_refused() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo"]);
+        app.new_ext_input = "my ext".to_string();
+
+        app.add_extension_from_input();
+
+        assert_eq!(app.config.extensions.len(), 1);
+        assert!(
+            app.status_message.contains("invalid"),
+            "{}",
+            app.status_message
+        );
+        assert_eq!(app.new_ext_input, "my ext", "input kept so it can be fixed");
+    }
+
+    #[test]
+    fn adding_a_valid_extension_selects_it() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo"]);
+        app.new_ext_input = "Zig".to_string();
+
+        app.add_extension_from_input();
+
+        assert_eq!(app.config.extensions.len(), 2);
+        assert_eq!(app.config.extensions[1].extension, ".zig");
+        assert_eq!(app.selected_ext_index, 1);
+        assert!(app.new_ext_input.is_empty());
+    }
 }

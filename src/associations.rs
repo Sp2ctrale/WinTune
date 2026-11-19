@@ -147,6 +147,30 @@ pub fn validate_extension(cfg: &ExtensionConfig) -> Result<(), String> {
     Ok(())
 }
 
+/// Everything that must be fixed before applying `rules`: invalid values
+/// (see [`validate_extension`]) and extensions listed more than once
+/// (case-insensitive). Returns `(rule index, message)`, in index order.
+pub fn find_rule_problems(rules: &[ExtensionConfig]) -> Vec<(usize, String)> {
+    let mut seen: BTreeMap<String, usize> = BTreeMap::new();
+    for rule in rules {
+        *seen.entry(rule.extension.to_lowercase()).or_default() += 1;
+    }
+    rules
+        .iter()
+        .enumerate()
+        .filter_map(|(i, rule)| {
+            if let Err(e) = validate_extension(rule) {
+                return Some((i, e));
+            }
+            let count = seen
+                .get(&rule.extension.to_lowercase())
+                .copied()
+                .unwrap_or(0);
+            (count > 1).then(|| (i, format!("{} is listed more than once", rule.extension)))
+        })
+        .collect()
+}
+
 /// Old backups (WinTune <= 0.2.0) did not snapshot the custom ProgID: it was
 /// always created from scratch, so its original state is "absent".
 fn migrate_legacy_backup(backup: &mut ExtensionBackup) {
@@ -1042,6 +1066,35 @@ mod tests {
         assert_eq!(report.errors.len(), 2, "{:?}", report.errors);
         assert!(!env.exists(&env.classes(".bar")));
         assert!(store.backups.is_empty());
+    }
+
+    #[test]
+    fn find_rule_problems_reports_invalid_values_with_their_index() {
+        let mut bad = foo_cfg("CustomFooFile");
+        bad.extension = ".a b".into();
+        let rules = [with_ext(".ok"), bad];
+
+        let problems = find_rule_problems(&rules);
+
+        assert_eq!(problems.len(), 1, "{:?}", problems);
+        assert_eq!(problems[0].0, 1);
+        assert!(problems[0].1.contains(".a b"), "{:?}", problems);
+    }
+
+    #[test]
+    fn find_rule_problems_flags_every_duplicate_case_insensitively() {
+        let rules = [with_ext(".foo"), with_ext(".bar"), with_ext(".FOO")];
+
+        let problems = find_rule_problems(&rules);
+
+        let indexes: Vec<usize> = problems.iter().map(|p| p.0).collect();
+        assert_eq!(indexes, vec![0, 2], "{:?}", problems);
+        assert!(problems.iter().all(|p| p.1.contains("more than once")));
+    }
+
+    #[test]
+    fn find_rule_problems_is_empty_for_the_default_rules() {
+        assert!(find_rule_problems(&crate::models::default_extensions()).is_empty());
     }
 
     #[test]

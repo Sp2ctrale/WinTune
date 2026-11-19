@@ -3,8 +3,7 @@
 
 use super::WinTuneApp;
 use crate::associations::{
-    apply_extensions, default_backup_store_path, default_reg_backup_dir, notify_shell_associations,
-    rollback_extensions, save_backup_store, ApplyOptions, AssocTarget, OperationReport,
+    apply_extensions, rollback_extensions, save_backup_store, ApplyOptions, OperationReport,
 };
 use crate::detector::{build_editor_command, editor_display_name};
 use crate::gallery::{build_compressed_pak, PakStats};
@@ -69,6 +68,16 @@ impl WinTuneApp {
             self.set_status(msg);
             return;
         }
+        let problems = super::associations_tab::problems_of_enabled(&rules);
+        if let Some(first) = problems.first() {
+            self.status_message = format!(
+                "Nothing applied: fix {} rule problem(s) first ({}).",
+                problems.len(),
+                first
+            );
+            self.status_details = problems.join("\n");
+            return;
+        }
         if self.config.code_executable.trim().is_empty() {
             self.set_status("Set the default code editor before applying associations.");
             return;
@@ -80,6 +89,7 @@ impl WinTuneApp {
         let editor_label = editor_display_name(&self.config.code_executable);
         let wsl_available = self.wsl_detected;
         let mut store = self.backup_store.clone();
+        let env = self.env.clone();
 
         let job = BackgroundJob::spawn("Applying file associations", repaint(ctx), move |sink| {
             let resolve_icon =
@@ -90,12 +100,12 @@ impl WinTuneApp {
                 editor_label,
                 wsl_available,
                 resolve_icon: &resolve_icon,
-                backup_store_path: default_backup_store_path(),
-                reg_backup_dir: default_reg_backup_dir(),
+                backup_store_path: env.backup_store_path.clone(),
+                reg_backup_dir: env.reg_backup_dir.clone(),
                 progress: &progress,
             };
-            let report = apply_extensions(&AssocTarget::system(), &mut store, &rules, &opts);
-            notify_shell_associations();
+            let report = apply_extensions(&(env.assoc_target)(), &mut store, &rules, &opts);
+            (env.notify_shell)();
             StoreOutcome { report, store }
         });
         self.job = Some(RunningJob::Apply(job));
@@ -113,14 +123,15 @@ impl WinTuneApp {
         }
 
         let mut store = self.backup_store.clone();
+        let env = self.env.clone();
         let job = BackgroundJob::spawn("Restoring extensions", repaint(ctx), move |sink| {
             let progress = |done: usize, total: usize, label: &str| sink.report(done, total, label);
             let mut report =
-                rollback_extensions(&AssocTarget::system(), &mut store, &extensions, &progress);
-            if let Err(e) = save_backup_store(&store, &default_backup_store_path()) {
+                rollback_extensions(&(env.assoc_target)(), &mut store, &extensions, &progress);
+            if let Err(e) = save_backup_store(&store, &env.backup_store_path) {
                 report.errors.push(format!("Cannot save snapshots: {}", e));
             }
-            notify_shell_associations();
+            (env.notify_shell)();
             StoreOutcome { report, store }
         });
         self.job = Some(RunningJob::Rollback(job));

@@ -58,19 +58,15 @@ impl WinTuneApp {
                             }
                         }
 
-                        let blockers = self.apply_blockers();
+                        let disabled_reason = self.apply_disabled_reason();
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let resp = ui.add_enabled(
-                                !busy && blockers.is_empty(),
+                                disabled_reason.is_none(),
                                 accent_button("Apply Checked Extensions", self.config.theme),
                             );
-                            let resp = if blockers.is_empty() {
-                                resp
-                            } else {
-                                resp.on_disabled_hover_text(format!(
-                                    "Fix these rules first:\n{}",
-                                    blockers.join("\n")
-                                ))
+                            let resp = match &disabled_reason {
+                                Some(reason) => resp.on_disabled_hover_text(reason),
+                                None => resp,
                             };
                             if resp.clicked() {
                                 let rules = self.config.extensions.clone();
@@ -140,11 +136,14 @@ impl WinTuneApp {
             .show(ctx, |ui| {
                 card_frame(self.config.theme).show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.add(
+                        let search = ui.add(
                             egui::TextEdit::singleline(&mut self.ext_search_query)
-                                .hint_text("Search extension (.rs, python, react...)")
+                                .id(super::polish::search_box_id(ActiveTab::Associations)
+                                    .expect("search box"))
+                                .hint_text("Search extension (.rs, python, react...)  Ctrl+F")
                                 .desired_width(ui.available_width()),
                         );
+                        self.focus_search_if_requested(&search);
                     });
 
                     ui.add_space(4.0);
@@ -194,6 +193,16 @@ impl WinTuneApp {
                         find_rule_problems(&self.config.extensions)
                             .into_iter()
                             .collect();
+
+                    if filtered_indices.is_empty() {
+                        let text = if self.config.extensions.is_empty() {
+                            "No rules yet: type an extension above and click \"+ Add Extension\"."
+                                .to_string()
+                        } else {
+                            format!("No rule matches \"{}\".", self.ext_search_query.trim())
+                        };
+                        ui.label(RichText::new(text).color(palette.text_secondary));
+                    }
 
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         for idx in filtered_indices {
@@ -259,6 +268,15 @@ impl WinTuneApp {
             )
             .show(ctx, |ui| {
                 if self.selected_ext_index >= self.config.extensions.len() {
+                    ui.add_space(24.0);
+                    ui.vertical_centered(|ui| {
+                        ui.label(
+                            RichText::new(
+                                "Select a rule on the left, or add one, to edit it here.",
+                            )
+                            .color(palette.text_secondary),
+                        );
+                    });
                     return;
                 }
 

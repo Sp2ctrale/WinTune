@@ -183,6 +183,11 @@ bar shows their progress. While one of them runs, the other buttons that
 change the registry or the pack are disabled. If you close the window
 mid-operation, WinTune waits for the operation to finish before closing.
 
+**Ctrl+F** focuses the search box of the current tab, and **Esc** cancels a
+confirmation dialog. No keyboard shortcut changes the registry: those actions
+always take a click and, when they are destructive, a confirmation. A
+disabled button explains on hover why it is disabled.
+
 ### Adding a customization module
 
 1. Put the engine in its own library module, on top of `regsnap`, with an

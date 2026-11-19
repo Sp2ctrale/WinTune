@@ -186,13 +186,127 @@ pub struct RegExportEntry<'a> {
 /// Renders snapshots as a regedit-compatible `.reg` file. Each key is first
 /// deleted then recreated, so importing the file restores the exact state.
 pub fn export_reg(entries: &[RegExportEntry]) -> String {
+    export_reg_full(entries, &[])
+}
+
+/// One registry value (not its whole key) captured before a change.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct ValueSnapshot {
+    pub exists: bool,
+    /// Raw registry type id (REG_DWORD = 4…), meaningful when `exists`.
+    pub kind: u32,
+    pub data: Vec<u8>,
+}
+
+/// Captures a single value. A missing key or value yields `exists: false`;
+/// any other failure is an error.
+pub fn snapshot_value(root: &RegKey, path: &str, name: &str) -> Result<ValueSnapshot, String> {
+    let key = match root.open_subkey_with_flags(path, KEY_READ) {
+        Ok(k) => k,
+        Err(e) if is_not_found(&e) => return Ok(ValueSnapshot::default()),
+        Err(e) => return Err(format!("Cannot read {}: {}", path, e)),
+    };
+    match key.get_raw_value(name) {
+        Ok(value) => Ok(ValueSnapshot {
+            exists: true,
+            kind: value.vtype as u32,
+            data: value.bytes,
+        }),
+        Err(e) if is_not_found(&e) => Ok(ValueSnapshot::default()),
+        Err(e) => Err(format!("Cannot read {}\\{}: {}", path, name, e)),
+    }
+}
+
+/// Puts a value back as captured: rewritten with its exact type, or deleted
+/// when it did not exist (the key itself is left in place).
+pub fn restore_value(
+    root: &RegKey,
+    path: &str,
+    name: &str,
+    snapshot: &ValueSnapshot,
+) -> Result<(), String> {
+    if snapshot.exists {
+        let vtype = reg_type_from_u32(snapshot.kind).ok_or_else(|| {
+            format!(
+                "{}: unsupported type {} for '{}'",
+                path, snapshot.kind, name
+            )
+        })?;
+        let (key, _) = root
+            .create_subkey(path)
+            .map_err(|e| format!("Cannot create {}: {}", path, e))?;
+        return key
+            .set_raw_value(
+                name,
+                &RegValue {
+                    bytes: snapshot.data.clone(),
+                    vtype,
+                },
+            )
+            .map_err(|e| format!("Cannot write {}\\{}: {}", path, name, e));
+    }
+
+    let key = match root.open_subkey_with_flags(path, KEY_SET_VALUE) {
+        Ok(k) => k,
+        Err(e) if is_not_found(&e) => return Ok(()),
+        Err(e) => return Err(format!("Cannot open {}: {}", path, e)),
+    };
+    match key.delete_value(name) {
+        Ok(()) => Ok(()),
+        Err(e) if is_not_found(&e) => Ok(()),
+        Err(e) => Err(format!("Cannot delete {}\\{}: {}", path, name, e)),
+    }
+}
+
+/// One value to include in a `.reg` safety-net export.
+pub struct RegValueExport<'a> {
+    pub root_name: &'a str,
+    pub path: String,
+    pub name: String,
+    pub snapshot: &'a ValueSnapshot,
+}
+
+/// Like [`export_reg`], plus single values: a value that did not exist is
+/// written as `"name"=-` so importing the file deletes it again.
+pub fn export_reg_full(keys: &[RegExportEntry], values: &[RegValueExport]) -> String {
     let mut out = String::from("Windows Registry Editor Version 5.00\r\n\r\n");
-    for entry in entries {
+    for entry in keys {
         let full = format!("{}\\{}", entry.root_name, entry.path);
         out.push_str(&format!("[-{}]\r\n\r\n", full));
         if entry.snapshot.exists {
             write_reg_key(&mut out, &full, entry.snapshot);
         }
+    }
+
+    // Group values by key, keeping the order in which keys first appear.
+    let mut groups: Vec<(String, Vec<&RegValueExport>)> = Vec::new();
+    for value in values {
+        let full = format!("{}\\{}", value.root_name, value.path);
+        match groups.iter_mut().find(|(k, _)| *k == full) {
+            Some((_, list)) => list.push(value),
+            None => groups.push((full, vec![value])),
+        }
+    }
+    for (full, list) in groups {
+        out.push_str(&format!("[{}]\r\n", full));
+        for value in list {
+            let lhs = if value.name.is_empty() {
+                "@".to_string()
+            } else {
+                format!("\"{}\"", escape_reg_string(&value.name))
+            };
+            if value.snapshot.exists {
+                out.push_str(&format_reg_value(
+                    &lhs,
+                    value.snapshot.kind,
+                    &value.snapshot.data,
+                ));
+            } else {
+                out.push_str(&format!("{}=-", lhs));
+            }
+            out.push_str("\r\n");
+        }
+        out.push_str("\r\n");
     }
     out
 }
@@ -257,6 +371,18 @@ fn format_reg_value(lhs: &str, kind: u32, bytes: &[u8]) -> String {
     }
     out.push_str(&line);
     out
+}
+
+/// `<dir>\<stem>.reg`, or `<stem>-2.reg`, `-3`… so an export never
+/// overwrites an earlier one taken in the same second.
+pub fn unique_reg_file(dir: &std::path::Path, stem: &str) -> std::path::PathBuf {
+    let mut candidate = dir.join(format!("{}.reg", stem));
+    let mut n = 2;
+    while candidate.exists() {
+        candidate = dir.join(format!("{}-{}.reg", stem, n));
+        n += 1;
+    }
+    candidate
 }
 
 /// Writes a `.reg` file in the encoding regedit itself uses (UTF-16LE + BOM).
@@ -555,6 +681,103 @@ mod tests {
         }]);
         assert!(text.lines().all(|l| l.len() <= 80), "{text}");
         assert!(text.contains(",\\\r\n  00"), "{text}");
+    }
+
+    #[test]
+    fn value_roundtrip_restores_type_and_data() {
+        let sb = Sandbox::new();
+        let (k, _) = sb.root.create_subkey(sb.key("Adv")).unwrap();
+        set_raw(&k, "HideFileExt", REG_DWORD, 1u32.to_le_bytes().to_vec());
+        let snap = snapshot_value(&sb.root, &sb.key("Adv"), "HideFileExt").unwrap();
+        set_raw(&k, "HideFileExt", REG_SZ, utf16z("changed"));
+
+        restore_value(&sb.root, &sb.key("Adv"), "HideFileExt", &snap).unwrap();
+
+        let vals = raw_values(&sb.root, &sb.key("Adv"));
+        assert_eq!(
+            vals.get("HideFileExt"),
+            Some(&(REG_DWORD as u32, 1u32.to_le_bytes().to_vec()))
+        );
+    }
+
+    #[test]
+    fn restoring_a_value_that_did_not_exist_deletes_it_and_keeps_siblings() {
+        let sb = Sandbox::new();
+        let (k, _) = sb.root.create_subkey(sb.key("Adv")).unwrap();
+        k.set_value("Sibling", &"keep").unwrap();
+        let snap = snapshot_value(&sb.root, &sb.key("Adv"), "Hidden").unwrap();
+        assert!(!snap.exists);
+        k.set_value("Hidden", &1u32).unwrap();
+
+        restore_value(&sb.root, &sb.key("Adv"), "Hidden", &snap).unwrap();
+
+        let names: Vec<String> = raw_values(&sb.root, &sb.key("Adv")).into_keys().collect();
+        assert_eq!(names, vec!["Sibling".to_string()]);
+    }
+
+    #[test]
+    fn missing_key_is_a_missing_value_and_restoring_it_is_a_no_op() {
+        let sb = Sandbox::new();
+        let snap = snapshot_value(&sb.root, &sb.key("Nope"), "X").unwrap();
+        assert_eq!(snap, ValueSnapshot::default());
+
+        restore_value(&sb.root, &sb.key("Nope"), "X", &snap).unwrap();
+
+        assert!(!sb.exists("Nope"));
+    }
+
+    #[test]
+    fn restoring_an_existing_value_recreates_its_key() {
+        let sb = Sandbox::new();
+        let snap = ValueSnapshot {
+            exists: true,
+            kind: REG_DWORD as u32,
+            data: 2u32.to_le_bytes().to_vec(),
+        };
+
+        restore_value(&sb.root, &sb.key("New\\Key"), "LaunchTo", &snap).unwrap();
+
+        let vals = raw_values(&sb.root, &sb.key("New\\Key"));
+        assert_eq!(
+            vals.get("LaunchTo"),
+            Some(&(4, 2u32.to_le_bytes().to_vec()))
+        );
+    }
+
+    #[test]
+    fn export_values_sets_or_deletes_each_value_grouped_by_key() {
+        let present = ValueSnapshot {
+            exists: true,
+            kind: REG_DWORD as u32,
+            data: 1u32.to_le_bytes().to_vec(),
+        };
+        let absent = ValueSnapshot::default();
+        let text = export_reg_full(
+            &[],
+            &[
+                RegValueExport {
+                    root_name: "HKEY_CURRENT_USER",
+                    path: "Adv".into(),
+                    name: "HideFileExt".into(),
+                    snapshot: &present,
+                },
+                RegValueExport {
+                    root_name: "HKEY_CURRENT_USER",
+                    path: "Adv".into(),
+                    name: "Hidden".into(),
+                    snapshot: &absent,
+                },
+            ],
+        );
+        assert_eq!(
+            text,
+            concat!(
+                "Windows Registry Editor Version 5.00\r\n\r\n",
+                "[HKEY_CURRENT_USER\\Adv]\r\n",
+                "\"HideFileExt\"=dword:00000001\r\n",
+                "\"Hidden\"=-\r\n\r\n",
+            )
+        );
     }
 
     #[test]

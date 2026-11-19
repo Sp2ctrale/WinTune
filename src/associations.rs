@@ -15,7 +15,6 @@ use crate::models::{
 };
 use crate::regsnap::{self, RegExportEntry};
 use std::collections::BTreeMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 use windows_sys::Win32::UI::Shell::{SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNF_IDLIST};
 use winreg::enums::*;
@@ -97,28 +96,12 @@ pub fn default_reg_backup_dir() -> PathBuf {
 /// A missing file is an empty store. A corrupt one is an error: returning an
 /// empty store would make the next save erase every recorded snapshot.
 pub fn load_backup_store(path: &Path) -> Result<BackupStore, String> {
-    match fs::read_to_string(path) {
-        Ok(data) => serde_json::from_str(&data).map_err(|e| {
-            format!(
-                "Backup file {} is unreadable ({}). It was left untouched: fix or move it before applying changes.",
-                path.display(),
-                e
-            )
-        }),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(BackupStore::default()),
-        Err(e) => Err(format!("Cannot read {}: {}", path.display(), e)),
-    }
+    crate::persist::load_json(path)
 }
 
 /// Atomic save (write to a temp file, then rename over the old one).
 pub fn save_backup_store(store: &BackupStore, path: &Path) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    let json = serde_json::to_string_pretty(store).map_err(|e| e.to_string())?;
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, json).map_err(|e| format!("Cannot write {}: {}", tmp.display(), e))?;
-    fs::rename(&tmp, path).map_err(|e| format!("Cannot replace {}: {}", path.display(), e))
+    crate::persist::save_json(store, path)
 }
 
 const FORBIDDEN_CHARS: &[char] = &['\\', '/', ':', '*', '?', '"', '<', '>', '|'];
@@ -258,16 +241,6 @@ fn prepare_extension(
     store.backups.insert(cfg.extension.clone(), backup);
     export.extend(items);
     Ok(icon_path)
-}
-
-fn unique_reg_file(dir: &Path, stem: &str) -> PathBuf {
-    let mut candidate = dir.join(format!("{}.reg", stem));
-    let mut n = 2;
-    while candidate.exists() {
-        candidate = dir.join(format!("{}-{}.reg", stem, n));
-        n += 1;
-    }
-    candidate
 }
 
 fn create_key(root: &RegKey, path: &str) -> Result<RegKey, String> {
@@ -617,7 +590,7 @@ pub fn apply_extensions(
             snapshot,
         })
         .collect();
-    let reg_file = unique_reg_file(
+    let reg_file = regsnap::unique_reg_file(
         &opts.reg_backup_dir,
         &format!("{}-before-apply", clock::file_stamp()),
     );

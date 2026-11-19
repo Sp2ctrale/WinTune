@@ -45,6 +45,10 @@ impl WinTuneApp {
         tweak.os == OsRequirement::Any || self.env.is_windows_11
     }
 
+    fn tweak_is_custom(&self, id: &str) -> bool {
+        matches!(self.tweak_statuses.get(id), Some(TweakStatus::Custom(_)))
+    }
+
     fn tweak_is_on(&self, id: &str) -> bool {
         self.tweak_statuses.get(id) == Some(&TweakStatus::On)
     }
@@ -57,7 +61,9 @@ impl WinTuneApp {
             .filter(|t| self.tweak_available(t))
             .filter_map(|t| {
                 let wanted = *self.tweak_desired.get(t.id)?;
-                (wanted != self.tweak_is_on(t.id)).then(|| (t.id.to_string(), wanted))
+                // A "Custom" value is neither on nor off: either choice is a change.
+                (wanted != self.tweak_is_on(t.id) || self.tweak_is_custom(t.id))
+                    .then(|| (t.id.to_string(), wanted))
             })
             .collect()
     }
@@ -286,13 +292,15 @@ impl WinTuneApp {
             .get(tweak.id)
             .copied()
             .unwrap_or(current_on);
-        let is_pending = available && wanted != current_on;
+        let custom = self.tweak_is_custom(tweak.id);
+        let is_pending = available
+            && (wanted != current_on || (custom && self.tweak_desired.contains_key(tweak.id)));
         let has_backup = self.tweak_store.has_backup(&self.env.user_label, tweak.id);
 
         ui.horizontal(|ui| {
             let checkbox = ui.add_enabled(available && !locked, egui::Checkbox::without_text(&mut wanted));
             if checkbox.changed() {
-                if wanted == current_on {
+                if wanted == current_on && !custom {
                     self.tweak_desired.remove(tweak.id);
                 } else {
                     self.tweak_desired.insert(tweak.id, wanted);

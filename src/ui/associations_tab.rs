@@ -451,6 +451,11 @@ fn behavior_card(ui: &mut egui::Ui, ext_cfg: &mut ExtensionConfig, theme: crate:
         ui.checkbox(
             &mut ext_cfg.reset_user_choice,
             "Reset Explorer UserChoice override (FileExts)",
+        )
+        .on_hover_text(
+            "Removes the per-user \"Open with… / Always\" choice so WinTune's association is used.\n\
+             Rollback puts the choice back, but Windows protects it with a hash: it may still \
+             report \"An app default was reset\" and fall back to its default app.",
         );
 
         ui.add_space(8.0);

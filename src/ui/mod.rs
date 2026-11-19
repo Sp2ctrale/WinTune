@@ -12,6 +12,8 @@ mod history_panel;
 mod jobs;
 mod rollback_tab;
 mod rule_status;
+#[cfg(test)]
+mod safety_tests;
 mod sidebar;
 mod status_bar;
 #[cfg(test)]
@@ -35,7 +37,6 @@ use crate::tweaks::{
 use eframe::egui::{self, ColorImage, TextureHandle, TextureOptions};
 use jobs::RunningJob;
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -149,18 +150,28 @@ pub struct WinTuneApp {
     /// Recent operations, newest first.
     history: Vec<crate::history::HistoryEntry>,
     show_history: bool,
+    /// Set when config.json exists but is unreadable: saving is refused so
+    /// the user's rules are never replaced by the defaults.
+    config_error: Option<String>,
 }
 
 impl WinTuneApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let env = AppEnv::system();
-        let mut config = Self::load_or_init_config(&env.config_path);
+        let (mut config, config_error) = Self::load_or_init_config(&env.config_path);
         if config.code_executable.is_empty() {
             if let Some(found) = resolve_vscode_executable(None) {
                 config.code_executable = found;
             }
         }
         let mut app = Self::with_config(&cc.egui_ctx, config, has_wsl_distribution(), env);
+        if let Some(e) = &config_error {
+            app.set_status(format!(
+                "Using the default rules: {} Saving is disabled until it is fixed.",
+                e
+            ));
+        }
+        app.config_error = config_error;
         app.reload_backup_store();
         app.reload_tweak_store();
         app.refresh_tweak_statuses();
@@ -211,6 +222,7 @@ impl WinTuneApp {
             tweak_desired: HashMap::new(),
             history: Vec::new(),
             show_history: false,
+            config_error: None,
         }
     }
 
@@ -294,22 +306,22 @@ impl WinTuneApp {
         Some(ctx.load_texture("wintune_logo", color_img, TextureOptions::LINEAR))
     }
 
-    fn load_or_init_config(path: &Path) -> AppConfig {
-        fs::read_to_string(path)
-            .ok()
-            .and_then(|content| serde_json::from_str::<AppConfig>(&content).ok())
-            .unwrap_or_default()
+    /// The config, plus an error when the file exists but cannot be used.
+    fn load_or_init_config(path: &Path) -> (AppConfig, Option<String>) {
+        match crate::persist::load_json::<AppConfig>(path) {
+            Ok(config) => (config, None),
+            Err(e) => (AppConfig::default(), Some(e)),
+        }
     }
 
     fn save_config(&mut self) {
-        let path = self.env.config_path.clone();
-        if let Some(parent) = path.parent() {
-            let _ = fs::create_dir_all(parent);
+        if let Some(e) = &self.config_error {
+            let msg = format!("Configuration not saved: {}", e);
+            self.set_status(msg);
+            return;
         }
-        let result = serde_json::to_string_pretty(&self.config)
-            .map_err(|e| e.to_string())
-            .and_then(|json| fs::write(&path, json).map_err(|e| e.to_string()));
-        match result {
+        let path = self.env.config_path.clone();
+        match crate::persist::save_json(&self.config, &path) {
             Ok(()) => self.set_status("Configuration saved."),
             Err(e) => self.set_status(format!(
                 "Cannot save configuration to {}: {}",

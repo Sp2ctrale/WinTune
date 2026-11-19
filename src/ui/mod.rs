@@ -15,18 +15,25 @@ mod sidebar;
 mod status_bar;
 #[cfg(test)]
 mod test_support;
+mod tweaks_tab;
 
 use crate::associations::{
     default_backup_store_path, default_reg_backup_dir, load_backup_store,
     notify_shell_associations, AssocTarget, OperationReport,
 };
-use crate::detector::{has_wsl_distribution, resolve_vscode_executable};
+use crate::detector::{
+    has_wsl_distribution, is_windows_11_build, resolve_vscode_executable, windows_build,
+};
 use crate::gallery::{IconCategory, IconGallery};
 use crate::models::{app_data_dir, AppConfig, BackupStore};
 use crate::theme::apply_fluent_theme;
+use crate::tweaks::{
+    current_user_label, default_tweak_store_path, notify_explorer_settings, TweakBackupStore,
+    TweakStatus, TweakTarget,
+};
 use eframe::egui::{self, ColorImage, TextureHandle, TextureOptions};
 use jobs::RunningJob;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -44,6 +51,13 @@ pub(crate) struct AppEnv {
     pub config_path: PathBuf,
     /// Tells Explorer that associations changed.
     pub notify_shell: fn(),
+    pub tweak_target: Arc<dyn Fn() -> TweakTarget + Send + Sync>,
+    pub tweak_store_path: PathBuf,
+    /// Tells Explorer and the taskbar that settings changed.
+    pub notify_settings: fn(),
+    pub is_windows_11: bool,
+    /// Account whose HKCU the tweaks change.
+    pub user_label: String,
 }
 
 impl AppEnv {
@@ -54,6 +68,11 @@ impl AppEnv {
             reg_backup_dir: default_reg_backup_dir(),
             config_path: app_data_dir().join("config.json"),
             notify_shell: notify_shell_associations,
+            tweak_target: Arc::new(TweakTarget::current_user),
+            tweak_store_path: default_tweak_store_path(),
+            notify_settings: notify_explorer_settings,
+            is_windows_11: windows_build().is_some_and(is_windows_11_build),
+            user_label: current_user_label(),
         }
     }
 }
@@ -61,14 +80,16 @@ impl AppEnv {
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub(crate) enum ActiveTab {
     Associations,
+    Tweaks,
     Gallery,
     Rollback,
 }
 
 impl ActiveTab {
     /// Sidebar order.
-    pub(crate) const ALL: [ActiveTab; 3] = [
+    pub(crate) const ALL: [ActiveTab; 4] = [
         ActiveTab::Associations,
+        ActiveTab::Tweaks,
         ActiveTab::Gallery,
         ActiveTab::Rollback,
     ];
@@ -76,6 +97,7 @@ impl ActiveTab {
     pub(crate) fn title(self) -> &'static str {
         match self {
             ActiveTab::Associations => "File Associations",
+            ActiveTab::Tweaks => "Explorer & Taskbar",
             ActiveTab::Gallery => "Icon Gallery",
             ActiveTab::Rollback => "Selective Rollback",
         }
@@ -113,6 +135,13 @@ pub struct WinTuneApp {
     rule_statuses: rule_status::StatusMap,
     status_job: Option<rule_status::StatusJob>,
     status_refresh_needed: bool,
+    /// Original states of the tweaks (tweaks-backups.json).
+    tweak_store: TweakBackupStore,
+    /// Set when tweaks-backups.json cannot be read: tweak changes are blocked.
+    tweak_store_error: Option<String>,
+    tweak_statuses: HashMap<&'static str, TweakStatus>,
+    /// Checkbox states the user changed and has not applied yet.
+    tweak_desired: HashMap<&'static str, bool>,
 }
 
 impl WinTuneApp {
@@ -126,6 +155,8 @@ impl WinTuneApp {
         }
         let mut app = Self::with_config(&cc.egui_ctx, config, has_wsl_distribution(), env);
         app.reload_backup_store();
+        app.reload_tweak_store();
+        app.refresh_tweak_statuses();
         app.request_status_refresh();
         app
     }
@@ -166,6 +197,10 @@ impl WinTuneApp {
             rule_statuses: Default::default(),
             status_job: None,
             status_refresh_needed: false,
+            tweak_store: TweakBackupStore::default(),
+            tweak_store_error: None,
+            tweak_statuses: HashMap::new(),
+            tweak_desired: HashMap::new(),
         }
     }
 
@@ -181,6 +216,7 @@ impl WinTuneApp {
 
         match self.active_tab {
             ActiveTab::Associations => self.show_associations_tab(ctx),
+            ActiveTab::Tweaks => self.show_tweaks_tab(ctx),
             ActiveTab::Gallery => self.show_gallery_tab(ctx),
             ActiveTab::Rollback => self.show_rollback_tab(ctx),
         }
@@ -209,8 +245,9 @@ impl WinTuneApp {
         }
     }
 
-    fn show_report(&mut self, verb: &str, report: &OperationReport) {
-        let mut msg = format!("{} {} extension(s)", verb, report.succeeded.len());
+    /// `what` names the items, e.g. "extension(s)" or "tweak(s)".
+    fn show_report(&mut self, verb: &str, what: &str, report: &OperationReport) {
+        let mut msg = format!("{} {} {}", verb, report.succeeded.len(), what);
         if let Some(first) = report.errors.first() {
             msg.push_str(&format!(
                 ", {} error(s) (first: {})",

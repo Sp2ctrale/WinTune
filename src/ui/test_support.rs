@@ -38,6 +38,18 @@ impl TempIcons {
             reg_backup_dir: self.dir.join("reg-backups"),
             config_path: self.dir.join("config.json"),
             notify_shell: || {},
+            tweak_target: {
+                let base = format!("{}\\HKCU", self.sandbox.path);
+                Arc::new(move || crate::tweaks::TweakTarget {
+                    root: RegKey::predef(HKEY_CURRENT_USER),
+                    root_name: "HKEY_CURRENT_USER".into(),
+                    base: base.clone(),
+                })
+            },
+            tweak_store_path: self.dir.join("tweaks-backups.json"),
+            notify_settings: || {},
+            is_windows_11: true,
+            user_label: "TEST\\user".into(),
         }
     }
 
@@ -142,6 +154,11 @@ impl TempIcons {
         config.code_executable = r"C:\Editor\editor.exe".to_string();
         config.extensions = exts.iter().map(|e| rule(e)).collect();
         self.app_with(ctx, config)
+    }
+
+    /// Path of a key in the sandbox's per-user (HKCU) area.
+    pub(super) fn hkcu(&self, rel: &str) -> String {
+        format!("{}\\HKCU\\{}", self.sandbox.path, rel)
     }
 
     pub(super) fn key_exists(&self, path: &str) -> bool {

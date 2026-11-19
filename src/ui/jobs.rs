@@ -18,10 +18,19 @@ pub(super) struct StoreOutcome {
     store: BackupStore,
 }
 
+/// Result of a tweaks job, with the tweak snapshot store after it.
+pub(super) struct TweakOutcome {
+    pub(super) report: OperationReport,
+    pub(super) store: crate::tweaks::TweakBackupStore,
+    /// True for "restore originals", false for "apply changes".
+    pub(super) restored: bool,
+}
+
 pub(super) enum RunningJob {
     Apply(BackgroundJob<StoreOutcome>),
     Rollback(BackgroundJob<StoreOutcome>),
     BuildPak(BackgroundJob<Result<PakStats, String>>),
+    Tweaks(BackgroundJob<TweakOutcome>),
 }
 
 impl RunningJob {
@@ -30,6 +39,7 @@ impl RunningJob {
             RunningJob::Apply(j) => j.title(),
             RunningJob::Rollback(j) => j.title(),
             RunningJob::BuildPak(j) => j.title(),
+            RunningJob::Tweaks(j) => j.title(),
         }
     }
 
@@ -38,6 +48,7 @@ impl RunningJob {
             RunningJob::Apply(j) => j.progress(),
             RunningJob::Rollback(j) => j.progress(),
             RunningJob::BuildPak(j) => j.progress(),
+            RunningJob::Tweaks(j) => j.progress(),
         }
     }
 }
@@ -48,7 +59,7 @@ fn repaint(ctx: &egui::Context) -> impl Fn() + Send + Sync + 'static {
 }
 
 impl WinTuneApp {
-    fn refuse_if_busy(&mut self) -> bool {
+    pub(super) fn refuse_if_busy(&mut self) -> bool {
         if let Some(job) = &self.job {
             let msg = format!("Please wait: {} is still running.", job.title());
             self.set_status(msg);
@@ -174,6 +185,11 @@ impl WinTuneApp {
                 JobPoll::Finished(result) => Finished::BuildPak(result),
                 JobPoll::Panicked(msg) => Finished::Panicked(msg),
             },
+            RunningJob::Tweaks(j) => match j.poll() {
+                JobPoll::Running => return,
+                JobPoll::Finished(outcome) => Finished::Tweaks(outcome),
+                JobPoll::Panicked(msg) => Finished::Panicked(msg),
+            },
         };
         let title = job.title().to_string();
         self.job = None;
@@ -182,13 +198,13 @@ impl WinTuneApp {
             Finished::Apply(outcome) => {
                 self.backup_store = outcome.store;
                 self.save_config();
-                self.show_report("Applied", &outcome.report);
+                self.show_report("Applied", "extension(s)", &outcome.report);
                 self.request_status_refresh();
             }
             Finished::Rollback(outcome) => {
                 self.backup_store = outcome.store;
                 self.rollback_selection.clear();
-                self.show_report("Restored", &outcome.report);
+                self.show_report("Restored", "extension(s)", &outcome.report);
                 self.request_status_refresh();
             }
             Finished::BuildPak(Ok(stats)) => {
@@ -202,10 +218,13 @@ impl WinTuneApp {
                 ));
             }
             Finished::BuildPak(Err(e)) => self.set_status(format!("Pack error: {}", e)),
+            Finished::Tweaks(outcome) => self.finish_tweaks_job(outcome),
             Finished::Panicked(msg) => {
                 self.set_status(format!("{} failed unexpectedly: {}", title, msg));
                 // The registry may have changed: re-read what is on disk.
                 self.reload_backup_store();
+                self.reload_tweak_store();
+                self.refresh_tweak_statuses();
             }
         }
     }
@@ -215,5 +234,6 @@ enum Finished {
     Apply(StoreOutcome),
     Rollback(StoreOutcome),
     BuildPak(Result<PakStats, String>),
+    Tweaks(TweakOutcome),
     Panicked(String),
 }

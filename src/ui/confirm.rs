@@ -14,6 +14,8 @@ pub(super) enum ConfirmAction {
         extension: String,
     },
     Rollback(Vec<String>),
+    /// Tweak ids whose original state must be put back.
+    RestoreTweaks(Vec<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -71,6 +73,7 @@ impl WinTuneApp {
         match confirm.action {
             ConfirmAction::RemoveRule { index, extension } => self.remove_rule(index, &extension),
             ConfirmAction::Rollback(extensions) => self.start_rollback(ctx, extensions),
+            ConfirmAction::RestoreTweaks(ids) => self.start_restore_tweaks(ctx, ids),
         }
     }
 

@@ -60,6 +60,13 @@ If saving the snapshots or the `.reg` file fails, nothing is applied. If
 `backups.json` cannot be read, all registry changes are blocked, so the next
 save cannot overwrite your snapshots.
 
+Each rule shows its live status: **Applied** means the registry matches the
+rule. **Changed** means the rule was applied but something differs now, for
+example another app took the extension, an Explorer `UserChoice` override
+exists, a ProgID is missing, or the rule was edited since; hover the badge to
+see why. The status is read in the background at startup, after each apply or
+rollback, when you open the tab, and when you click **Refresh status**.
+
 The interface checks rules as you edit them. A rule with an invalid extension
 or ProgID, or an extension listed twice, is flagged in red and blocks Apply.
 Disabled rules never block. Removing a rule and rolling back extensions both

@@ -155,6 +155,9 @@ impl WinTuneApp {
             if tab == ActiveTab::Rollback && !self.is_busy() {
                 self.reload_backup_store();
             }
+            if tab == ActiveTab::Associations && self.active_tab != tab {
+                self.request_status_refresh();
+            }
             self.active_tab = tab;
         }
         ui.add_space(4.0);

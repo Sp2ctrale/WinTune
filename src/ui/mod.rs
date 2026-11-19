@@ -10,6 +10,7 @@ mod confirm;
 mod gallery_tab;
 mod jobs;
 mod rollback_tab;
+mod rule_status;
 mod sidebar;
 mod status_bar;
 #[cfg(test)]
@@ -108,6 +109,10 @@ pub struct WinTuneApp {
     close_when_idle: bool,
     /// Destructive action waiting for the user's OK.
     pending_confirm: Option<confirm::Confirm>,
+    /// Live registry status of each rule, by extension.
+    rule_statuses: rule_status::StatusMap,
+    status_job: Option<rule_status::StatusJob>,
+    status_refresh_needed: bool,
 }
 
 impl WinTuneApp {
@@ -121,6 +126,7 @@ impl WinTuneApp {
         }
         let mut app = Self::with_config(&cc.egui_ctx, config, has_wsl_distribution(), env);
         app.reload_backup_store();
+        app.request_status_refresh();
         app
     }
 
@@ -157,12 +163,16 @@ impl WinTuneApp {
             job: None,
             close_when_idle: false,
             pending_confirm: None,
+            rule_statuses: Default::default(),
+            status_job: None,
+            status_refresh_needed: false,
         }
     }
 
     /// One frame of the whole UI.
     fn ui(&mut self, ctx: &egui::Context) {
         self.poll_job();
+        self.pump_status_refresh(ctx);
         self.guard_close_while_busy(ctx);
 
         self.show_sidebar(ctx);

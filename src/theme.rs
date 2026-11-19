@@ -137,7 +137,8 @@ pub fn accent_button<'a>(text: impl Into<egui::WidgetText>, mode: ThemeMode) -> 
     .rounding(Rounding::same(6.0))
 }
 
-pub fn draw_badge(ui: &mut egui::Ui, label: &str, color: Color32) {
+/// Small colored pill. The returned response accepts a hover text.
+pub fn draw_badge(ui: &mut egui::Ui, label: &str, color: Color32) -> egui::Response {
     let bg = color.gamma_multiply(0.18);
     Frame::none()
         .fill(bg)
@@ -146,5 +147,6 @@ pub fn draw_badge(ui: &mut egui::Ui, label: &str, color: Color32) {
         .inner_margin(Margin::symmetric(6.0, 2.0))
         .show(ui, |ui| {
             ui.label(egui::RichText::new(label).size(11.0).color(color).strong());
-        });
+        })
+        .response
 }

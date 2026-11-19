@@ -1,3 +1,4 @@
+use super::rule_status::{status_badge, status_details};
 use super::{ActiveTab, WinTuneApp};
 use crate::associations::{find_rule_problems, validate_extension};
 use crate::detector::resolve_vscode_executable;
@@ -38,6 +39,15 @@ impl WinTuneApp {
                             {
                                 self.config.code_executable = file.to_string_lossy().to_string();
                             }
+                        }
+                        if ui
+                            .add_enabled(!busy, egui::Button::new("Refresh status"))
+                            .on_hover_text(
+                                "Re-read the registry to show which rules are applied or changed.",
+                            )
+                            .clicked()
+                        {
+                            self.request_status_refresh();
                         }
                         if ui.button("Auto-Detect").clicked() {
                             if let Some(found) = resolve_vscode_executable(None) {
@@ -219,6 +229,12 @@ impl WinTuneApp {
                                 if is_script {
                                     draw_badge(ui, "Script", palette.warning);
                                 }
+                                status_badge(
+                                    ui,
+                                    self.config.theme,
+                                    self.rule_statuses
+                                        .get(&self.config.extensions[idx].extension),
+                                );
                                 if let Some(problem) = problems.get(&idx) {
                                     let color = ui.visuals().error_fg_color;
                                     ui.label(RichText::new("Invalid").strong().color(color))
@@ -260,6 +276,11 @@ impl WinTuneApp {
                     .find(|(i, _)| *i == self.selected_ext_index)
                     .map(|(_, msg)| msg);
 
+                let status = self
+                    .rule_statuses
+                    .get(&self.config.extensions[self.selected_ext_index].extension)
+                    .cloned();
+
                 let mut delete_current = false;
                 let mut open_gallery_picker = false;
                 let mut apply_single = false;
@@ -284,6 +305,7 @@ impl WinTuneApp {
                                     if has_backup {
                                         draw_badge(ui, "Snapshot Saved", palette.success);
                                     }
+                                    status_badge(ui, self.config.theme, status.as_ref());
                                 });
                                 ui.label(
                                     RichText::new(format!(
@@ -292,6 +314,7 @@ impl WinTuneApp {
                                     ))
                                     .color(palette.text_secondary),
                                 );
+                                status_details(ui, self.config.theme, status.as_ref());
                             });
 
                             ui.with_layout(

@@ -119,6 +119,23 @@ pub fn build_editor_command(code_exe: &str) -> String {
     format!("\"{}\" \"%1\"", portable)
 }
 
+/// Windows build number (`CurrentBuildNumber`), e.g. 26100.
+pub fn windows_build() -> Option<u32> {
+    RegKey::predef(HKEY_LOCAL_MACHINE)
+        .open_subkey_with_flags("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", KEY_READ)
+        .ok()?
+        .get_value::<String, _>("CurrentBuildNumber")
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+}
+
+/// Windows 11 kept the "10.0" version: it is told apart by build >= 22000.
+pub fn is_windows_11_build(build: u32) -> bool {
+    build >= 22000
+}
+
 /// Human name of the editor for the "Edit with …" menu entry.
 pub fn editor_display_name(executable: &str) -> String {
     let stem = Path::new(executable.trim())
@@ -150,6 +167,20 @@ mod tests {
     fn editor_display_name_falls_back_to_file_stem() {
         assert_eq!(editor_display_name(r"C:\Tools\notepad++.exe"), "notepad++");
         assert_eq!(editor_display_name(""), "Editor");
+    }
+
+    #[test]
+    fn windows_build_is_read_from_the_registry() {
+        let build = windows_build().expect("CurrentBuildNumber not found");
+        assert!(build >= 10240, "{}", build); // first Windows 10 build
+    }
+
+    #[test]
+    fn windows_11_starts_at_build_22000() {
+        assert!(!is_windows_11_build(19045));
+        assert!(!is_windows_11_build(20348)); // Server 2022
+        assert!(is_windows_11_build(22000));
+        assert!(is_windows_11_build(26100));
     }
 
     #[test]

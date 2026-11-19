@@ -191,6 +191,8 @@ impl WinTuneApp {
             "Applied"
         };
         self.show_report(verb, "tweak(s)", &outcome.report);
+        let action = if outcome.restored { "Restore" } else { "Apply" };
+        self.record_history("Explorer & Taskbar", action, &outcome.report);
     }
 
     pub(super) fn show_tweaks_tab(&mut self, ctx: &egui::Context) {

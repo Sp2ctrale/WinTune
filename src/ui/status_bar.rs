@@ -40,6 +40,11 @@ impl WinTuneApp {
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let label = format!("History ({})", self.history.len());
+                        if ui.selectable_label(self.show_history, label).clicked() {
+                            self.show_history = !self.show_history;
+                        }
+                        ui.separator();
                         let enabled_count =
                             self.config.extensions.iter().filter(|e| e.enabled).count();
                         ui.label(

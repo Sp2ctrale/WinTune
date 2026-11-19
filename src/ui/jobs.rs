@@ -24,13 +24,16 @@ pub(super) struct TweakOutcome {
     pub(super) store: crate::tweaks::TweakBackupStore,
     /// True for "restore originals", false for "apply changes".
     pub(super) restored: bool,
+    /// Module name for the history ("Explorer & Taskbar", "Start & Privacy").
+    pub(super) module: &'static str,
 }
 
 pub(super) enum RunningJob {
     Apply(BackgroundJob<StoreOutcome>),
     Rollback(BackgroundJob<StoreOutcome>),
     BuildPak(BackgroundJob<Result<PakStats, String>>),
-    Tweaks(BackgroundJob<TweakOutcome>),
+    /// The job and the module (tab) it belongs to.
+    Tweaks(BackgroundJob<TweakOutcome>, &'static str),
 }
 
 impl RunningJob {
@@ -39,7 +42,7 @@ impl RunningJob {
             RunningJob::Apply(j) => j.title(),
             RunningJob::Rollback(j) => j.title(),
             RunningJob::BuildPak(j) => j.title(),
-            RunningJob::Tweaks(j) => j.title(),
+            RunningJob::Tweaks(j, _) => j.title(),
         }
     }
 
@@ -48,10 +51,10 @@ impl RunningJob {
         match self {
             RunningJob::Apply(_) => Some(("File associations", "Apply")),
             RunningJob::Rollback(_) => Some(("File associations", "Rollback")),
-            RunningJob::Tweaks(j) if j.title().starts_with("Restoring") => {
-                Some(("Explorer & Taskbar", "Restore"))
+            RunningJob::Tweaks(j, module) if j.title().starts_with("Restoring") => {
+                Some((module, "Restore"))
             }
-            RunningJob::Tweaks(_) => Some(("Explorer & Taskbar", "Apply")),
+            RunningJob::Tweaks(_, module) => Some((module, "Apply")),
             RunningJob::BuildPak(_) => None,
         }
     }
@@ -61,7 +64,7 @@ impl RunningJob {
             RunningJob::Apply(j) => j.progress(),
             RunningJob::Rollback(j) => j.progress(),
             RunningJob::BuildPak(j) => j.progress(),
-            RunningJob::Tweaks(j) => j.progress(),
+            RunningJob::Tweaks(j, _) => j.progress(),
         }
     }
 }
@@ -203,7 +206,7 @@ impl WinTuneApp {
                 JobPoll::Finished(result) => Finished::BuildPak(result),
                 JobPoll::Panicked(msg) => Finished::Panicked(msg),
             },
-            RunningJob::Tweaks(j) => match j.poll() {
+            RunningJob::Tweaks(j, _) => match j.poll() {
                 JobPoll::Running => return,
                 JobPoll::Finished(outcome) => Finished::Tweaks(outcome),
                 JobPoll::Panicked(msg) => Finished::Panicked(msg),
@@ -216,9 +219,14 @@ impl WinTuneApp {
         match finished {
             Finished::Apply(outcome) => {
                 self.backup_store = outcome.store;
-                self.save_config();
-                self.show_report("Applied", "extension(s)", &outcome.report);
-                self.record_history("File associations", "Apply", &outcome.report);
+                let mut report = outcome.report;
+                if let Err(e) = self.try_save_config() {
+                    report
+                        .warnings
+                        .push(format!("Configuration not saved: {}", e));
+                }
+                self.show_report("Applied", "extension(s)", &report);
+                self.record_history("File associations", "Apply", &report);
                 self.request_status_refresh();
             }
             Finished::Rollback(outcome) => {

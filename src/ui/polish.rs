@@ -23,7 +23,7 @@ impl WinTuneApp {
         }
         let find = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::F);
         if ctx.input_mut(|i| i.consume_shortcut(&find)) {
-            self.focus_search = true;
+            self.focus_search = search_box_id(self.active_tab).is_some();
         }
     }
 
@@ -70,7 +70,7 @@ impl WinTuneApp {
 
     pub(super) fn tweak_apply_disabled_reason(&self) -> Option<String> {
         self.busy_or_blocked(&self.tweak_store_error).or_else(|| {
-            self.pending_tweak_changes()
+            self.pending_tweak_changes_in(Self::tweak_groups_of(self.active_tab))
                 .is_empty()
                 .then(|| "Nothing to apply: tick or untick a setting first.".to_string())
         })

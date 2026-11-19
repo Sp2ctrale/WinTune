@@ -1,5 +1,7 @@
-//! "Explorer & Taskbar" tab: per-user tweaks with live status, pending
-//! changes applied in one go, and per-tweak / global "restore original".
+//! The tweak tabs ("Explorer & Taskbar", "Start & Privacy"): per-user tweaks
+//! with live status, pending changes applied in one go, and per-tweak or
+//! per-tab "restore original". Each tab only ever applies, discards or
+//! restores the tweaks of its own groups.
 
 use super::confirm::{Confirm, ConfirmAction};
 use super::jobs::{RunningJob, TweakOutcome};
@@ -91,6 +93,32 @@ impl WinTuneApp {
         }
     }
 
+    /// Pending changes of the tweaks in `groups` only (one tab).
+    pub(super) fn pending_tweak_changes_in(&self, groups: &[TweakGroup]) -> Vec<(String, bool)> {
+        self.pending_tweak_changes()
+            .into_iter()
+            .filter(|(id, _)| {
+                crate::tweaks::find_tweak(id).is_some_and(|t| groups.contains(&t.group))
+            })
+            .collect()
+    }
+
+    /// "Discard changes" of one tab: the other tab keeps its ticks.
+    pub(super) fn discard_tweak_changes(&mut self, tab: ActiveTab) {
+        let groups = Self::tweak_groups_of(tab);
+        self.tweak_desired.retain(|id, _| {
+            !crate::tweaks::find_tweak(id).is_some_and(|t| groups.contains(&t.group))
+        });
+    }
+
+    /// History / status name of the module a tweaks tab belongs to.
+    pub(super) fn tweaks_module_of(tab: ActiveTab) -> &'static str {
+        match tab {
+            ActiveTab::StartPrivacy => ActiveTab::StartPrivacy.title(),
+            _ => ActiveTab::Tweaks.title(),
+        }
+    }
+
     /// Ids of this user's recorded originals that belong to `groups`.
     fn user_backups_in(&self, groups: &[TweakGroup]) -> Vec<String> {
         self.tweak_store
@@ -130,7 +158,9 @@ impl WinTuneApp {
             self.set_status(msg);
             return;
         }
-        let changes = self.pending_tweak_changes();
+        let tab = self.active_tab;
+        let changes = self.pending_tweak_changes_in(Self::tweak_groups_of(tab));
+        let module = Self::tweaks_module_of(tab);
         if changes.is_empty() {
             self.set_status("No tweak change to apply.");
             return;
@@ -158,10 +188,11 @@ impl WinTuneApp {
                     report,
                     store,
                     restored: false,
+                    module,
                 }
             },
         );
-        self.job = Some(RunningJob::Tweaks(job));
+        self.job = Some(RunningJob::Tweaks(job, module));
         self.set_status("Applying tweaks…");
     }
 
@@ -199,6 +230,7 @@ impl WinTuneApp {
         let mut store = self.tweak_store.clone();
         let (user, is_windows_11, store_path, reg_backup_dir) = self.tweak_options();
         let repaint_ctx = ctx.clone();
+        let module = Self::tweaks_module_of(self.active_tab);
         let job = BackgroundJob::spawn(
             "Restoring original settings",
             move || repaint_ctx.request_repaint(),
@@ -217,17 +249,26 @@ impl WinTuneApp {
                     report,
                     store,
                     restored: true,
+                    module,
                 }
             },
         );
-        self.job = Some(RunningJob::Tweaks(job));
+        self.job = Some(RunningJob::Tweaks(job, module));
         self.set_status("Restoring original settings…");
     }
 
     pub(super) fn finish_tweaks_job(&mut self, outcome: TweakOutcome) {
         self.tweak_store = outcome.store;
-        self.tweak_desired.clear();
         self.refresh_tweak_statuses();
+        // Keep only ticks that still differ from the registry: the ones this
+        // job wrote (or restored) drop out, the other tab's ticks stay.
+        let statuses = self.tweak_statuses.clone();
+        self.tweak_desired
+            .retain(|id, wanted| match statuses.get(id) {
+                Some(TweakStatus::On) => !*wanted,
+                Some(TweakStatus::Custom(_)) => true,
+                _ => *wanted,
+            });
         let verb = if outcome.restored {
             "Restored"
         } else {
@@ -235,13 +276,15 @@ impl WinTuneApp {
         };
         self.show_report(verb, "tweak(s)", &outcome.report);
         let action = if outcome.restored { "Restore" } else { "Apply" };
-        self.record_history("Explorer & Taskbar", action, &outcome.report);
+        self.record_history(outcome.module, action, &outcome.report);
     }
 
     pub(super) fn show_tweaks_tab(&mut self, ctx: &egui::Context) {
         let palette = get_palette(self.config.theme);
         let busy = self.is_busy();
-        let pending = self.pending_tweak_changes().len();
+        let pending = self
+            .pending_tweak_changes_in(Self::tweak_groups_of(self.active_tab))
+            .len();
         let tab = self.active_tab;
         let groups = Self::tweak_groups_of(tab);
         let backups = self.user_backups_in(groups);
@@ -295,7 +338,7 @@ impl WinTuneApp {
                                 self.request_restore_all_tweaks(tab);
                             }
                             if pending > 0 && ui.add_enabled(!busy, egui::Button::new("Discard changes")).clicked() {
-                                self.tweak_desired.clear();
+                                self.discard_tweak_changes(self.active_tab);
                             }
                         });
                     });
@@ -588,6 +631,9 @@ mod tests {
         let ctx = egui::Context::default();
         let mut app = tweaks_app(&fx, &ctx);
         app.tweak_desired.insert("show_extensions", true);
+        app.start_apply_tweaks(&ctx); // Explorer & Taskbar tab
+        run_until_idle(&mut app, &ctx);
+        app.active_tab = ActiveTab::StartPrivacy;
         app.tweak_desired.insert("no_app_launch_tracking", true);
         app.start_apply_tweaks(&ctx);
         run_until_idle(&mut app, &ctx);

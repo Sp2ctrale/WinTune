@@ -11,6 +11,8 @@ mod gallery_tab;
 mod history_panel;
 mod jobs;
 mod polish;
+#[cfg(test)]
+mod review2_tests;
 mod rollback_tab;
 mod rule_status;
 #[cfg(test)]
@@ -325,9 +327,22 @@ impl WinTuneApp {
         }
     }
 
-    fn save_config(&mut self) {
+    /// Saves config.json; refused while the file on disk is unreadable.
+    fn try_save_config(&self) -> Result<(), String> {
         if let Some(e) = &self.config_error {
-            let msg = format!("Configuration not saved: {}", e);
+            return Err(e.clone());
+        }
+        let path = &self.env.config_path;
+        crate::persist::save_json(&self.config, path)
+            .map_err(|e| format!("cannot write {}: {}", path.display(), e))
+    }
+
+    fn save_config(&mut self) {
+        if self.config_error.is_some() {
+            let msg = format!(
+                "Configuration not saved: {}",
+                self.config_error.clone().unwrap_or_default()
+            );
             self.set_status(msg);
             return;
         }

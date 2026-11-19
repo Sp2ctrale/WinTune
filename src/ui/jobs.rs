@@ -43,6 +43,19 @@ impl RunningJob {
         }
     }
 
+    /// (module, action) under which a failed run of this job is logged.
+    pub(super) fn history_label(&self) -> Option<(&'static str, &'static str)> {
+        match self {
+            RunningJob::Apply(_) => Some(("File associations", "Apply")),
+            RunningJob::Rollback(_) => Some(("File associations", "Rollback")),
+            RunningJob::Tweaks(j) if j.title().starts_with("Restoring") => {
+                Some(("Explorer & Taskbar", "Restore"))
+            }
+            RunningJob::Tweaks(_) => Some(("Explorer & Taskbar", "Apply")),
+            RunningJob::BuildPak(_) => None,
+        }
+    }
+
     pub(super) fn progress(&self) -> &Progress {
         match self {
             RunningJob::Apply(j) => j.progress(),
@@ -60,6 +73,11 @@ fn repaint(ctx: &egui::Context) -> impl Fn() + Send + Sync + 'static {
 
 impl WinTuneApp {
     pub(super) fn refuse_if_busy(&mut self) -> bool {
+        // The dialog blocks the mouse but not the keyboard (Tab + Space).
+        if self.pending_confirm.is_some() {
+            self.set_status("Answer the open dialog first.");
+            return true;
+        }
         if let Some(job) = &self.job {
             let msg = format!("Please wait: {} is still running.", job.title());
             self.set_status(msg);
@@ -192,6 +210,7 @@ impl WinTuneApp {
             },
         };
         let title = job.title().to_string();
+        let history_label = job.history_label();
         self.job = None;
 
         match finished {
@@ -222,6 +241,14 @@ impl WinTuneApp {
             Finished::BuildPak(Err(e)) => self.set_status(format!("Pack error: {}", e)),
             Finished::Tweaks(outcome) => self.finish_tweaks_job(outcome),
             Finished::Panicked(msg) => {
+                if let Some((module, action)) = history_label {
+                    // It may have written part of its changes: keep a trace.
+                    let report = OperationReport {
+                        errors: vec![format!("{} failed unexpectedly: {}", title, msg)],
+                        ..Default::default()
+                    };
+                    self.record_history(module, action, &report);
+                }
                 self.set_status(format!("{} failed unexpectedly: {}", title, msg));
                 // The registry may have changed: re-read what is on disk.
                 self.reload_backup_store();

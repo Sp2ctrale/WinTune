@@ -141,7 +141,7 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | Module | Role |
 | --- | --- |
 | `regsnap` | Generic snapshot, restore, delete-tree and `.reg` export. Every module that writes to the registry builds on it |
-| `associations` | File-association engine (apply, rollback and live status) on an injectable `AssocTarget` |
+| `associations` | File-association engine on an injectable `AssocTarget`, split into `target`, `validate`, `store`, `apply`, `rollback`, `status` and `tests` |
 | `tweaks` | Explorer & Taskbar tweaks engine (catalog, status, apply, restore) on an injectable `TweakTarget` |
 | `persist` | JSON stores: a missing file is empty, a corrupt file is an error, saves are atomic |
 | `history` | Operation log (`history.jsonl`): append one line per operation, read the most recent |

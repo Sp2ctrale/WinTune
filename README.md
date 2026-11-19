@@ -58,6 +58,10 @@ The **Explorer & Taskbar** tweaks change only the current user's settings
 | Show protected system files | `ShowSuperHidden` | 1 | 0 | new windows |
 | Open Explorer to This PC | `LaunchTo` | 1 | 2 | new windows |
 | Full path in the title bar | `…\Explorer\CabinetState` → `FullPath` | 1 | 0 | Explorer restart |
+| Compact view (Windows 11) | `UseCompactMode` | 1 | 0 | new windows |
+| Item check boxes | `AutoCheckSelect` | 1 | 0 | new windows |
+| Hide recent files in Quick access | `…\CurrentVersion\Explorer` → `ShowRecent` | 0 | 1 | new windows |
+| Hide frequent folders in Quick access | `…\CurrentVersion\Explorer` → `ShowFrequent` | 0 | 1 | new windows |
 | Classic right-click menu (Windows 11, unofficial) | key `HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32` | key present | key removed | Explorer restart |
 | Align taskbar to the left (Windows 11) | `TaskbarAl` | 0 | 1 | instantly |
 | Hide the Task View button | `ShowTaskViewButton` | 0 | 1 | instantly |

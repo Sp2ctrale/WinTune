@@ -1,15 +1,16 @@
 //! egui front-end. Each module of the app is one tab, in its own file:
-//! adding a customization module means adding an [`ActiveTab`] variant, its
+//! adding a customization module means adding an `ActiveTab` variant, its
 //! sidebar subtitle and a `show_*_tab` method in a new file.
 //!
 //! Long operations (apply, rollback, icon pack build) run on a background
-//! thread through [`jobs`], so the window never freezes.
+//! thread through `jobs`, so the window never freezes.
 
 mod associations_tab;
 mod confirm;
 mod gallery_tab;
 mod history_panel;
 mod jobs;
+mod polish;
 mod rollback_tab;
 mod rule_status;
 #[cfg(test)]
@@ -152,6 +153,8 @@ pub struct WinTuneApp {
     tweak_desired: HashMap<&'static str, bool>,
     /// Filter typed in the tweaks tab (title / description).
     tweak_search: String,
+    /// Ctrl+F was pressed: focus the current tab's search box.
+    focus_search: bool,
     /// Recent operations, newest first.
     history: Vec<crate::history::HistoryEntry>,
     show_history: bool,
@@ -226,6 +229,7 @@ impl WinTuneApp {
             tweak_statuses: HashMap::new(),
             tweak_desired: HashMap::new(),
             tweak_search: String::new(),
+            focus_search: false,
             history: Vec::new(),
             show_history: false,
             config_error: None,
@@ -235,6 +239,7 @@ impl WinTuneApp {
     /// One frame of the whole UI.
     fn ui(&mut self, ctx: &egui::Context) {
         self.poll_job();
+        self.handle_shortcuts(ctx);
         self.pump_status_refresh(ctx);
         self.guard_close_while_busy(ctx);
 

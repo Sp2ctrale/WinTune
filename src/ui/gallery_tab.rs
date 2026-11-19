@@ -89,11 +89,14 @@ impl WinTuneApp {
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Search:").strong());
-                        ui.add(
+                        let search = ui.add(
                             egui::TextEdit::singleline(&mut self.gallery_search_query)
+                                .id(super::polish::search_box_id(ActiveTab::Gallery)
+                                    .expect("search box"))
                                 .hint_text("Filter icons (rust, react, folder-src, _light...)")
                                 .desired_width(240.0),
                         );
+                        self.focus_search_if_requested(&search);
 
                         ui.separator();
                         for (category, label) in [

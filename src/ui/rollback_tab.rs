@@ -5,7 +5,6 @@ use eframe::egui::{self, Margin, RichText};
 impl WinTuneApp {
     pub(super) fn show_rollback_tab(&mut self, ctx: &egui::Context) {
         let palette = get_palette(self.config.theme);
-        let busy = self.is_busy();
 
         egui::CentralPanel::default()
             .frame(
@@ -29,11 +28,14 @@ impl WinTuneApp {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let label =
                                 format!("Restore Selected ({})", self.rollback_selection.len());
-                            let enabled = !busy && !self.rollback_selection.is_empty();
-                            if ui
-                                .add_enabled(enabled, accent_button(label, self.config.theme))
-                                .clicked()
-                            {
+                            let reason = self.rollback_disabled_reason();
+                            let resp =
+                                ui.add_enabled(reason.is_none(), accent_button(label, self.config.theme));
+                            let resp = match &reason {
+                                Some(r) => resp.on_disabled_hover_text(r),
+                                None => resp,
+                            };
+                            if resp.clicked() {
                                 self.request_rollback();
                             }
                         });

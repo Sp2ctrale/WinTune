@@ -267,25 +267,31 @@ impl WinTuneApp {
                             );
                         });
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui
-                                .add_enabled(
-                                    !busy && !blocked && pending > 0,
-                                    accent_button(format!("Apply ({})", pending), self.config.theme),
-                                )
-                                .clicked()
-                            {
+                            let apply_reason = self.tweak_apply_disabled_reason();
+                            let apply = ui.add_enabled(
+                                apply_reason.is_none(),
+                                accent_button(format!("Apply ({})", pending), self.config.theme),
+                            );
+                            let apply = match &apply_reason {
+                                Some(r) => apply.on_disabled_hover_text(r),
+                                None => apply,
+                            };
+                            if apply.clicked() {
                                 self.start_apply_tweaks(ctx);
                             }
-                            if ui
-                                .add_enabled(
-                                    !busy && !blocked && !backups.is_empty(),
-                                    egui::Button::new(format!(
-                                        "Restore all originals ({})",
-                                        backups.len()
-                                    )),
-                                )
-                                .clicked()
-                            {
+                            let restore_reason = self.tweak_restore_all_disabled_reason(backups.len());
+                            let restore = ui.add_enabled(
+                                restore_reason.is_none(),
+                                egui::Button::new(format!(
+                                    "Restore all originals ({})",
+                                    backups.len()
+                                )),
+                            );
+                            let restore = match &restore_reason {
+                                Some(r) => restore.on_disabled_hover_text(r),
+                                None => restore,
+                            };
+                            if restore.clicked() {
                                 self.request_restore_all_tweaks(tab);
                             }
                             if pending > 0 && ui.add_enabled(!busy, egui::Button::new("Discard changes")).clicked() {
@@ -305,11 +311,14 @@ impl WinTuneApp {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Search:").strong());
-                    ui.add(
+                    let search = ui.add(
                         egui::TextEdit::singleline(&mut self.tweak_search)
-                            .hint_text("extensions, taskbar, quick access…")
+                            .id(super::polish::search_box_id(ActiveTab::Tweaks)
+                                .expect("search box"))
+                            .hint_text("extensions, taskbar, quick access…  Ctrl+F")
                             .desired_width(280.0),
                     );
+                    self.focus_search_if_requested(&search);
                     if !self.tweak_search.is_empty() && ui.small_button("Clear").clicked() {
                         self.tweak_search.clear();
                     }

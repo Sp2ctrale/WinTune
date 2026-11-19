@@ -3,7 +3,7 @@
 
 use super::confirm::{Confirm, ConfirmAction};
 use super::jobs::{RunningJob, TweakOutcome};
-use super::WinTuneApp;
+use super::{ActiveTab, WinTuneApp};
 use crate::tasks::BackgroundJob;
 use crate::theme::{accent_button, card_frame, draw_badge, get_palette};
 use crate::tweaks::{
@@ -83,11 +83,33 @@ impl WinTuneApp {
             .collect()
     }
 
-    fn user_backups(&self) -> Vec<String> {
+    /// The tweak groups a tab shows (both tweaks tabs share this file).
+    pub(super) fn tweak_groups_of(tab: ActiveTab) -> &'static [TweakGroup] {
+        match tab {
+            ActiveTab::StartPrivacy => &[TweakGroup::Start, TweakGroup::Privacy],
+            _ => &[TweakGroup::FileExplorer, TweakGroup::Taskbar],
+        }
+    }
+
+    /// Ids of this user's recorded originals that belong to `groups`.
+    fn user_backups_in(&self, groups: &[TweakGroup]) -> Vec<String> {
         self.tweak_store
             .backups_of(&self.env.user_label)
-            .map(|b| b.keys().cloned().collect())
+            .map(|b| {
+                b.keys()
+                    .filter(|id| {
+                        crate::tweaks::find_tweak(id).is_some_and(|t| groups.contains(&t.group))
+                    })
+                    .cloned()
+                    .collect()
+            })
             .unwrap_or_default()
+    }
+
+    /// "Restore all originals" of one tab: only the tweaks that tab shows.
+    pub(super) fn request_restore_all_tweaks(&mut self, tab: ActiveTab) {
+        let ids = self.user_backups_in(Self::tweak_groups_of(tab));
+        self.request_restore_tweaks(ids);
     }
 
     fn tweak_options(&self) -> (String, bool, std::path::PathBuf, std::path::PathBuf) {
@@ -220,7 +242,9 @@ impl WinTuneApp {
         let palette = get_palette(self.config.theme);
         let busy = self.is_busy();
         let pending = self.pending_tweak_changes().len();
-        let backups = self.user_backups();
+        let tab = self.active_tab;
+        let groups = Self::tweak_groups_of(tab);
+        let backups = self.user_backups_in(groups);
         let blocked = self.tweak_store_error.is_some();
 
         egui::TopBottomPanel::top("tweaks_header")
@@ -233,7 +257,7 @@ impl WinTuneApp {
                 card_frame(self.config.theme).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
-                            ui.heading("Explorer & Taskbar");
+                            ui.heading(tab.title());
                             ui.label(
                                 RichText::new(format!(
                                     "Per-user settings of {}. The first change of each setting records its original state, so it can be restored exactly.",
@@ -262,7 +286,7 @@ impl WinTuneApp {
                                 )
                                 .clicked()
                             {
-                                self.request_restore_tweaks(backups.clone());
+                                self.request_restore_all_tweaks(tab);
                             }
                             if pending > 0 && ui.add_enabled(!busy, egui::Button::new("Discard changes")).clicked() {
                                 self.tweak_desired.clear();
@@ -294,10 +318,8 @@ impl WinTuneApp {
 
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     let mut shown = 0;
-                    for (group, title) in [
-                        (TweakGroup::FileExplorer, "File Explorer"),
-                        (TweakGroup::Taskbar, "Taskbar"),
-                    ] {
+                    for &group in groups {
+                        let title = group.title();
                         let tweaks = self.visible_tweaks(group);
                         if tweaks.is_empty() {
                             continue;
@@ -506,7 +528,7 @@ mod tests {
     }
 
     fn visible_ids(app: &WinTuneApp) -> Vec<&'static str> {
-        [TweakGroup::FileExplorer, TweakGroup::Taskbar]
+        TweakGroup::ALL
             .into_iter()
             .flat_map(|g| app.visible_tweaks(g))
             .map(|t| t.id)
@@ -532,6 +554,43 @@ mod tests {
 
         app.tweak_search = "   ".into();
         assert_eq!(visible_ids(&app).len(), crate::tweaks::catalog().len());
+    }
+
+    #[test]
+    fn each_tweaks_tab_has_its_own_groups_and_renders() {
+        assert_eq!(
+            WinTuneApp::tweak_groups_of(ActiveTab::Tweaks),
+            [TweakGroup::FileExplorer, TweakGroup::Taskbar]
+        );
+        assert_eq!(
+            WinTuneApp::tweak_groups_of(ActiveTab::StartPrivacy),
+            [TweakGroup::Start, TweakGroup::Privacy]
+        );
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        app.active_tab = ActiveTab::StartPrivacy;
+        frame(&mut app, &ctx, RawInput::default());
+    }
+
+    #[test]
+    fn restore_all_only_targets_the_tweaks_of_the_current_tab() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        app.tweak_desired.insert("show_extensions", true);
+        app.tweak_desired.insert("no_app_launch_tracking", true);
+        app.start_apply_tweaks(&ctx);
+        run_until_idle(&mut app, &ctx);
+
+        app.request_restore_all_tweaks(ActiveTab::StartPrivacy);
+
+        match app.pending_confirm.as_ref().map(|c| c.action.clone()) {
+            Some(super::super::confirm::ConfirmAction::RestoreTweaks(ids)) => {
+                assert_eq!(ids, vec!["no_app_launch_tracking".to_string()])
+            }
+            other => panic!("unexpected confirmation: {:?}", other),
+        }
     }
 
     #[test]

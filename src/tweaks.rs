@@ -17,6 +17,26 @@ use winreg::RegKey;
 pub enum TweakGroup {
     FileExplorer,
     Taskbar,
+    Start,
+    Privacy,
+}
+
+impl TweakGroup {
+    pub const ALL: [TweakGroup; 4] = [
+        TweakGroup::FileExplorer,
+        TweakGroup::Taskbar,
+        TweakGroup::Start,
+        TweakGroup::Privacy,
+    ];
+
+    pub fn title(self) -> &'static str {
+        match self {
+            TweakGroup::FileExplorer => "File Explorer",
+            TweakGroup::Taskbar => "Taskbar",
+            TweakGroup::Start => "Start menu",
+            TweakGroup::Privacy => "Privacy",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,6 +98,7 @@ pub struct Tweak {
 }
 
 const EXPLORER: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer";
+const START: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Start";
 const ADVANCED: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced";
 const CLASSIC_MENU_CLSID: &str = "Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}";
 
@@ -241,6 +262,96 @@ static CATALOG: &[Tweak] = &[
         action: TweakAction::Dword {
             path: "Software\\Microsoft\\Windows\\CurrentVersion\\Search",
             name: "SearchboxTaskbarMode",
+            on: 0,
+            off: 1,
+        },
+    },
+    Tweak {
+        id: "start_recommendations",
+        title: "Hide recommendations in Start",
+        description: "Turn off recommendations for tips, shortcuts and new apps in Start.",
+        group: TweakGroup::Start,
+        os: OsRequirement::Windows11,
+        refresh: Refresh::Live,
+        unofficial: false,
+        action: TweakAction::Dword {
+            path: ADVANCED,
+            name: "Start_IrisRecommendations",
+            on: 0,
+            off: 1,
+        },
+    },
+    Tweak {
+        id: "start_more_pins",
+        title: "More pins in Start",
+        description: "Use the Start layout that shows more pinned apps and fewer recommendations.",
+        group: TweakGroup::Start,
+        os: OsRequirement::Windows11,
+        refresh: Refresh::Live,
+        unofficial: false,
+        action: TweakAction::Dword {
+            path: ADVANCED,
+            name: "Start_Layout",
+            on: 1,
+            off: 0,
+        },
+    },
+    Tweak {
+        id: "start_hide_recent_apps",
+        title: "Hide recently added apps",
+        description: "Don't list newly installed apps in Start.",
+        group: TweakGroup::Start,
+        os: OsRequirement::Windows11,
+        refresh: Refresh::Live,
+        unofficial: false,
+        action: TweakAction::Dword {
+            path: START,
+            name: "ShowRecentList",
+            on: 0,
+            off: 1,
+        },
+    },
+    Tweak {
+        id: "start_show_all_pins",
+        title: "Show all pins by default",
+        description: "Expand the pinned section of Start so every pin is visible.",
+        group: TweakGroup::Start,
+        os: OsRequirement::Windows11,
+        refresh: Refresh::Live,
+        unofficial: false,
+        action: TweakAction::Dword {
+            path: START,
+            name: "ShowAllPinsList",
+            on: 1,
+            off: 0,
+        },
+    },
+    Tweak {
+        id: "no_app_launch_tracking",
+        title: "Don't track app launches",
+        description: "Stop Windows from tracking app launches to improve Start and search results (this also empties \"Most used\").",
+        group: TweakGroup::Privacy,
+        os: OsRequirement::Any,
+        refresh: Refresh::Live,
+        unofficial: false,
+        action: TweakAction::Dword {
+            path: ADVANCED,
+            name: "Start_TrackProgs",
+            on: 0,
+            off: 1,
+        },
+    },
+    Tweak {
+        id: "no_recent_documents",
+        title: "Don't show recent files",
+        description: "Hide recommended files in Start, recent files in Explorer and recent items in Jump Lists.",
+        group: TweakGroup::Privacy,
+        os: OsRequirement::Any,
+        refresh: Refresh::Live,
+        unofficial: false,
+        action: TweakAction::Dword {
+            path: ADVANCED,
+            name: "Start_TrackDocs",
             on: 0,
             off: 1,
         },
@@ -724,6 +835,32 @@ mod tests {
 
     fn status(env: &Env, id: &str) -> TweakStatus {
         tweak_status(&env.target(), find_tweak(id).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn the_catalog_includes_the_start_and_privacy_tweaks() {
+        let start = [
+            "start_recommendations",
+            "start_more_pins",
+            "start_hide_recent_apps",
+            "start_show_all_pins",
+        ];
+        for id in start {
+            assert_eq!(
+                find_tweak(id).map(|t| t.group),
+                Some(TweakGroup::Start),
+                "{}",
+                id
+            );
+        }
+        for id in ["no_app_launch_tracking", "no_recent_documents"] {
+            assert_eq!(
+                find_tweak(id).map(|t| t.group),
+                Some(TweakGroup::Privacy),
+                "{}",
+                id
+            );
+        }
     }
 
     #[test]

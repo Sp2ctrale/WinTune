@@ -119,6 +119,21 @@ mid-operation, WinTune waits for the operation to finish before closing.
    `show_*_tab` method in a new `src/ui/<module>_tab.rs` file.
 3. Run long operations through `ui::jobs`.
 
+## Releasing
+
+The `Release` workflow (`.github/workflows/release.yml`) runs when a tag such
+as `v0.3.0` is pushed:
+
+1. Set `version` in `Cargo.toml` (for example `0.3.0`), commit and merge it.
+2. Tag `main` with the same version and push the tag:
+   `git tag v0.3.0 && git push origin v0.3.0`.
+3. The workflow checks that the tag matches `Cargo.toml`, then runs fmt,
+   clippy and the tests, and builds the release binary. It creates a **draft**
+   GitHub release with `WinTune.exe` and its SHA-256.
+4. Review the draft on GitHub and publish it.
+
+The binary is not code-signed yet, so SmartScreen may warn on first launch.
+
 ## Roadmap
 
 - **Phase 2 (done)**: UI split into modules; apply, rollback, pack build and
@@ -128,4 +143,4 @@ mid-operation, WinTune waits for the operation to finish before closing.
   destructive actions, add a log panel, and import/export the config.
 - **More Windows customization modules**, built on the same snapshot and
   rollback engine.
-- **Phase 4**: installer, code signing and release workflow.
+- **Phase 4**: the release workflow (draft releases from tags) is done. Still to do: an installer and code signing.

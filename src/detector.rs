@@ -16,9 +16,16 @@ pub fn has_wsl_distribution() -> bool {
     let hku = RegKey::predef(HKEY_USERS);
     let re = Regex::new(r"^\{.+\}$").unwrap();
     for sid in get_loaded_user_sids() {
-        let path = format!("{}\\Software\\Microsoft\\Windows\\CurrentVersion\\Lxss", sid);
+        let path = format!(
+            "{}\\Software\\Microsoft\\Windows\\CurrentVersion\\Lxss",
+            sid
+        );
         if let Ok(key) = hku.open_subkey_with_flags(&path, KEY_READ) {
-            if key.enum_keys().filter_map(|k| k.ok()).any(|k| re.is_match(&k)) {
+            if key
+                .enum_keys()
+                .filter_map(|k| k.ok())
+                .any(|k| re.is_match(&k))
+            {
                 return true;
             }
         }
@@ -110,4 +117,46 @@ pub fn convert_to_per_user_path(path: &str) -> String {
 pub fn build_editor_command(code_exe: &str) -> String {
     let portable = convert_to_per_user_path(code_exe);
     format!("\"{}\" \"%1\"", portable)
+}
+
+/// Human name of the editor for the "Edit with …" menu entry.
+pub fn editor_display_name(executable: &str) -> String {
+    let stem = Path::new(executable.trim())
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    match stem.to_lowercase().as_str() {
+        "" => "Editor".to_string(),
+        "code" => "VS Code".to_string(),
+        "code - insiders" => "VS Code Insiders".to_string(),
+        _ => stem,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn editor_display_name_recognises_vscode_variants() {
+        assert_eq!(editor_display_name(r"C:\VS\Code.exe"), "VS Code");
+        assert_eq!(
+            editor_display_name(r"C:\VS\Code - Insiders.exe"),
+            "VS Code Insiders"
+        );
+    }
+
+    #[test]
+    fn editor_display_name_falls_back_to_file_stem() {
+        assert_eq!(editor_display_name(r"C:\Tools\notepad++.exe"), "notepad++");
+        assert_eq!(editor_display_name(""), "Editor");
+    }
+
+    #[test]
+    fn editor_command_quotes_path_and_argument() {
+        assert_eq!(
+            build_editor_command(r"C:\X\Code.exe"),
+            r#""C:\X\Code.exe" "%1""#
+        );
+    }
 }

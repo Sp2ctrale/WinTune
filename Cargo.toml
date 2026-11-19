@@ -2,10 +2,18 @@
 name = "wintune"
 version = "0.2.0"
 edition = "2021"
+rust-version = "1.88"
+
+[lib]
+name = "wintune"
+path = "src/lib.rs"
 
 [[bin]]
 name = "WinTune"
 path = "src/main.rs"
+# The binary carries the requireAdministrator manifest: its (empty) test
+# harness could not start from a non-elevated terminal. Tests live in the lib.
+test = false
 
 [dependencies]
 eframe = "0.29"
@@ -14,6 +22,7 @@ winreg = "0.52"
 windows-sys = { version = "0.59", features = [
     "Win32_UI_Shell",
     "Win32_Foundation",
+    "Win32_System_SystemInformation",
 ] }
 image = { version = "0.25", default-features = false, features = ["ico", "png", "bmp"] }
 ico = "0.4"
@@ -24,7 +33,7 @@ memmap2 = "0.9"
 regex = "1.11"
 
 [build-dependencies]
-winres = "0.1"
+embed-resource = "3"
 
 [profile.release]
 opt-level = 3

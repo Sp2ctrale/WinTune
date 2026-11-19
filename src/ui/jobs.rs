@@ -183,11 +183,13 @@ impl WinTuneApp {
                 self.backup_store = outcome.store;
                 self.save_config();
                 self.show_report("Applied", &outcome.report);
+                self.request_status_refresh();
             }
             Finished::Rollback(outcome) => {
                 self.backup_store = outcome.store;
                 self.rollback_selection.clear();
                 self.show_report("Restored", &outcome.report);
+                self.request_status_refresh();
             }
             Finished::BuildPak(Ok(stats)) => {
                 self.gallery

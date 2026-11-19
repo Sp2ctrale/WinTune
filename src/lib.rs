@@ -7,4 +7,6 @@ pub mod detector;
 pub mod gallery;
 pub mod models;
 pub mod regsnap;
+pub mod tasks;
 pub mod theme;
+pub mod ui;

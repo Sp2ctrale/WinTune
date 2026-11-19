@@ -85,16 +85,32 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `regsnap` | Generic snapshot, restore, delete-tree and `.reg` export. Every module that writes to the registry builds on it |
 | `associations` | File-association engine (apply and rollback) on an injectable `AssocTarget` |
 | `models` | Config and backup data types, plus the default rules |
-| `gallery` | Icon gallery (folder or memory-mapped `.pak`) and pack builder |
+| `gallery` | Shareable icon library (folder plus in-memory `.pak`), background thumbnail decoding, and the pack builder |
+| `tasks` | Background jobs with progress reporting and panic capture |
 | `detector` | VS Code, WSL and user-hive detection |
 | `clock` | Local timestamps |
 | `theme` | Fluent-style dark and light theme |
-| `main.rs` | egui user interface |
+| `ui` | egui interface, one file per tab (`associations_tab`, `gallery_tab`, `rollback_tab`) plus `sidebar`, `status_bar` and `jobs` |
+| `main.rs` | Window setup only |
+
+Apply, rollback and pack building run on a background thread, and the status
+bar shows their progress. While one of them runs, the other buttons that
+change the registry or the pack are disabled. If you close the window
+mid-operation, WinTune waits for the operation to finish before closing.
+
+### Adding a customization module
+
+1. Put the engine in its own library module, on top of `regsnap`, with an
+   injectable target like `AssocTarget` so it can be tested in the HKCU
+   sandbox.
+2. Add a variant to `ui::ActiveTab` (title and sidebar subtitle) and a
+   `show_*_tab` method in a new `src/ui/<module>_tab.rs` file.
+3. Run long operations through `ui::jobs`.
 
 ## Roadmap
 
-- **Phase 2**: split `main.rs` into UI modules, and move long operations (apply,
-  pack build, icon decoding) to a worker thread with progress.
+- **Phase 2 (done)**: UI split into modules; apply, rollback, pack build and
+  icon decoding moved off the UI thread, with progress.
 - **Phase 3**: show each rule's live status (applied, changed since, not
   applied), preview the diff before applying, validate input in the UI, confirm
   destructive actions, add a log panel, and import/export the config.

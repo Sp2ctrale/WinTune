@@ -27,6 +27,7 @@ pub struct PakIndex {
     pub entries: Vec<PakEntry>,
 }
 
+#[derive(Default)]
 pub struct IconGallery {
     pub names: Vec<String>,
     pub file_paths: HashMap<String, PathBuf>,
@@ -34,19 +35,6 @@ pub struct IconGallery {
     pub pak_entries: HashMap<String, (u64, u64)>,
     pub textures: HashMap<String, TextureHandle>,
     pub failed_textures: std::collections::HashSet<String>,
-}
-
-impl Default for IconGallery {
-    fn default() -> Self {
-        Self {
-            names: Vec::new(),
-            file_paths: HashMap::new(),
-            pak_mmap: None,
-            pak_entries: HashMap::new(),
-            textures: HashMap::new(),
-            failed_textures: std::collections::HashSet::new(),
-        }
-    }
 }
 
 impl IconGallery {
@@ -81,7 +69,7 @@ impl IconGallery {
             }
         }
 
-        self.names.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        self.names.sort_by_key(|a| a.to_lowercase());
         self.names.dedup();
     }
 
@@ -89,13 +77,13 @@ impl IconGallery {
         let file = File::open(pak_path).map_err(|e| e.to_string())?;
         let mmap = unsafe { Mmap::map(&file).map_err(|e| e.to_string())? };
         if mmap.len() < 12 || &mmap[0..4] != b"ICOP" {
-            return Err("Format gallery.pak invalide".to_string());
+            return Err("Invalid gallery.pak format".to_string());
         }
         let mut len_bytes = [0u8; 8];
         len_bytes.copy_from_slice(&mmap[4..12]);
         let index_len = u64::from_le_bytes(len_bytes) as usize;
         if mmap.len() < 12 + index_len {
-            return Err("Index gallery.pak corrompu".to_string());
+            return Err("Corrupt gallery.pak index".to_string());
         }
         let index: PakIndex =
             serde_json::from_slice(&mmap[12..12 + index_len]).map_err(|e| e.to_string())?;
@@ -109,7 +97,8 @@ impl IconGallery {
     }
 
     pub fn get_icon_bytes(&self, name: &str) -> Option<Vec<u8>> {
-        if let (Some(mmap), Some(&(offset, length))) = (&self.pak_mmap, self.pak_entries.get(name)) {
+        if let (Some(mmap), Some(&(offset, length))) = (&self.pak_mmap, self.pak_entries.get(name))
+        {
             let start = offset as usize;
             let end = start + length as usize;
             if end <= mmap.len() {
@@ -129,7 +118,7 @@ impl IconGallery {
             fs::write(&dest_path, bytes).map_err(|e| e.to_string())?;
             Ok(dest_path.to_string_lossy().to_string())
         } else {
-            Err(format!("Icône introuvable dans la galerie : {}", name))
+            Err(format!("Icon not found in gallery: {}", name))
         }
     }
 
@@ -215,7 +204,9 @@ pub fn compress_ico_bytes(raw_bytes: &[u8]) -> Vec<u8> {
     for entry in icon_dir.entries() {
         let w = entry.width();
         let h = entry.height();
-        if (w == 16 || w == 32 || w == 48 || w == 64 || w == 128 || w == 256) && !kept_sizes.contains(&w) {
+        if (w == 16 || w == 32 || w == 48 || w == 64 || w == 128 || w == 256)
+            && !kept_sizes.contains(&w)
+        {
             if let Ok(decoded) = entry.decode() {
                 let icon_image = ico::IconImage::from_rgba_data(w, h, decoded.rgba_data().to_vec());
                 if let Ok(new_entry) = ico::IconDirEntry::encode_as_png(&icon_image) {
@@ -238,7 +229,10 @@ pub fn compress_ico_bytes(raw_bytes: &[u8]) -> Vec<u8> {
     }
 }
 
-pub fn build_compressed_pak(source_folder: &str, pak_output_path: &str) -> Result<(usize, u64, u64), String> {
+pub fn build_compressed_pak(
+    source_folder: &str,
+    pak_output_path: &str,
+) -> Result<(usize, u64, u64), String> {
     let entries = fs::read_dir(source_folder).map_err(|e| e.to_string())?;
     let mut raw_files = Vec::new();
     for entry in entries.flatten() {
@@ -299,7 +293,7 @@ pub fn build_compressed_pak(source_folder: &str, pak_output_path: &str) -> Resul
     .map_err(|e| e.to_string())?;
 
     if (12 + final_index_bytes.len() as u64) > header_and_index_size {
-        return Err("Dépassement de taille d'index".to_string());
+        return Err("gallery.pak index overflow".to_string());
     }
 
     if let Some(parent) = Path::new(pak_output_path).parent() {

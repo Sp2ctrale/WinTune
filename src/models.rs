@@ -1,6 +1,8 @@
+pub use crate::regsnap::RegistryKeySnapshot;
 use crate::theme::ThemeMode;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum DoubleClickMode {
@@ -33,14 +35,6 @@ pub struct ExtensionConfig {
     pub extra_verbs: Vec<CustomContextCommand>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct RegistryKeySnapshot {
-    pub exists: bool,
-    pub default_value: Option<String>,
-    pub values: BTreeMap<String, (u32, Vec<u8>)>,
-    pub subkeys: BTreeMap<String, RegistryKeySnapshot>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserOverrideSnapshot {
     pub sid: String,
@@ -51,11 +45,23 @@ pub struct UserOverrideSnapshot {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtensionBackup {
     pub extension: String,
+    /// ProgID written by the most recent apply (shown in the Rollback tab).
+    #[serde(default)]
     pub custom_prog_id: String,
+    #[serde(default)]
     pub icon_installed_path: String,
+    /// When the original state was captured (local time).
+    #[serde(default)]
     pub timestamp: String,
+    #[serde(default)]
+    pub last_applied: Option<String>,
+    /// `HKLM\SOFTWARE\Classes\<ext>` before WinTune first touched it.
     pub hklm_extension_key: RegistryKeySnapshot,
-    pub hklm_previous_prog_id: Option<(String, RegistryKeySnapshot)>,
+    /// Every ProgID key WinTune has written for this extension, captured
+    /// before its first write. Restoring them all undoes ProgID renames too.
+    #[serde(default)]
+    pub prog_id_snapshots: BTreeMap<String, RegistryKeySnapshot>,
+    #[serde(default)]
     pub user_overrides: Vec<UserOverrideSnapshot>,
 }
 
@@ -75,26 +81,27 @@ pub struct AppConfig {
     pub extensions: Vec<ExtensionConfig>,
 }
 
+fn program_data_dir() -> PathBuf {
+    PathBuf::from(std::env::var("ProgramData").unwrap_or_else(|_| "C:\\ProgramData".to_string()))
+}
+
+/// `%ProgramData%\Wintune`: config, backups, icon pack and `.reg` exports.
+pub fn app_data_dir() -> PathBuf {
+    program_data_dir().join("Wintune")
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
-        let program_data = std::env::var("ProgramData").unwrap_or_else(|_| "C:\\ProgramData".to_string());
-        let user_profile = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users\\Admin".to_string());
-        let default_onedrive_ico = format!(
-            "{}\\OneDrive - Association Cesi Viacesi mail\\Images\\Icons\\ico",
-            user_profile
-        );
-        let source_folder = if std::path::Path::new(&default_onedrive_ico).exists() {
-            default_onedrive_ico
-        } else {
-            "ico".to_string()
-        };
-
+        let base = app_data_dir();
         Self {
             theme: ThemeMode::Dark,
             code_executable: String::new(),
-            icon_source_folder: source_folder,
-            icon_destination_folder: format!("{}\\ico", program_data),
-            pak_file_path: format!("{}\\Wintune\\gallery.pak", program_data),
+            icon_source_folder: base.join("icons").to_string_lossy().into_owned(),
+            icon_destination_folder: program_data_dir()
+                .join("ico")
+                .to_string_lossy()
+                .into_owned(),
+            pak_file_path: base.join("gallery.pak").to_string_lossy().into_owned(),
             extensions: default_extensions(),
         }
     }
@@ -102,80 +109,642 @@ impl Default for AppConfig {
 
 pub fn default_extensions() -> Vec<ExtensionConfig> {
     let raw = [
-        (".html", "CustomHTMLFile", "HTML Document", "html", false, "text", "text/html"),
-        (".htm", "CustomHTMFile", "HTM Document", "html", false, "text", "text/html"),
-        (".css", "CustomCSSFile", "CSS Stylesheet", "css", false, "text", "text/css"),
-        (".scss", "CustomSCSSFile", "SCSS Stylesheet", "sass", false, "text", "text/x-scss"),
-        (".sass", "CustomSASSFile", "SASS Stylesheet", "sass", false, "text", "text/x-sass"),
-        (".less", "CustomLESSFile", "LESS Stylesheet", "less", false, "text", "text/plain"),
-        (".js", "CustomJSFile", "JavaScript File", "javascript", false, "text", "text/javascript"),
-        (".jsx", "CustomJSXFile", "JavaScript React File", "react", true, "text", "text/jsx"),
-        (".ts", "CustomTSFile", "TypeScript File", "typescript", false, "text", "text/typescript"),
-        (".tsx", "CustomTSXFile", "TypeScript React File", "react_ts", false, "text", "text/tsx"),
-        (".mjs", "CustomMJSFile", "JavaScript Module", "javascript", false, "text", "text/javascript"),
-        (".json", "CustomJSONFile", "JSON File", "json", false, "text", "application/json"),
-        (".yaml", "CustomYAMLFile", "YAML File", "yaml", false, "text", "application/x-yaml"),
-        (".yml", "CustomYMLFile", "YAML File", "yaml", false, "text", "application/x-yaml"),
-        (".toml", "CustomTOMLFile", "TOML File", "toml", false, "text", "application/toml"),
-        (".py", "CustomPythonFile", "Python File", "python", false, "text", "text/x-python"),
-        (".pyw", "CustomPythonWFile", "Python Windows File", "python", false, "text", "text/x-python"),
-        (".php", "CustomPHPFile", "PHP File", "php", false, "text", "application/x-httpd-php"),
-        (".java", "CustomJavaFile", "Java Source File", "java", false, "text", "text/x-java-source"),
-        (".class", "CustomJavaClassFile", "Java Class File", "javaclass", false, "", "application/java-vm"),
-        (".kt", "CustomKotlinFile", "Kotlin Source File", "kotlin", true, "text", "text/plain"),
-        (".kts", "CustomKotlinScriptFile", "Kotlin Script File", "kotlin", true, "text", "text/plain"),
-        (".scala", "CustomScalaFile", "Scala Source File", "scala", true, "text", "text/plain"),
-        (".sbt", "CustomSBTFile", "SBT Build File", "sbt", true, "text", "text/plain"),
-        (".groovy", "CustomGroovyFile", "Groovy Source File", "groovy", true, "text", "text/plain"),
-        (".gradle", "CustomGradleFile", "Gradle Build File", "gradle", true, "text", "text/plain"),
-        (".c", "CustomCFile", "C Source File", "c", false, "text", "text/x-c"),
-        (".cpp", "CustomCPPFile", "C++ Source File", "cpp", false, "text", "text/x-c++src"),
-        (".h", "CustomHFile", "C Header File", "h", false, "text", "text/x-chdr"),
-        (".hpp", "CustomHPPFile", "C++ Header File", "hpp", false, "text", "text/x-c++hdr"),
-        (".cs", "CustomCSharpFile", "C# Source File", "csharp", false, "text", "text/plain"),
-        (".go", "CustomGoFile", "Go Source File", "go", false, "text", "text/plain"),
-        (".rs", "CustomRustFile", "Rust Source File", "rust", false, "text", "text/rust"),
-        (".rb", "CustomRubyFile", "Ruby Source File", "ruby", false, "text", "text/x-ruby"),
-        (".swift", "CustomSwiftFile", "Swift Source File", "swift", true, "text", "text/plain"),
-        (".r", "CustomRFile", "R Script File", "r", true, "text", "text/plain"),
-        (".lua", "CustomLuaFile", "Lua Script File", "lua", true, "text", "text/plain"),
-        (".dart", "CustomDartFile", "Dart Source File", "dart", true, "text", "application/vnd.dart"),
-        (".pl", "CustomPerlFile", "Perl Script File", "perl", true, "text", "text/x-perl"),
-        (".pm", "CustomPerlModuleFile", "Perl Module File", "perl", true, "text", "text/x-perl"),
-        (".vue", "CustomVueFile", "Vue Component", "vue", false, "text", "text/plain"),
-        (".svelte", "CustomSvelteFile", "Svelte Component", "svelte", false, "text", "text/plain"),
-        (".xml", "CustomXMLFile", "XML File", "xml", false, "text", "application/xml"),
-        (".svg", "CustomSVGFile", "SVG Image", "svg", false, "image", "image/svg+xml"),
-        (".md", "CustomMarkdownFile", "Markdown File", "markdown", false, "text", "text/markdown"),
-        (".mdx", "CustomMDXFile", "MDX File", "mdx", false, "text", "text/markdown"),
-        (".mmd", "CustomMMDFile", "MMD Document", "mermaid", false, "text", "text/plain"),
-        (".tex", "CustomTexFile", "LaTeX Document", "latex.clone", true, "text", "application/x-tex"),
-        (".bib", "CustomBibFile", "Bibliography File", "bibliography", true, "text", "text/plain"),
-        (".ipynb", "CustomJupyterFile", "Jupyter Notebook", "jupyter", true, "text", "application/x-ipynb+json"),
-        (".sh", "CustomShellFile", "Shell Script", "console", false, "text", "application/x-sh"),
-        (".bat", "CustomBatchFile", "Batch File", "console", false, "text", "application/x-bat"),
-        (".cmd", "CustomCMDFile", "Command File", "console", false, "text", "application/cmd"),
-        (".ps1", "CustomPowerShellFile", "PowerShell Script", "powershell", false, "text", "text/plain"),
-        (".vbs", "CustomVBSFile", "VBScript File", "visualstudio", true, "text", "text/vbscript"),
-        (".reg", "CustomRegFile", "Registry File", "regedit", true, "text", "text/plain"),
-        (".env", "CustomEnvFile", "Environment File", "settings", false, "text", "text/plain"),
-        (".ini", "CustomIniFile", "Configuration File", "settings", false, "text", "text/plain"),
-        (".conf", "CustomConfFile", "Configuration File", "settings", true, "text", "text/plain"),
-        (".config", "CustomConfigFile", "Configuration File", "settings", true, "text", "text/plain"),
-        (".editorconfig", "CustomEditorConfigFile", "EditorConfig File", "editorconfig", true, "text", "text/plain"),
-        (".gitignore", "CustomGitignoreFile", "Git Ignore File", "git", false, "text", "text/plain"),
-        (".dockerignore", "CustomDockerignoreFile", "Docker Ignore File", "docker", false, "text", "text/plain"),
-        (".dockerfile", "CustomDockerfile", "Dockerfile", "docker", false, "text", "text/plain"),
-        (".sql", "CustomSQLFile", "SQL File", "database", false, "text", "application/sql"),
-        (".hql", "CustomHQLFile", "HQL File", "hive", false, "text", "text/plain"),
-        (".csv", "CustomCSVFile", "CSV File", "table", true, "text", "text/csv"),
-        (".http", "CustomHTTPFile", "HTTP Request File", "http", true, "text", "text/plain"),
-        (".log", "CustomLogFile", "Log File", "log", true, "text", "text/plain"),
+        (
+            ".html",
+            "CustomHTMLFile",
+            "HTML Document",
+            "html",
+            false,
+            "text",
+            "text/html",
+        ),
+        (
+            ".htm",
+            "CustomHTMFile",
+            "HTM Document",
+            "html",
+            false,
+            "text",
+            "text/html",
+        ),
+        (
+            ".css",
+            "CustomCSSFile",
+            "CSS Stylesheet",
+            "css",
+            false,
+            "text",
+            "text/css",
+        ),
+        (
+            ".scss",
+            "CustomSCSSFile",
+            "SCSS Stylesheet",
+            "sass",
+            false,
+            "text",
+            "text/x-scss",
+        ),
+        (
+            ".sass",
+            "CustomSASSFile",
+            "SASS Stylesheet",
+            "sass",
+            false,
+            "text",
+            "text/x-sass",
+        ),
+        (
+            ".less",
+            "CustomLESSFile",
+            "LESS Stylesheet",
+            "less",
+            false,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".js",
+            "CustomJSFile",
+            "JavaScript File",
+            "javascript",
+            false,
+            "text",
+            "text/javascript",
+        ),
+        (
+            ".jsx",
+            "CustomJSXFile",
+            "JavaScript React File",
+            "react",
+            true,
+            "text",
+            "text/jsx",
+        ),
+        (
+            ".ts",
+            "CustomTSFile",
+            "TypeScript File",
+            "typescript",
+            false,
+            "text",
+            "text/typescript",
+        ),
+        (
+            ".tsx",
+            "CustomTSXFile",
+            "TypeScript React File",
+            "react_ts",
+            false,
+            "text",
+            "text/tsx",
+        ),
+        (
+            ".mjs",
+            "CustomMJSFile",
+            "JavaScript Module",
+            "javascript",
+            false,
+            "text",
+            "text/javascript",
+        ),
+        (
+            ".json",
+            "CustomJSONFile",
+            "JSON File",
+            "json",
+            false,
+            "text",
+            "application/json",
+        ),
+        (
+            ".yaml",
+            "CustomYAMLFile",
+            "YAML File",
+            "yaml",
+            false,
+            "text",
+            "application/x-yaml",
+        ),
+        (
+            ".yml",
+            "CustomYMLFile",
+            "YAML File",
+            "yaml",
+            false,
+            "text",
+            "application/x-yaml",
+        ),
+        (
+            ".toml",
+            "CustomTOMLFile",
+            "TOML File",
+            "toml",
+            false,
+            "text",
+            "application/toml",
+        ),
+        (
+            ".py",
+            "CustomPythonFile",
+            "Python File",
+            "python",
+            false,
+            "text",
+            "text/x-python",
+        ),
+        (
+            ".pyw",
+            "CustomPythonWFile",
+            "Python Windows File",
+            "python",
+            false,
+            "text",
+            "text/x-python",
+        ),
+        (
+            ".php",
+            "CustomPHPFile",
+            "PHP File",
+            "php",
+            false,
+            "text",
+            "application/x-httpd-php",
+        ),
+        (
+            ".java",
+            "CustomJavaFile",
+            "Java Source File",
+            "java",
+            false,
+            "text",
+            "text/x-java-source",
+        ),
+        (
+            ".class",
+            "CustomJavaClassFile",
+            "Java Class File",
+            "javaclass",
+            false,
+            "",
+            "application/java-vm",
+        ),
+        (
+            ".kt",
+            "CustomKotlinFile",
+            "Kotlin Source File",
+            "kotlin",
+            true,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".kts",
+            "CustomKotlinScriptFile",
+            "Kotlin Script File",
+            "kotlin",
+            true,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".scala",
+            "CustomScalaFile",
+            "Scala Source File",
+            "scala",
+            true,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".sbt",
+            "CustomSBTFile",
+            "SBT Build File",
+            "sbt",
+            true,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".groovy",
+            "CustomGroovyFile",
+            "Groovy Source File",
+            "groovy",
+            true,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".gradle",
+            "CustomGradleFile",
+            "Gradle Build File",
+            "gradle",
+            true,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".c",
+            "CustomCFile",
+            "C Source File",
+            "c",
+            false,
+            "text",
+            "text/x-c",
+        ),
+        (
+            ".cpp",
+            "CustomCPPFile",
+            "C++ Source File",
+            "cpp",
+            false,
+            "text",
+            "text/x-c++src",
+        ),
+        (
+            ".h",
+            "CustomHFile",
+            "C Header File",
+            "h",
+            false,
+            "text",
+            "text/x-chdr",
+        ),
+        (
+            ".hpp",
+            "CustomHPPFile",
+            "C++ Header File",
+            "hpp",
+            false,
+            "text",
+            "text/x-c++hdr",
+        ),
+        (
+            ".cs",
+            "CustomCSharpFile",
+            "C# Source File",
+            "csharp",
+            false,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".go",
+            "CustomGoFile",
+            "Go Source File",
+            "go",
+            false,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".rs",
+            "CustomRustFile",
+            "Rust Source File",
+            "rust",
+            false,
+            "text",
+            "text/rust",
+        ),
+        (
+            ".rb",
+            "CustomRubyFile",
+            "Ruby Source File",
+            "ruby",
+            false,
+            "text",
+            "text/x-ruby",
+        ),
+        (
+            ".swift",
+            "CustomSwiftFile",
+            "Swift Source File",
+            "swift",
+            true,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".r",
+            "CustomRFile",
+            "R Script File",
+            "r",
+            true,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".lua",
+            "CustomLuaFile",
+            "Lua Script File",
+            "lua",
+            true,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".dart",
+            "CustomDartFile",
+            "Dart Source File",
+            "dart",
+            true,
+            "text",
+            "application/vnd.dart",
+        ),
+        (
+            ".pl",
+            "CustomPerlFile",
+            "Perl Script File",
+            "perl",
+            true,
+            "text",
+            "text/x-perl",
+        ),
+        (
+            ".pm",
+            "CustomPerlModuleFile",
+            "Perl Module File",
+            "perl",
+            true,
+            "text",
+            "text/x-perl",
+        ),
+        (
+            ".vue",
+            "CustomVueFile",
+            "Vue Component",
+            "vue",
+            false,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".svelte",
+            "CustomSvelteFile",
+            "Svelte Component",
+            "svelte",
+            false,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".xml",
+            "CustomXMLFile",
+            "XML File",
+            "xml",
+            false,
+            "text",
+            "application/xml",
+        ),
+        (
+            ".svg",
+            "CustomSVGFile",
+            "SVG Image",
+            "svg",
+            false,
+            "image",
+            "image/svg+xml",
+        ),
+        (
+            ".md",
+            "CustomMarkdownFile",
+            "Markdown File",
+            "markdown",
+            false,
+            "text",
+            "text/markdown",
+        ),
+        (
+            ".mdx",
+            "CustomMDXFile",
+            "MDX File",
+            "mdx",
+            false,
+            "text",
+            "text/markdown",
+        ),
+        (
+            ".mmd",
+            "CustomMMDFile",
+            "MMD Document",
+            "mermaid",
+            false,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".tex",
+            "CustomTexFile",
+            "LaTeX Document",
+            "latex.clone",
+            true,
+            "text",
+            "application/x-tex",
+        ),
+        (
+            ".bib",
+            "CustomBibFile",
+            "Bibliography File",
+            "bibliography",
+            true,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".ipynb",
+            "CustomJupyterFile",
+            "Jupyter Notebook",
+            "jupyter",
+            true,
+            "text",
+            "application/x-ipynb+json",
+        ),
+        (
+            ".sh",
+            "CustomShellFile",
+            "Shell Script",
+            "console",
+            false,
+            "text",
+            "application/x-sh",
+        ),
+        (
+            ".bat",
+            "CustomBatchFile",
+            "Batch File",
+            "console",
+            false,
+            "text",
+            "application/x-bat",
+        ),
+        (
+            ".cmd",
+            "CustomCMDFile",
+            "Command File",
+            "console",
+            false,
+            "text",
+            "application/cmd",
+        ),
+        (
+            ".ps1",
+            "CustomPowerShellFile",
+            "PowerShell Script",
+            "powershell",
+            false,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".vbs",
+            "CustomVBSFile",
+            "VBScript File",
+            "visualstudio",
+            true,
+            "text",
+            "text/vbscript",
+        ),
+        (
+            ".reg",
+            "CustomRegFile",
+            "Registry File",
+            "regedit",
+            true,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".env",
+            "CustomEnvFile",
+            "Environment File",
+            "settings",
+            false,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".ini",
+            "CustomIniFile",
+            "Configuration File",
+            "settings",
+            false,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".conf",
+            "CustomConfFile",
+            "Configuration File",
+            "settings",
+            true,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".config",
+            "CustomConfigFile",
+            "Configuration File",
+            "settings",
+            true,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".editorconfig",
+            "CustomEditorConfigFile",
+            "EditorConfig File",
+            "editorconfig",
+            true,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".gitignore",
+            "CustomGitignoreFile",
+            "Git Ignore File",
+            "git",
+            false,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".dockerignore",
+            "CustomDockerignoreFile",
+            "Docker Ignore File",
+            "docker",
+            false,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".dockerfile",
+            "CustomDockerfile",
+            "Dockerfile",
+            "docker",
+            false,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".sql",
+            "CustomSQLFile",
+            "SQL File",
+            "database",
+            false,
+            "text",
+            "application/sql",
+        ),
+        (
+            ".hql",
+            "CustomHQLFile",
+            "HQL File",
+            "hive",
+            false,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".csv",
+            "CustomCSVFile",
+            "CSV File",
+            "table",
+            true,
+            "text",
+            "text/csv",
+        ),
+        (
+            ".http",
+            "CustomHTTPFile",
+            "HTTP Request File",
+            "http",
+            true,
+            "text",
+            "text/plain",
+        ),
+        (
+            ".log",
+            "CustomLogFile",
+            "Log File",
+            "log",
+            true,
+            "text",
+            "text/plain",
+        ),
     ];
 
     let user_choice_resets = [
-        ".bib", ".conf", ".config", ".csv", ".editorconfig", ".http",
-        ".ipynb", ".jsx", ".log", ".reg", ".tex", ".vbs",
+        ".bib",
+        ".conf",
+        ".config",
+        ".csv",
+        ".editorconfig",
+        ".http",
+        ".ipynb",
+        ".jsx",
+        ".log",
+        ".reg",
+        ".tex",
+        ".vbs",
     ];
 
     raw.into_iter()
@@ -227,4 +796,31 @@ pub fn default_extensions() -> Vec<ExtensionConfig> {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config_uses_only_machine_wide_paths() {
+        let cfg = AppConfig::default();
+        let base = app_data_dir();
+        assert_eq!(cfg.icon_source_folder, base.join("icons").to_string_lossy());
+        assert_eq!(
+            cfg.pak_file_path,
+            base.join("gallery.pak").to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn default_rules_are_all_valid() {
+        for rule in default_extensions() {
+            assert!(
+                crate::associations::validate_extension(&rule).is_ok(),
+                "{}",
+                rule.extension
+            );
+        }
+    }
 }

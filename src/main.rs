@@ -1,24 +1,24 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod detector;
-mod gallery;
-mod models;
-mod registry;
-mod theme;
-
-use detector::{has_wsl_distribution, resolve_vscode_executable};
 use eframe::egui::{
     self, ColorImage, Margin, RichText, Rounding, Stroke, TextureHandle, TextureOptions,
 };
-use gallery::{build_compressed_pak, IconCategory, IconGallery};
-use models::{AppConfig, BackupStore, CustomContextCommand, DoubleClickMode, ExtensionConfig};
-use registry::{
-    apply_extensions, load_backup_store, notify_shell_associations, rollback_selected_extensions,
-};
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
-use theme::{
+use std::path::{Path, PathBuf};
+use wintune::associations::{
+    apply_extensions, default_backup_store_path, default_reg_backup_dir, load_backup_store,
+    notify_shell_associations, rollback_extensions, save_backup_store, ApplyOptions, AssocTarget,
+    OperationReport,
+};
+use wintune::detector::{
+    build_editor_command, editor_display_name, has_wsl_distribution, resolve_vscode_executable,
+};
+use wintune::gallery::{build_compressed_pak, IconCategory, IconGallery};
+use wintune::models::{
+    app_data_dir, AppConfig, BackupStore, CustomContextCommand, DoubleClickMode, ExtensionConfig,
+};
+use wintune::theme::{
     accent_button, apply_fluent_theme, card_frame, draw_badge, get_palette, sidebar_frame,
     ThemeMode,
 };
@@ -44,6 +44,11 @@ struct WinTuneApp {
     assign_icon_to_selected_ext: bool,
     rollback_selection: HashSet<String>,
     status_message: String,
+    /// Full error / warning list of the last operation (status-bar tooltip).
+    status_details: String,
+    /// Set when backups.json cannot be read: registry changes are blocked so
+    /// the next save cannot overwrite the recorded snapshots.
+    backup_store_error: Option<String>,
     wsl_detected: bool,
     new_ext_input: String,
     logo_texture: Option<TextureHandle>,
@@ -63,14 +68,13 @@ impl WinTuneApp {
         let mut gallery = IconGallery::default();
         gallery.reload(&config.icon_source_folder, &config.pak_file_path);
 
-        let backup_store = load_backup_store();
         let wsl_detected = has_wsl_distribution();
         let logo_texture = Self::load_app_logo(&cc.egui_ctx);
 
-        Self {
+        let mut app = Self {
             config,
             gallery,
-            backup_store,
+            backup_store: BackupStore::default(),
             active_tab: ActiveTab::Associations,
             selected_ext_index: 0,
             ext_search_query: String::new(),
@@ -79,10 +83,101 @@ impl WinTuneApp {
             assign_icon_to_selected_ext: false,
             rollback_selection: HashSet::new(),
             status_message: "Ready.".to_string(),
+            status_details: String::new(),
+            backup_store_error: None,
             wsl_detected,
             new_ext_input: String::new(),
             logo_texture,
+        };
+        app.reload_backup_store();
+        app
+    }
+
+    fn reload_backup_store(&mut self) {
+        match load_backup_store(&default_backup_store_path()) {
+            Ok(store) => {
+                self.backup_store = store;
+                self.backup_store_error = None;
+            }
+            Err(e) => {
+                self.backup_store = BackupStore::default();
+                self.status_message = e.clone();
+                self.backup_store_error = Some(e);
+            }
         }
+    }
+
+    fn show_report(&mut self, verb: &str, report: &OperationReport) {
+        let mut msg = format!("{} {} extension(s)", verb, report.succeeded.len());
+        if let Some(first) = report.errors.first() {
+            msg.push_str(&format!(
+                ", {} error(s) (first: {})",
+                report.errors.len(),
+                first
+            ));
+        }
+        if !report.warnings.is_empty() {
+            msg.push_str(&format!(", {} warning(s)", report.warnings.len()));
+        }
+        msg.push('.');
+        if report.reg_backup_file.is_some() {
+            msg.push_str(" A .reg backup of the previous state was saved.");
+        }
+        self.status_message = msg;
+
+        let mut details: Vec<String> = Vec::new();
+        details.extend(report.errors.iter().map(|e| format!("Error: {}", e)));
+        details.extend(report.warnings.iter().map(|w| format!("Warning: {}", w)));
+        if let Some(file) = &report.reg_backup_file {
+            details.push(format!(".reg backup: {}", file.display()));
+        }
+        self.status_details = details.join("\n");
+    }
+
+    /// Applies the given rules to the real registry (HKLM + loaded user hives).
+    fn run_apply(&mut self, rules: &[ExtensionConfig]) {
+        if let Some(err) = &self.backup_store_error {
+            self.status_message = format!("Registry changes are blocked: {}", err);
+            return;
+        }
+        if self.config.code_executable.trim().is_empty() {
+            self.status_message =
+                "Set the default code editor before applying associations.".to_string();
+            return;
+        }
+
+        let gallery = &self.gallery;
+        let icon_dest = self.config.icon_destination_folder.clone();
+        let resolve_icon =
+            |cfg: &ExtensionConfig| gallery.export_icon_to(&cfg.icon_name, &icon_dest);
+        let opts = ApplyOptions {
+            editor_command: build_editor_command(&self.config.code_executable),
+            editor_label: editor_display_name(&self.config.code_executable),
+            wsl_available: self.wsl_detected,
+            resolve_icon: &resolve_icon,
+            backup_store_path: default_backup_store_path(),
+            reg_backup_dir: default_reg_backup_dir(),
+        };
+        let report = apply_extensions(&AssocTarget::system(), &mut self.backup_store, rules, &opts);
+        notify_shell_associations();
+        self.save_config();
+        self.show_report("Applied", &report);
+    }
+
+    fn run_rollback(&mut self, extensions: &[String]) {
+        if let Some(err) = &self.backup_store_error {
+            self.status_message = format!("Rollback is blocked: {}", err);
+            return;
+        }
+        let mut report =
+            rollback_extensions(&AssocTarget::system(), &mut self.backup_store, extensions);
+        if let Err(e) = save_backup_store(&self.backup_store, &default_backup_store_path()) {
+            report.errors.push(format!("Cannot save snapshots: {}", e));
+        }
+        notify_shell_associations();
+        self.reload_backup_store();
+        self.rollback_selection.clear();
+        self.show_report("Restored", &report);
     }
 
     fn load_app_logo(ctx: &egui::Context) -> Option<TextureHandle> {
@@ -97,10 +192,8 @@ impl WinTuneApp {
         None
     }
 
-    fn config_path() -> String {
-        let program_data =
-            std::env::var("ProgramData").unwrap_or_else(|_| "C:\\ProgramData".to_string());
-        format!("{}\\Wintune\\config.json", program_data)
+    fn config_path() -> PathBuf {
+        app_data_dir().join("config.json")
     }
 
     fn load_or_init_config() -> AppConfig {
@@ -118,11 +211,13 @@ impl WinTuneApp {
         if let Some(parent) = Path::new(&path).parent() {
             let _ = fs::create_dir_all(parent);
         }
-        if let Ok(json) = serde_json::to_string_pretty(&self.config) {
-            if fs::write(&path, json).is_ok() {
-                self.status_message = "Configuration saved.".to_string();
-            }
-        }
+        let result = serde_json::to_string_pretty(&self.config)
+            .map_err(|e| e.to_string())
+            .and_then(|json| fs::write(&path, json).map_err(|e| e.to_string()));
+        self.status_message = match result {
+            Ok(()) => "Configuration saved.".to_string(),
+            Err(e) => format!("Cannot save configuration to {}: {}", path.display(), e),
+        };
     }
 }
 
@@ -251,11 +346,14 @@ impl eframe::App for WinTuneApp {
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(
+                    let status = ui.label(
                         RichText::new(&self.status_message)
                             .size(12.0)
                             .color(palette.text_secondary),
                     );
+                    if !self.status_details.is_empty() {
+                        status.on_hover_text(&self.status_details);
+                    }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let enabled_count =
                             self.config.extensions.iter().filter(|e| e.enabled).count();
@@ -333,7 +431,7 @@ impl WinTuneApp {
 
         if resp.clicked() {
             if tab == ActiveTab::Rollback {
-                self.backup_store = load_backup_store();
+                self.reload_backup_store();
             }
             self.active_tab = tab;
         }
@@ -379,33 +477,11 @@ impl WinTuneApp {
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui
-                                .add(accent_button(
-                                    "Apply Checked Extensions",
-                                    self.config.theme,
-                                ))
+                                .add(accent_button("Apply Checked Extensions", self.config.theme))
                                 .clicked()
                             {
-                                let (ok_count, errs) = apply_extensions(
-                                    &self.config.extensions,
-                                    &self.config.code_executable,
-                                    &self.config.icon_destination_folder,
-                                    &self.gallery,
-                                );
-                                self.backup_store = load_backup_store();
-                                self.save_config();
-                                if errs.is_empty() {
-                                    self.status_message = format!(
-                                        "Successfully applied {} file associations.",
-                                        ok_count
-                                    );
-                                } else {
-                                    self.status_message = format!(
-                                        "Applied {} extensions, {} errors (first: {}).",
-                                        ok_count,
-                                        errs.len(),
-                                        errs[0]
-                                    );
-                                }
+                                let rules = self.config.extensions.clone();
+                                self.run_apply(&rules);
                             }
                         });
                     });
@@ -783,22 +859,7 @@ impl WinTuneApp {
                 if apply_single {
                     let mut single = self.config.extensions[self.selected_ext_index].clone();
                     single.enabled = true;
-                    let (ok, errs) = apply_extensions(
-                        &[single],
-                        &self.config.code_executable,
-                        &self.config.icon_destination_folder,
-                        &self.gallery,
-                    );
-                    self.backup_store = load_backup_store();
-                    self.save_config();
-                    if ok == 1 {
-                        self.status_message = format!(
-                            "Applied {} successfully.",
-                            self.config.extensions[self.selected_ext_index].extension
-                        );
-                    } else if let Some(err) = errs.first() {
-                        self.status_message = format!("Error: {}", err);
-                    }
+                    self.run_apply(&[single]);
                 }
 
                 if delete_current && !self.config.extensions.is_empty() {
@@ -960,7 +1021,7 @@ impl WinTuneApp {
                 let item_width = 130.0;
                 let item_height = 98.0;
                 let cols = ((avail_width / item_width).floor() as usize).max(1);
-                let total_rows = (filtered.len() + cols - 1) / cols;
+                let total_rows = filtered.len().div_ceil(cols);
 
                 let mut chosen_icon: Option<String> = None;
 
@@ -1069,21 +1130,7 @@ impl WinTuneApp {
                             {
                                 let to_restore: Vec<String> =
                                     self.rollback_selection.iter().cloned().collect();
-                                let (restored, errs) = rollback_selected_extensions(&to_restore);
-                                self.backup_store = load_backup_store();
-                                self.rollback_selection.clear();
-                                if errs.is_empty() {
-                                    self.status_message = format!(
-                                        "Restored {} extensions to their initial state.",
-                                        restored
-                                    );
-                                } else {
-                                    self.status_message = format!(
-                                        "Restored {} extensions, {} errors.",
-                                        restored,
-                                        errs.len()
-                                    );
-                                }
+                                self.run_rollback(&to_restore);
                             }
                         });
                     });
@@ -1116,13 +1163,14 @@ impl WinTuneApp {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         egui::Grid::new("rollback_fluent_grid")
                             .striped(true)
-                            .num_columns(4)
+                            .num_columns(5)
                             .spacing([28.0, 10.0])
                             .show(ui, |ui| {
                                 ui.strong("Restore");
                                 ui.strong("Extension");
                                 ui.strong("Active Custom ProgID");
                                 ui.strong("Original Windows ProgID");
+                                ui.strong("Snapshot taken");
                                 ui.end_row();
 
                                 for (ext, bkp) in &self.backup_store.backups {
@@ -1143,6 +1191,10 @@ impl WinTuneApp {
                                         .unwrap_or("(None / Unassigned)");
                                     ui.label(
                                         RichText::new(orig).color(palette.text_secondary),
+                                    );
+                                    ui.label(
+                                        RichText::new(&bkp.timestamp)
+                                            .color(palette.text_secondary),
                                     );
                                     ui.end_row();
                                 }

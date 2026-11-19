@@ -1,16 +1,11 @@
 use eframe::egui::{self, Color32, Context, Frame, Margin, Rounding, Stroke, Style, Visuals};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ThemeMode {
+    #[default]
     Dark,
     Light,
-}
-
-impl Default for ThemeMode {
-    fn default() -> Self {
-        Self::Dark
-    }
 }
 
 pub struct FluentColors {

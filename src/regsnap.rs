@@ -439,7 +439,20 @@ pub(crate) mod test_support {
                 nanos
             );
             let root = RegKey::predef(HKEY_CURRENT_USER);
-            root.create_subkey(&path).expect("create sandbox");
+            // Tests run in parallel and a finishing sandbox removes the shared
+            // parent key once it is empty: creating ours at that exact moment
+            // can fail with NotFound. Simply try again.
+            let mut attempt = 0;
+            loop {
+                match root.create_subkey(&path) {
+                    Ok(_) => break,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound && attempt < 20 => {
+                        attempt += 1;
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                    Err(e) => panic!("create sandbox: {:?}", e),
+                }
+            }
             Self { root, path }
         }
 

@@ -6,13 +6,19 @@
 //! thread through [`jobs`], so the window never freezes.
 
 mod associations_tab;
+mod confirm;
 mod gallery_tab;
 mod jobs;
 mod rollback_tab;
 mod sidebar;
 mod status_bar;
+#[cfg(test)]
+mod test_support;
 
-use crate::associations::{default_backup_store_path, load_backup_store, OperationReport};
+use crate::associations::{
+    default_backup_store_path, default_reg_backup_dir, load_backup_store,
+    notify_shell_associations, AssocTarget, OperationReport,
+};
 use crate::detector::{has_wsl_distribution, resolve_vscode_executable};
 use crate::gallery::{IconCategory, IconGallery};
 use crate::models::{app_data_dir, AppConfig, BackupStore};
@@ -21,9 +27,35 @@ use eframe::egui::{self, ColorImage, TextureHandle, TextureOptions};
 use jobs::RunningJob;
 use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Everything the UI reads or writes outside its own memory. Production uses
+/// [`AppEnv::system`]; tests point it at the HKCU sandbox and a temp folder,
+/// so whole UI flows (apply, rollback…) can run for real without risk.
+#[derive(Clone)]
+pub(crate) struct AppEnv {
+    pub assoc_target: Arc<dyn Fn() -> AssocTarget + Send + Sync>,
+    pub backup_store_path: PathBuf,
+    pub reg_backup_dir: PathBuf,
+    pub config_path: PathBuf,
+    /// Tells Explorer that associations changed.
+    pub notify_shell: fn(),
+}
+
+impl AppEnv {
+    pub(crate) fn system() -> Self {
+        Self {
+            assoc_target: Arc::new(AssocTarget::system),
+            backup_store_path: default_backup_store_path(),
+            reg_backup_dir: default_reg_backup_dir(),
+            config_path: app_data_dir().join("config.json"),
+            notify_shell: notify_shell_associations,
+        }
+    }
+}
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub(crate) enum ActiveTab {
@@ -50,6 +82,7 @@ impl ActiveTab {
 }
 
 pub struct WinTuneApp {
+    env: AppEnv,
     config: AppConfig,
     gallery: IconGallery,
     backup_store: BackupStore,
@@ -73,29 +106,38 @@ pub struct WinTuneApp {
     job: Option<RunningJob>,
     /// The user asked to close while a job was running: close when it ends.
     close_when_idle: bool,
+    /// Destructive action waiting for the user's OK.
+    pending_confirm: Option<confirm::Confirm>,
 }
 
 impl WinTuneApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let mut config = Self::load_or_init_config();
+        let env = AppEnv::system();
+        let mut config = Self::load_or_init_config(&env.config_path);
         if config.code_executable.is_empty() {
             if let Some(found) = resolve_vscode_executable(None) {
                 config.code_executable = found;
             }
         }
-        let mut app = Self::with_config(&cc.egui_ctx, config, has_wsl_distribution());
+        let mut app = Self::with_config(&cc.egui_ctx, config, has_wsl_distribution(), env);
         app.reload_backup_store();
         app
     }
 
-    /// Builds the app without reading `%ProgramData%` (used by tests too).
-    fn with_config(ctx: &egui::Context, config: AppConfig, wsl_detected: bool) -> Self {
+    /// Builds the app from an explicit config and environment (used by tests).
+    fn with_config(
+        ctx: &egui::Context,
+        config: AppConfig,
+        wsl_detected: bool,
+        env: AppEnv,
+    ) -> Self {
         apply_fluent_theme(ctx, config.theme);
 
         let mut gallery = IconGallery::default();
         gallery.reload(&config.icon_source_folder, &config.pak_file_path);
 
         Self {
+            env,
             config,
             gallery,
             backup_store: BackupStore::default(),
@@ -114,6 +156,7 @@ impl WinTuneApp {
             logo_texture: Self::load_app_logo(ctx),
             job: None,
             close_when_idle: false,
+            pending_confirm: None,
         }
     }
 
@@ -124,6 +167,7 @@ impl WinTuneApp {
 
         self.show_sidebar(ctx);
         self.show_status_bar(ctx);
+        self.show_confirm_dialog(ctx);
 
         match self.active_tab {
             ActiveTab::Associations => self.show_associations_tab(ctx),
@@ -142,7 +186,7 @@ impl WinTuneApp {
     }
 
     fn reload_backup_store(&mut self) {
-        match load_backup_store(&default_backup_store_path()) {
+        match load_backup_store(&self.env.backup_store_path) {
             Ok(store) => {
                 self.backup_store = store;
                 self.backup_store_error = None;
@@ -192,19 +236,15 @@ impl WinTuneApp {
         Some(ctx.load_texture("wintune_logo", color_img, TextureOptions::LINEAR))
     }
 
-    fn config_path() -> PathBuf {
-        app_data_dir().join("config.json")
-    }
-
-    fn load_or_init_config() -> AppConfig {
-        fs::read_to_string(Self::config_path())
+    fn load_or_init_config(path: &Path) -> AppConfig {
+        fs::read_to_string(path)
             .ok()
             .and_then(|content| serde_json::from_str::<AppConfig>(&content).ok())
             .unwrap_or_default()
     }
 
     fn save_config(&mut self) {
-        let path = Self::config_path();
+        let path = self.env.config_path.clone();
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
         }
@@ -243,91 +283,18 @@ impl eframe::App for WinTuneApp {
 #[cfg(test)]
 mod tests {
     use super::jobs::RunningJob;
+    use super::test_support::*;
     use super::*;
     use crate::gallery::PakStats;
     use crate::tasks::BackgroundJob;
-    use egui::{FullOutput, RawInput, ViewportCommand, ViewportEvent, ViewportId};
-    use std::path::Path;
+    use egui::{RawInput, ViewportCommand};
     use std::time::{Duration, Instant};
-
-    /// Temp icon folder + pak path, removed on drop.
-    struct TempIcons {
-        dir: PathBuf,
-    }
-
-    impl TempIcons {
-        fn new(names: &[&str]) -> Self {
-            let nanos = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos();
-            let dir =
-                std::env::temp_dir().join(format!("wintune-ui-{}-{}", std::process::id(), nanos));
-            fs::create_dir_all(dir.join("icons")).unwrap();
-            for name in names {
-                let mut icon = ico::IconDir::new(ico::ResourceType::Icon);
-                let img = ico::IconImage::from_rgba_data(32, 32, vec![200; 32 * 32 * 4]);
-                icon.add_entry(ico::IconDirEntry::encode(&img).unwrap());
-                let file =
-                    fs::File::create(dir.join("icons").join(format!("{}.ico", name))).unwrap();
-                icon.write(file).unwrap();
-            }
-            Self { dir }
-        }
-
-        fn config(&self) -> AppConfig {
-            let path = |p: &Path| p.to_string_lossy().into_owned();
-            AppConfig {
-                icon_source_folder: path(&self.dir.join("icons")),
-                icon_destination_folder: path(&self.dir.join("installed")),
-                pak_file_path: path(&self.dir.join("gallery.pak")),
-                ..AppConfig::default()
-            }
-        }
-    }
-
-    impl Drop for TempIcons {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.dir);
-        }
-    }
-
-    fn frame(app: &mut WinTuneApp, ctx: &egui::Context, input: RawInput) -> FullOutput {
-        ctx.run(input, |ctx| app.ui(ctx))
-    }
-
-    fn close_request() -> RawInput {
-        let mut input = RawInput::default();
-        input
-            .viewports
-            .entry(ViewportId::ROOT)
-            .or_default()
-            .events
-            .push(ViewportEvent::Close);
-        input
-    }
-
-    fn commands(out: &FullOutput) -> Vec<ViewportCommand> {
-        out.viewport_output
-            .get(&ViewportId::ROOT)
-            .map(|v| v.commands.clone())
-            .unwrap_or_default()
-    }
-
-    fn run_until_idle(app: &mut WinTuneApp, ctx: &egui::Context) {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while app.is_busy() && Instant::now() < deadline {
-            frame(app, ctx, RawInput::default());
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        assert!(!app.is_busy(), "job did not finish");
-    }
 
     #[test]
     fn every_tab_renders_without_panicking() {
         let icons = TempIcons::new(&["rust", "python"]);
         let ctx = egui::Context::default();
-        let mut app = WinTuneApp::with_config(&ctx, icons.config(), false);
+        let mut app = icons.app(&ctx);
 
         for tab in ActiveTab::ALL {
             app.active_tab = tab;
@@ -343,7 +310,7 @@ mod tests {
         let ctx = egui::Context::default();
         let mut config = icons.config();
         config.extensions.clear();
-        let mut app = WinTuneApp::with_config(&ctx, config, false);
+        let mut app = icons.app_with(&ctx, config);
 
         for tab in ActiveTab::ALL {
             app.active_tab = tab;
@@ -355,7 +322,7 @@ mod tests {
     fn closing_during_a_job_is_deferred_until_it_finishes() {
         let icons = TempIcons::new(&[]);
         let ctx = egui::Context::default();
-        let mut app = WinTuneApp::with_config(&ctx, icons.config(), false);
+        let mut app = icons.app(&ctx);
         let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
         app.job = Some(RunningJob::BuildPak(BackgroundJob::spawn(
             "Building gallery.pak",
@@ -388,7 +355,7 @@ mod tests {
     fn closing_when_idle_is_not_blocked() {
         let icons = TempIcons::new(&[]);
         let ctx = egui::Context::default();
-        let mut app = WinTuneApp::with_config(&ctx, icons.config(), false);
+        let mut app = icons.app(&ctx);
 
         let out = frame(&mut app, &ctx, close_request());
 
@@ -399,7 +366,7 @@ mod tests {
     fn building_the_pak_runs_in_background_then_reloads_the_gallery() {
         let icons = TempIcons::new(&["rust", "python"]);
         let ctx = egui::Context::default();
-        let mut app = WinTuneApp::with_config(&ctx, icons.config(), false);
+        let mut app = icons.app(&ctx);
 
         app.start_build_pak(&ctx);
         assert!(app.is_busy());
@@ -418,7 +385,7 @@ mod tests {
     fn a_second_job_is_refused_while_one_is_running() {
         let icons = TempIcons::new(&[]);
         let ctx = egui::Context::default();
-        let mut app = WinTuneApp::with_config(&ctx, icons.config(), false);
+        let mut app = icons.app(&ctx);
         let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
         app.job = Some(RunningJob::BuildPak(BackgroundJob::spawn(
             "Building gallery.pak",

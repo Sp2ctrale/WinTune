@@ -34,9 +34,7 @@ impl WinTuneApp {
                                 .add_enabled(enabled, accent_button(label, self.config.theme))
                                 .clicked()
                             {
-                                let to_restore: Vec<String> =
-                                    self.rollback_selection.iter().cloned().collect();
-                                self.start_rollback(ctx, to_restore);
+                                self.request_rollback();
                             }
                         });
                     });

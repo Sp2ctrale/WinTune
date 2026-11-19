@@ -60,6 +60,11 @@ If saving the snapshots or the `.reg` file fails, nothing is applied. If
 `backups.json` cannot be read, all registry changes are blocked, so the next
 save cannot overwrite your snapshots.
 
+The interface checks rules as you edit them. A rule with an invalid extension
+or ProgID, or an extension listed twice, is flagged in red and blocks Apply.
+Disabled rules never block. Removing a rule and rolling back extensions both
+ask for confirmation first.
+
 The **Selective Rollback** tab restores chosen extensions to their exact
 pre-WinTune state. It also removes every ProgID that WinTune created, including
 ones you renamed since. A snapshot is deleted only once it has been fully

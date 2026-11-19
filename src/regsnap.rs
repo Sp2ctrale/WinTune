@@ -117,12 +117,26 @@ pub fn restore_key(
     path: &str,
     snapshot: &RegistryKeySnapshot,
 ) -> Result<(), String> {
-    delete_tree(root, path)?;
-    if !snapshot.exists {
-        return Ok(());
-    }
+    let deleted = delete_tree(root, path);
+    restore_after_delete(root, path, snapshot, deleted)
+}
+
+/// Second half of [`restore_key`], given the outcome of the delete.
+fn restore_after_delete(
+    root: &RegKey,
+    path: &str,
+    snapshot: &RegistryKeySnapshot,
+    deleted: Result<(), String>,
+) -> Result<(), String> {
+    // RegDeleteTree is not atomic: after a partial delete, what it removed
+    // must still be written back, so keep going and report both problems.
     let mut errors = Vec::new();
-    write_snapshot(root, path, snapshot, &mut errors);
+    if let Err(e) = deleted {
+        errors.push(e);
+    }
+    if snapshot.exists {
+        write_snapshot(root, path, snapshot, &mut errors);
+    }
     if errors.is_empty() {
         Ok(())
     } else {
@@ -778,6 +792,31 @@ mod tests {
                 "\"Hidden\"=-\r\n\r\n",
             )
         );
+    }
+
+    #[test]
+    fn a_failed_delete_still_rewrites_the_snapshot_and_reports_it() {
+        // RegDeleteTree is not atomic: it may delete part of a tree and then
+        // fail. What it deleted must still be put back.
+        let sb = Sandbox::new();
+        let mut snap = RegistryKeySnapshot {
+            exists: true,
+            ..Default::default()
+        };
+        snap.values
+            .insert("V".into(), (REG_SZ as u32, utf16z("kept")));
+
+        let result = restore_after_delete(
+            &sb.root,
+            &sb.key("K"),
+            &snap,
+            Err("Cannot delete K: access denied".into()),
+        );
+
+        let err = result.expect_err("the delete failure must be reported");
+        assert!(err.contains("access denied"), "{err}");
+        let vals = raw_values(&sb.root, &sb.key("K"));
+        assert_eq!(vals.get("V"), Some(&(REG_SZ as u32, utf16z("kept"))));
     }
 
     #[test]

@@ -81,10 +81,13 @@ impl TempIcons {
             let file = fs::File::create(dir.join("icons").join(format!("{}.ico", name))).unwrap();
             icon.write(file).unwrap();
         }
-        Self {
-            dir,
-            sandbox: Sandbox::new(),
-        }
+        let sandbox = Sandbox::new();
+        // The test user is "signed in": its hive root exists.
+        sandbox
+            .root
+            .create_subkey(sandbox.key(&format!("Users\\{}", TEST_HIVE)))
+            .expect("create test user hive");
+        Self { dir, sandbox }
     }
 
     pub(super) fn config(&self) -> AppConfig {

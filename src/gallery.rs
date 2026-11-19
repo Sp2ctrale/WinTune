@@ -80,12 +80,14 @@ impl IconLibrary {
         }
         let mut len_bytes = [0u8; 8];
         len_bytes.copy_from_slice(&data[4..12]);
-        let index_len = u64::from_le_bytes(len_bytes) as usize;
-        if data.len() < 12 + index_len {
-            return Err("Corrupt gallery.pak index".to_string());
-        }
+        // A damaged header must never panic (the pack is read at startup).
+        let index_end = usize::try_from(u64::from_le_bytes(len_bytes))
+            .ok()
+            .and_then(|len| len.checked_add(12))
+            .filter(|end| *end <= data.len())
+            .ok_or_else(|| "Corrupt gallery.pak index".to_string())?;
         let index: PakIndex =
-            serde_json::from_slice(&data[12..12 + index_len]).map_err(|e| e.to_string())?;
+            serde_json::from_slice(&data[12..index_end]).map_err(|e| e.to_string())?;
         for entry in index.entries {
             self.pak_entries
                 .insert(entry.name.clone(), (entry.offset, entry.length));
@@ -101,10 +103,12 @@ impl IconLibrary {
 
     pub fn get_icon_bytes(&self, name: &str) -> Option<Vec<u8>> {
         if let Some(&(offset, length)) = self.pak_entries.get(name) {
-            let start = offset as usize;
-            let end = start + length as usize;
-            if end <= self.pak_data.len() {
-                return Some(self.pak_data[start..end].to_vec());
+            let range = usize::try_from(offset).ok().and_then(|start| {
+                let end = start.checked_add(usize::try_from(length).ok()?)?;
+                (end <= self.pak_data.len()).then_some(start..end)
+            });
+            if let Some(range) = range {
+                return Some(self.pak_data[range].to_vec());
             }
         }
         self.file_paths.get(name).and_then(|p| fs::read(p).ok())
@@ -615,6 +619,33 @@ mod tests {
         let calls = calls.into_inner();
         assert_eq!(calls.last(), Some(&(3, 3)), "{:?}", calls);
         assert!(calls.windows(2).all(|w| w[0].0 <= w[1].0), "{:?}", calls);
+    }
+
+    #[test]
+    fn a_pak_with_an_absurd_index_length_is_ignored_without_panicking() {
+        let fx = IconFixture::new(&[]);
+        let mut bytes = b"ICOP".to_vec();
+        bytes.extend(u64::MAX.to_le_bytes());
+        bytes.extend(b"{}");
+        fs::write(fx.pak(), bytes).unwrap();
+
+        let lib = IconLibrary::load(&fx.empty(), &fx.pak());
+
+        assert!(lib.names().is_empty());
+    }
+
+    #[test]
+    fn a_pak_entry_pointing_past_the_end_is_ignored_without_panicking() {
+        let fx = IconFixture::new(&[]);
+        let index = br#"{"entries":[{"name":"evil","offset":18446744073709551610,"length":100}]}"#;
+        let mut bytes = b"ICOP".to_vec();
+        bytes.extend((index.len() as u64).to_le_bytes());
+        bytes.extend(index);
+        fs::write(fx.pak(), bytes).unwrap();
+
+        let lib = IconLibrary::load(&fx.empty(), &fx.pak());
+
+        assert!(lib.get_icon_bytes("evil").is_none());
     }
 
     #[test]

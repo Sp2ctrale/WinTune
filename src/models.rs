@@ -63,11 +63,30 @@ pub struct ExtensionBackup {
     pub prog_id_snapshots: BTreeMap<String, RegistryKeySnapshot>,
     #[serde(default)]
     pub user_overrides: Vec<UserOverrideSnapshot>,
+    /// A rollback already restored the machine-wide keys; only the overrides
+    /// of users who were signed out at the time are still pending.
+    #[serde(default)]
+    pub machine_restored: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BackupStore {
     pub backups: BTreeMap<String, ExtensionBackup>,
+}
+
+impl BackupStore {
+    /// Registry keys are case-insensitive, so `.FOO` and `.foo` share one
+    /// snapshot: returns the stored key matching `extension`, if any.
+    pub fn key_for(&self, extension: &str) -> Option<&str> {
+        self.backups
+            .keys()
+            .find(|k| k.eq_ignore_ascii_case(extension))
+            .map(|k| k.as_str())
+    }
+
+    pub fn find(&self, extension: &str) -> Option<&ExtensionBackup> {
+        self.key_for(extension).and_then(|k| self.backups.get(k))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

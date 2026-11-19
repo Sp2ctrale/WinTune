@@ -16,6 +16,13 @@ makes can be undone. It has two modules:
 
 Built with Rust and [egui](https://github.com/emilk/egui).
 
+- [docs/registry-reference.md](docs/registry-reference.md): every key and
+  value WinTune can write, how each change is undone, and the values that
+  still need checking on a real machine.
+- [ARCHITECTURE.md](ARCHITECTURE.md): layers, stores, safety model and UI.
+- [CONTRIBUTING.md](CONTRIBUTING.md): checks, the sandbox rule for tests, and
+  how to add a tweak or a module.
+
 ## Requirements
 
 - Windows 10 or 11

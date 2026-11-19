@@ -876,6 +876,26 @@ mod tests {
     }
 
     #[test]
+    fn the_registry_reference_lists_every_tweak() {
+        let doc = include_str!("../docs/registry-reference.md");
+        for t in catalog() {
+            assert!(
+                doc.contains(&format!("`{}`", t.id)),
+                "docs/registry-reference.md does not list `{}`",
+                t.id
+            );
+            if let TweakAction::Dword { name, .. } = t.action {
+                assert!(
+                    doc.contains(&format!("`{}`", name)),
+                    "docs/registry-reference.md does not name the value `{}` of `{}`",
+                    name,
+                    t.id
+                );
+            }
+        }
+    }
+
+    #[test]
     fn every_dword_tweak_has_distinct_on_and_off_values() {
         for t in catalog() {
             if let TweakAction::Dword { on, off, .. } = t.action {

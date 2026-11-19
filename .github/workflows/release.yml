@@ -1,0 +1,77 @@
+name: Release
+
+# Pushing a tag such as v0.3.0 builds WinTune.exe and creates a DRAFT GitHub
+# release with the binary and its SHA-256. Nothing is published until a
+# maintainer reviews the draft and clicks "Publish release".
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and draft release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check the tag matches Cargo.toml
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
+          if ($env:TAG -ne "v$version") {
+            Write-Error "Tag $env:TAG does not match the Cargo.toml version $version (expected v$version)."
+            exit 1
+          }
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Release build
+        run: cargo build --release --locked
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/WinTune.exe dist/WinTune.exe
+          $hash = (Get-FileHash dist/WinTune.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  WinTune.exe" | Out-File -Encoding ascii -NoNewline dist/WinTune.exe.sha256
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: WinTune ${{ github.ref_name }}
+          files: |
+            dist/WinTune.exe
+            dist/WinTune.exe.sha256
+          body: |
+            WinTune ${{ github.ref_name }}
+
+            - `WinTune.exe`: run as administrator (it asks for elevation itself).
+            - `WinTune.exe.sha256`: SHA-256 checksum. Check it with
+              `Get-FileHash WinTune.exe -Algorithm SHA256`.
+
+            The binary is **not code-signed**, so Windows SmartScreen may warn on
+            first launch ("More info" > "Run anyway").
+
+            Every registry change WinTune makes can be undone from the app. A
+            `.reg` backup is also written to `%ProgramData%\Wintune\reg-backups`
+            before each change.

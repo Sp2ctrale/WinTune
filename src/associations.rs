@@ -73,6 +73,9 @@ pub struct ApplyOptions<'a> {
     pub backup_store_path: PathBuf,
     /// Folder receiving a `.reg` safety-net export before every apply.
     pub reg_backup_dir: PathBuf,
+    /// `(done, total, label)`: called as each extension is snapshotted, then
+    /// written (`total` = 2 × the number of valid rules).
+    pub progress: &'a dyn Fn(usize, usize, &str),
 }
 
 #[derive(Debug, Default)]
@@ -434,16 +437,24 @@ pub fn apply_extensions(
     let mut report = OperationReport::default();
     let now = clock::now_local();
 
+    let enabled: Vec<&ExtensionConfig> = extensions.iter().filter(|e| e.enabled).collect();
+    let snapshot_steps = enabled.len();
+
     // Phase 1: validate, install icons, snapshot.
     let mut prepared: Vec<Prepared> = Vec::new();
     let mut export: Vec<ExportItem> = Vec::new();
-    for cfg in extensions.iter().filter(|e| e.enabled) {
+    for (i, cfg) in enabled.into_iter().enumerate() {
         let result = validate_extension(cfg)
             .and_then(|_| prepare_extension(target, store, cfg, opts, &now, &mut export));
         match result {
             Ok(icon_path) => prepared.push(Prepared { cfg, icon_path }),
             Err(e) => report.errors.push(format!("{}: {}", cfg.extension, e)),
         }
+        (opts.progress)(
+            i + 1,
+            snapshot_steps * 2,
+            &format!("Snapshotting {}", cfg.extension),
+        );
     }
     if prepared.is_empty() {
         return report;
@@ -477,8 +488,10 @@ pub fn apply_extensions(
     report.reg_backup_file = Some(reg_file);
 
     // Phase 3: registry writes.
-    for p in prepared {
+    let total_steps = snapshot_steps + prepared.len();
+    for (i, p) in prepared.into_iter().enumerate() {
         let ext = p.cfg.extension.clone();
+        (opts.progress)(snapshot_steps + i, total_steps, &format!("Writing {}", ext));
         let Some(backup) = store.backups.get(&ext).cloned() else {
             continue;
         };
@@ -501,6 +514,11 @@ pub fn apply_extensions(
             b.icon_installed_path = p.icon_path.clone();
             b.last_applied = Some(now.clone());
         }
+        (opts.progress)(
+            snapshot_steps + i + 1,
+            total_steps,
+            &format!("Writing {}", ext),
+        );
     }
 
     if let Err(e) = save_backup_store(store, &opts.backup_store_path) {
@@ -531,10 +549,14 @@ pub fn rollback_extensions(
     target: &AssocTarget,
     store: &mut BackupStore,
     extensions: &[String],
+    progress: &dyn Fn(usize, usize, &str),
 ) -> OperationReport {
     let mut report = OperationReport::default();
+    let total = extensions.len();
+    progress(0, total, "Restoring");
 
-    for ext in extensions {
+    for (i, ext) in extensions.iter().enumerate() {
+        progress(i, total, &format!("Restoring {}", ext));
         let Some(mut backup) = store.backups.get(ext).cloned() else {
             report.errors.push(format!("{}: no snapshot recorded", ext));
             continue;
@@ -595,6 +617,7 @@ pub fn rollback_extensions(
         }
     }
 
+    progress(total, total, "Rollback finished");
     report
 }
 
@@ -676,6 +699,7 @@ mod tests {
                 resolve_icon,
                 backup_store_path: self.dir.join("backups.json"),
                 reg_backup_dir: self.dir.join("reg-backups"),
+                progress: &no_progress,
             }
         }
     }
@@ -688,6 +712,66 @@ mod tests {
 
     fn icon_ok(_: &ExtensionConfig) -> Result<String, String> {
         Ok("C:\\ProgramData\\ico\\foo.ico".into())
+    }
+
+    fn no_progress(_: usize, _: usize, _: &str) {}
+
+    fn with_ext(ext: &str) -> ExtensionConfig {
+        let mut c = foo_cfg(&format!("Custom{}File", ext.trim_start_matches('.')));
+        c.extension = ext.into();
+        c
+    }
+
+    fn assert_progress_ends_complete(calls: &[(usize, usize, String)], total: usize) {
+        assert!(!calls.is_empty(), "no progress reported");
+        assert!(calls.iter().all(|c| c.1 == total), "{:?}", calls);
+        assert!(calls.windows(2).all(|w| w[0].0 <= w[1].0), "{:?}", calls);
+        assert_eq!(calls.last().unwrap().0, total, "{:?}", calls);
+    }
+
+    #[test]
+    fn apply_reports_progress_through_snapshot_and_write_phases() {
+        let env = Env::new();
+        let mut store = BackupStore::default();
+        let calls = std::cell::RefCell::new(Vec::new());
+        let record = |d: usize, t: usize, l: &str| calls.borrow_mut().push((d, t, l.to_string()));
+        let mut opts = env.opts(&icon_ok);
+        opts.progress = &record;
+
+        apply_extensions(
+            &env.target(&[HIVE_A]),
+            &mut store,
+            &[with_ext(".foo"), with_ext(".bar")],
+            &opts,
+        );
+
+        let calls = calls.into_inner();
+        assert_progress_ends_complete(&calls, 4);
+        assert!(calls.iter().any(|c| c.2.contains(".bar")), "{:?}", calls);
+    }
+
+    #[test]
+    fn rollback_reports_progress_per_extension() {
+        let env = Env::new();
+        let target = env.target(&[HIVE_A]);
+        let mut store = BackupStore::default();
+        apply_extensions(
+            &target,
+            &mut store,
+            &[with_ext(".foo"), with_ext(".bar")],
+            &env.opts(&icon_ok),
+        );
+        let calls = std::cell::RefCell::new(Vec::new());
+        let record = |d: usize, t: usize, l: &str| calls.borrow_mut().push((d, t, l.to_string()));
+
+        rollback_extensions(
+            &target,
+            &mut store,
+            &[".foo".into(), ".bar".into()],
+            &record,
+        );
+
+        assert_progress_ends_complete(&calls.into_inner(), 2);
     }
 
     fn foo_cfg(prog_id: &str) -> ExtensionConfig {
@@ -803,7 +887,7 @@ mod tests {
             &env.opts(&icon_ok),
         );
 
-        let report = rollback_extensions(&target, &mut store, &[".foo".to_string()]);
+        let report = rollback_extensions(&target, &mut store, &[".foo".to_string()], &no_progress);
 
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         assert_eq!(env.snap(&env.classes(".foo")), before_ext);
@@ -858,7 +942,7 @@ mod tests {
             &env.opts(&icon_ok),
         );
 
-        rollback_extensions(&target, &mut store, &[".foo".to_string()]);
+        rollback_extensions(&target, &mut store, &[".foo".to_string()], &no_progress);
 
         assert!(!env.exists(&env.classes("CustomFooFile")));
         assert!(!env.exists(&env.classes("RenamedFooFile")));
@@ -880,7 +964,7 @@ mod tests {
         );
         assert_eq!(env.default_of(&env.classes("Old.File")), "Foo File");
 
-        rollback_extensions(&target, &mut store, &[".foo".to_string()]);
+        rollback_extensions(&target, &mut store, &[".foo".to_string()], &no_progress);
 
         assert_eq!(env.snap(&env.classes("Old.File")), before_old);
     }
@@ -911,7 +995,7 @@ mod tests {
             &env.opts(&icon_ok),
         );
         assert!(!env.exists(&env.user(HIVE_B, USER_CHOICE_REL)));
-        rollback_extensions(&both, &mut store, &[".foo".to_string()]);
+        rollback_extensions(&both, &mut store, &[".foo".to_string()], &no_progress);
 
         assert_eq!(env.snap(&env.user(HIVE_B, USER_CHOICE_REL)), before_b);
     }
@@ -1096,7 +1180,7 @@ mod tests {
         b.hklm_extension_key.exists = true;
         b.hklm_extension_key.subkeys.insert("x".repeat(300), bad);
 
-        let report = rollback_extensions(&target, &mut store, &[".foo".to_string()]);
+        let report = rollback_extensions(&target, &mut store, &[".foo".to_string()], &no_progress);
 
         assert!(!report.errors.is_empty());
         assert!(store.backups.contains_key(".foo"));
@@ -1116,7 +1200,12 @@ mod tests {
             "hklm_previous_prog_id":null,"user_overrides":[]}}}"#;
         let mut store: BackupStore = serde_json::from_str(legacy).unwrap();
 
-        let report = rollback_extensions(&env.target(&[HIVE_A]), &mut store, &[".foo".to_string()]);
+        let report = rollback_extensions(
+            &env.target(&[HIVE_A]),
+            &mut store,
+            &[".foo".to_string()],
+            &no_progress,
+        );
 
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         assert!(!env.exists(&env.classes("CustomFooFile")));

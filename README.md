@@ -1,10 +1,15 @@
 # WinTune
 
 WinTune is a Windows 10/11 desktop app for customizing the system. Every change it
-makes can be undone. The first module manages **file associations**: custom icons,
-the double-click action (open in your editor or run the script), right-click verbs,
-and Explorer preview metadata. It works on the 70 or so developer file types
-configured by default, and on any extension you add.
+makes can be undone. It has two modules:
+
+- **File associations**: custom icons, the double-click action (open in your
+  editor or run the script), right-click verbs, and Explorer preview metadata.
+  It works on the 70 or so developer file types configured by default, and on
+  any extension you add.
+- **Explorer & Taskbar**: per-user settings such as showing file extensions or
+  hidden files, the classic right-click menu on Windows 11, and aligning the
+  taskbar to the left.
 
 Built with Rust and [egui](https://github.com/emilk/egui).
 
@@ -41,6 +46,31 @@ For each enabled rule (for example `.rs` → `CustomRustFile`), WinTune:
 | `HKU\<SID>\…\Explorer\FileExts\<ext>` | Optionally deleted (Explorer `UserChoice`) |
 
 Then it calls `SHChangeNotify` so Explorer refreshes its icons.
+
+The **Explorer & Taskbar** tweaks change only the current user's settings
+(HKCU). Unless noted, each one is a single REG_DWORD value under
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced`:
+
+| Tweak | Value | On | Off (Windows default) | Visible |
+| --- | --- | --- | --- | --- |
+| Show file extensions | `HideFileExt` | 0 | 1 | new windows |
+| Show hidden files | `Hidden` | 1 | 2 | new windows |
+| Show protected system files | `ShowSuperHidden` | 1 | 0 | new windows |
+| Open Explorer to This PC | `LaunchTo` | 1 | 2 | new windows |
+| Full path in the title bar | `…\Explorer\CabinetState` → `FullPath` | 1 | 0 | Explorer restart |
+| Classic right-click menu (Windows 11, unofficial) | key `HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32` | key present | key removed | Explorer restart |
+| Align taskbar to the left (Windows 11) | `TaskbarAl` | 0 | 1 | instantly |
+| Hide the Task View button | `ShowTaskViewButton` | 0 | 1 | instantly |
+| Hide the taskbar search | `…\CurrentVersion\Search` → `SearchboxTaskbarMode` | 0 | 1 (search icon) | instantly |
+
+When you turn a tweak off, WinTune writes the Windows default shown in the
+table. **Restore original** instead puts back exactly what was there before
+WinTune first changed the setting, including "not set". After every change,
+WinTune broadcasts `WM_SETTINGCHANGE` so the taskbar picks it up.
+
+HKCU belongs to one account. If WinTune runs elevated under a different
+administrator account, the tweaks change that account's settings, not yours.
+The tab header shows which account is affected.
 
 ## Safety and undo
 
@@ -84,7 +114,8 @@ Everything lives in `%ProgramData%\Wintune`:
 | File | Content |
 | --- | --- |
 | `config.json` | Rules, editor path, folders, theme |
-| `backups.json` | Original-state snapshots used by the rollback |
+| `backups.json` | Original-state snapshots of file associations, used by the rollback |
+| `tweaks-backups.json` | Original state of each Explorer & Taskbar tweak, per user |
 | `reg-backups\*.reg` | `.reg` safety net written before each apply |
 | `gallery.pak` | Optional compressed icon pack, built from the icon folder |
 
@@ -95,14 +126,16 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | Module | Role |
 | --- | --- |
 | `regsnap` | Generic snapshot, restore, delete-tree and `.reg` export. Every module that writes to the registry builds on it |
-| `associations` | File-association engine (apply and rollback) on an injectable `AssocTarget` |
+| `associations` | File-association engine (apply, rollback and live status) on an injectable `AssocTarget` |
+| `tweaks` | Explorer & Taskbar tweaks engine (catalog, status, apply, restore) on an injectable `TweakTarget` |
+| `persist` | JSON stores: a missing file is empty, a corrupt file is an error, saves are atomic |
 | `models` | Config and backup data types, plus the default rules |
 | `gallery` | Shareable icon library (folder plus in-memory `.pak`), background thumbnail decoding, and the pack builder |
 | `tasks` | Background jobs with progress reporting and panic capture |
 | `detector` | VS Code, WSL and user-hive detection |
 | `clock` | Local timestamps |
 | `theme` | Fluent-style dark and light theme |
-| `ui` | egui interface, one file per tab (`associations_tab`, `gallery_tab`, `rollback_tab`) plus `sidebar`, `status_bar` and `jobs` |
+| `ui` | egui interface, one file per tab (`associations_tab`, `tweaks_tab`, `gallery_tab`, `rollback_tab`) plus `sidebar`, `status_bar`, `confirm`, `rule_status` and `jobs` |
 | `main.rs` | Window setup only |
 
 Apply, rollback and pack building run on a background thread, and the status
@@ -123,9 +156,9 @@ mid-operation, WinTune waits for the operation to finish before closing.
 
 - **Phase 2 (done)**: UI split into modules; apply, rollback, pack build and
   icon decoding moved off the UI thread, with progress.
-- **Phase 3**: show each rule's live status (applied, changed since, not
-  applied), preview the diff before applying, validate input in the UI, confirm
-  destructive actions, add a log panel, and import/export the config.
-- **More Windows customization modules**, built on the same snapshot and
-  rollback engine.
+- **Phase 3 (in progress)**: done so far are each rule's live status,
+  validation in the UI and confirmations for destructive actions. Still to do:
+  a diff preview before applying, an operation log, and config import/export.
+- **Customization modules**: Explorer & Taskbar is the second module. More can
+  follow, built on the same snapshot and rollback engine.
 - **Phase 4**: installer, code signing and release workflow.

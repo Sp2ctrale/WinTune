@@ -199,12 +199,14 @@ impl WinTuneApp {
                 self.backup_store = outcome.store;
                 self.save_config();
                 self.show_report("Applied", "extension(s)", &outcome.report);
+                self.record_history("File associations", "Apply", &outcome.report);
                 self.request_status_refresh();
             }
             Finished::Rollback(outcome) => {
                 self.backup_store = outcome.store;
                 self.rollback_selection.clear();
                 self.show_report("Restored", "extension(s)", &outcome.report);
+                self.record_history("File associations", "Rollback", &outcome.report);
                 self.request_status_refresh();
             }
             Finished::BuildPak(Ok(stats)) => {

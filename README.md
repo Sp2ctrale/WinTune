@@ -116,6 +116,7 @@ Everything lives in `%ProgramData%\Wintune`:
 | `config.json` | Rules, editor path, folders, theme |
 | `backups.json` | Original-state snapshots of file associations, used by the rollback |
 | `tweaks-backups.json` | Original state of each Explorer & Taskbar tweak, per user |
+| `history.jsonl` | One line per operation (apply, rollback, restore), shown by **History** in the status bar |
 | `reg-backups\*.reg` | `.reg` safety net written before each apply |
 | `gallery.pak` | Optional compressed icon pack, built from the icon folder |
 
@@ -129,6 +130,7 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `associations` | File-association engine (apply, rollback and live status) on an injectable `AssocTarget` |
 | `tweaks` | Explorer & Taskbar tweaks engine (catalog, status, apply, restore) on an injectable `TweakTarget` |
 | `persist` | JSON stores: a missing file is empty, a corrupt file is an error, saves are atomic |
+| `history` | Operation log (`history.jsonl`): append one line per operation, read the most recent |
 | `models` | Config and backup data types, plus the default rules |
 | `gallery` | Shareable icon library (folder plus in-memory `.pak`), background thumbnail decoding, and the pack builder |
 | `tasks` | Background jobs with progress reporting and panic capture |
@@ -172,8 +174,9 @@ The binary is not code-signed yet, so SmartScreen may warn on first launch.
 - **Phase 2 (done)**: UI split into modules; apply, rollback, pack build and
   icon decoding moved off the UI thread, with progress.
 - **Phase 3 (in progress)**: done so far are each rule's live status,
-  validation in the UI and confirmations for destructive actions. Still to do:
-  a diff preview before applying, an operation log, and config import/export.
+  validation in the UI, confirmations for destructive actions and the
+  operation history. Still to do: a diff preview before applying, and config
+  import/export.
 - **Customization modules**: Explorer & Taskbar is the second module. More can
   follow, built on the same snapshot and rollback engine.
 - **Phase 4**: the release workflow (draft releases from tags) is done. Still to do: an installer and code signing.

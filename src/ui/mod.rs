@@ -8,6 +8,7 @@
 mod associations_tab;
 mod confirm;
 mod gallery_tab;
+mod history_panel;
 mod jobs;
 mod rollback_tab;
 mod rule_status;
@@ -58,6 +59,8 @@ pub(crate) struct AppEnv {
     pub is_windows_11: bool,
     /// Account whose HKCU the tweaks change.
     pub user_label: String,
+    /// Operation log (one JSON line per registry job).
+    pub history_path: PathBuf,
 }
 
 impl AppEnv {
@@ -73,6 +76,7 @@ impl AppEnv {
             notify_settings: notify_explorer_settings,
             is_windows_11: windows_build().is_some_and(is_windows_11_build),
             user_label: current_user_label(),
+            history_path: crate::history::default_history_path(),
         }
     }
 }
@@ -142,6 +146,9 @@ pub struct WinTuneApp {
     tweak_statuses: HashMap<&'static str, TweakStatus>,
     /// Checkbox states the user changed and has not applied yet.
     tweak_desired: HashMap<&'static str, bool>,
+    /// Recent operations, newest first.
+    history: Vec<crate::history::HistoryEntry>,
+    show_history: bool,
 }
 
 impl WinTuneApp {
@@ -157,6 +164,7 @@ impl WinTuneApp {
         app.reload_backup_store();
         app.reload_tweak_store();
         app.refresh_tweak_statuses();
+        app.reload_history();
         app.request_status_refresh();
         app
     }
@@ -201,6 +209,8 @@ impl WinTuneApp {
             tweak_store_error: None,
             tweak_statuses: HashMap::new(),
             tweak_desired: HashMap::new(),
+            history: Vec::new(),
+            show_history: false,
         }
     }
 
@@ -212,6 +222,7 @@ impl WinTuneApp {
 
         self.show_sidebar(ctx);
         self.show_status_bar(ctx);
+        self.show_history_panel(ctx);
         self.show_confirm_dialog(ctx);
 
         match self.active_tab {

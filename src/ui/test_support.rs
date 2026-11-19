@@ -50,6 +50,7 @@ impl TempIcons {
             notify_settings: || {},
             is_windows_11: true,
             user_label: "TEST\\user".into(),
+            history_path: self.dir.join("history.jsonl"),
         }
     }
 

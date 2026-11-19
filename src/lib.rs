@@ -5,6 +5,7 @@ pub mod associations;
 pub mod clock;
 pub mod detector;
 pub mod gallery;
+pub mod history;
 pub mod models;
 pub mod persist;
 pub mod regsnap;

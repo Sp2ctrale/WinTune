@@ -102,6 +102,20 @@ or ProgID, or an extension listed twice, is flagged in red and blocks Apply.
 Disabled rules never block. Removing a rule and rolling back extensions both
 ask for confirmation first.
 
+Some names are refused because writing to them could break Windows:
+structural `Classes` keys such as `CLSID` or `Directory`, the launch types of
+executables such as `exefile`, and extensions such as `.exe`, `.lnk` and
+`.dll`. If a ProgID already existed before WinTune (it belongs to another
+app), WinTune only overwrites the values it sets, never deletes the key, and
+rollback restores it exactly. If a user is signed out during a rollback,
+their part of the snapshot is kept. Roll back again once they are signed in.
+
+**Known limit:** Explorer's per-user `UserChoice` key is protected by a hash
+that covers the key's metadata. Rollback restores its values, but Windows may
+still consider it tampered with, show "An app default was reset" and go back to
+its default app. Uncheck **Reset Explorer UserChoice override** on a rule to
+leave that key alone.
+
 The **Selective Rollback** tab restores chosen extensions to their exact
 pre-WinTune state. It also removes every ProgID that WinTune created, including
 ones you renamed since. A snapshot is deleted only once it has been fully

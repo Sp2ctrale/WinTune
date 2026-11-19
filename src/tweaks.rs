@@ -290,6 +290,36 @@ pub struct TweakOptions<'a> {
     pub progress: &'a dyn Fn(usize, usize, &str),
 }
 
+/// Tells Explorer and the taskbar that settings changed, so "live" tweaks
+/// show up immediately (others need new windows or an Explorer restart).
+pub fn notify_explorer_settings() {
+    use windows_sys::Win32::UI::Shell::{SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNF_IDLIST};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SendMessageTimeoutW, HWND_BROADCAST, SMTO_ABORTIFHUNG, WM_SETTINGCHANGE,
+    };
+    let area: Vec<u16> = "TraySettings".encode_utf16().chain(Some(0)).collect();
+    let mut result = 0usize;
+    // SAFETY: `area` is a NUL-terminated UTF-16 string that outlives the
+    // call; SMTO_ABORTIFHUNG + timeout keep a hung window from blocking us.
+    unsafe {
+        SendMessageTimeoutW(
+            HWND_BROADCAST,
+            WM_SETTINGCHANGE,
+            0,
+            area.as_ptr() as isize,
+            SMTO_ABORTIFHUNG,
+            1000,
+            &mut result,
+        );
+        SHChangeNotify(
+            SHCNE_ASSOCCHANGED as i32,
+            SHCNF_IDLIST,
+            std::ptr::null(),
+            std::ptr::null(),
+        );
+    }
+}
+
 /// Read-only.
 pub fn tweak_status(target: &TweakTarget, tweak: &Tweak) -> Result<TweakStatus, String> {
     match tweak.action {

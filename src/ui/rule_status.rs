@@ -55,7 +55,7 @@ impl WinTuneApp {
                 rules
                     .iter()
                     .map(|rule| {
-                        let backup = backups.backups.get(&rule.extension);
+                        let backup = backups.find(&rule.extension);
                         let status = rule_status(&target, rule, backup, &status_ctx);
                         (rule.extension.clone(), status)
                     })

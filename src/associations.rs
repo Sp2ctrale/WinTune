@@ -106,6 +106,41 @@ pub fn save_backup_store(store: &BackupStore, path: &Path) -> Result<(), String>
 
 const FORBIDDEN_CHARS: &[char] = &['\\', '/', ':', '*', '?', '"', '<', '>', '|'];
 
+/// Structural `Classes` keys and launch types of executables: writing a
+/// ProgID over them (or claiming these extensions) would break Windows.
+const RESERVED_PROGIDS: &[&str] = &[
+    "*",
+    "AllFilesystemObjects",
+    "AppID",
+    "Applications",
+    "CLSID",
+    "DesktopBackground",
+    "Directory",
+    "Drive",
+    "Folder",
+    "Installer",
+    "Interface",
+    "MIME",
+    "SystemFileAssociations",
+    "TypeLib",
+    "Unknown",
+    "Wow6432Node",
+    "batfile",
+    "cmdfile",
+    "comfile",
+    "cplfile",
+    "exefile",
+    "lnkfile",
+    "Msi.Package",
+    "Msi.Patch",
+    "piffile",
+    "scrfile",
+];
+
+const RESERVED_EXTENSIONS: &[&str] = &[
+    ".com", ".cpl", ".dll", ".exe", ".lnk", ".msi", ".msp", ".pif", ".scr", ".sys", ".url",
+];
+
 fn has_forbidden_chars(s: &str) -> bool {
     s.chars()
         .any(|c| c.is_whitespace() || c.is_control() || FORBIDDEN_CHARS.contains(&c))
@@ -120,6 +155,15 @@ pub fn validate_extension(cfg: &ExtensionConfig) -> Result<(), String> {
             ext
         ));
     }
+    if RESERVED_EXTENSIONS
+        .iter()
+        .any(|r| r.eq_ignore_ascii_case(ext))
+    {
+        return Err(format!(
+            "{} is reserved: changing how Windows runs it could break the system",
+            ext
+        ));
+    }
     let pid = &cfg.prog_id;
     if pid.trim().is_empty() || pid.starts_with('.') || has_forbidden_chars(pid) {
         return Err(format!(
@@ -127,16 +171,26 @@ pub fn validate_extension(cfg: &ExtensionConfig) -> Result<(), String> {
             pid
         ));
     }
+    if RESERVED_PROGIDS.iter().any(|r| r.eq_ignore_ascii_case(pid)) {
+        return Err(format!(
+            "ProgID '{}' is a Windows system key: choose another name (e.g. 'Custom{}File')",
+            pid,
+            ext.trim_start_matches('.').to_uppercase()
+        ));
+    }
     Ok(())
 }
 
 /// Everything that must be fixed before applying `rules`: invalid values
-/// (see [`validate_extension`]) and extensions listed more than once
-/// (case-insensitive). Returns `(rule index, message)`, in index order.
+/// (see [`validate_extension`]), extensions listed more than once and
+/// ProgIDs shared by several rules (case-insensitive). Returns
+/// `(rule index, message)`, in index order.
 pub fn find_rule_problems(rules: &[ExtensionConfig]) -> Vec<(usize, String)> {
     let mut seen: BTreeMap<String, usize> = BTreeMap::new();
+    let mut prog_ids: BTreeMap<String, usize> = BTreeMap::new();
     for rule in rules {
         *seen.entry(rule.extension.to_lowercase()).or_default() += 1;
+        *prog_ids.entry(rule.prog_id.to_lowercase()).or_default() += 1;
     }
     rules
         .iter()
@@ -149,7 +203,24 @@ pub fn find_rule_problems(rules: &[ExtensionConfig]) -> Vec<(usize, String)> {
                 .get(&rule.extension.to_lowercase())
                 .copied()
                 .unwrap_or(0);
-            (count > 1).then(|| (i, format!("{} is listed more than once", rule.extension)))
+            if count > 1 {
+                return Some((i, format!("{} is listed more than once", rule.extension)));
+            }
+            // One ProgID per rule: rolling back one extension would otherwise
+            // delete the key the other one still uses.
+            let shared = prog_ids
+                .get(&rule.prog_id.to_lowercase())
+                .copied()
+                .unwrap_or(0);
+            (shared > 1).then(|| {
+                (
+                    i,
+                    format!(
+                        "ProgID {} is used by several rules: give each rule its own",
+                        rule.prog_id
+                    ),
+                )
+            })
         })
         .collect()
 }
@@ -192,7 +263,11 @@ fn prepare_extension(
     let ext_path = target.class_path(&cfg.extension);
     let current_ext = regsnap::snapshot_key(&target.machine_root, &ext_path)?;
 
-    let mut backup = match store.backups.get(&cfg.extension) {
+    let key = store
+        .key_for(&cfg.extension)
+        .unwrap_or(&cfg.extension)
+        .to_string();
+    let mut backup = match store.backups.get(&key) {
         Some(existing) => existing.clone(),
         None => ExtensionBackup {
             extension: cfg.extension.clone(),
@@ -203,9 +278,12 @@ fn prepare_extension(
             hklm_extension_key: current_ext.clone(),
             prog_id_snapshots: BTreeMap::new(),
             user_overrides: Vec::new(),
+            machine_restored: false,
         },
     };
     migrate_legacy_backup(&mut backup);
+    // The machine keys are about to change again: a rollback must restore them.
+    backup.machine_restored = false;
     items.push((m_name.clone(), ext_path, current_ext));
 
     let mut prog_ids: Vec<String> = backup.prog_id_snapshots.keys().cloned().collect();
@@ -215,10 +293,24 @@ fn prepare_extension(
     for pid in prog_ids {
         let path = target.class_path(&pid);
         let current = regsnap::snapshot_key(&target.machine_root, &path)?;
-        backup
-            .prog_id_snapshots
-            .entry(pid)
-            .or_insert_with(|| current.clone());
+        if let std::collections::btree_map::Entry::Vacant(slot) =
+            backup.prog_id_snapshots.entry(pid)
+        {
+            // Another extension may already have written this ProgID: its
+            // recorded original is the true one, not WinTune's current key.
+            let wanted = slot.key().clone();
+            let original = store
+                .backups
+                .values()
+                .find_map(|b| {
+                    b.prog_id_snapshots
+                        .iter()
+                        .find(|(p, _)| p.eq_ignore_ascii_case(&wanted))
+                        .map(|(_, s)| s.clone())
+                })
+                .unwrap_or_else(|| current.clone());
+            slot.insert(original);
+        }
         items.push((m_name.clone(), path, current));
     }
 
@@ -238,7 +330,7 @@ fn prepare_extension(
         items.push((u_name.clone(), fe_path, fe));
     }
 
-    store.backups.insert(cfg.extension.clone(), backup);
+    store.backups.insert(key, backup);
     export.extend(items);
     Ok(icon_path)
 }
@@ -441,7 +533,16 @@ fn write_extension(
     }
 
     let prog_path = target.class_path(&cfg.prog_id);
-    regsnap::delete_tree(m, &prog_path)?;
+    // A ProgID WinTune created is rebuilt from scratch (no stale verbs). One
+    // that existed before belongs to another app: only overwrite the values
+    // WinTune sets, never delete what it holds (rollback restores it exactly).
+    let created_by_wintune = backup
+        .prog_id_snapshots
+        .get(&cfg.prog_id)
+        .is_none_or(|original| !original.exists);
+    if created_by_wintune {
+        regsnap::delete_tree(m, &prog_path)?;
+    }
     let prog = create_key(m, &prog_path)?;
     set_sz(&prog, &prog_path, "", &cfg.description)?;
 
@@ -607,7 +708,8 @@ pub fn apply_extensions(
     for (i, p) in prepared.into_iter().enumerate() {
         let ext = p.cfg.extension.clone();
         (opts.progress)(snapshot_steps + i, total_steps, &format!("Writing {}", ext));
-        let Some(backup) = store.backups.get(&ext).cloned() else {
+        let key = store.key_for(&ext).unwrap_or(&ext).to_string();
+        let Some(backup) = store.backups.get(&key).cloned() else {
             continue;
         };
         match write_extension(
@@ -624,7 +726,7 @@ pub fn apply_extensions(
                 ext, e
             )),
         }
-        if let Some(b) = store.backups.get_mut(&ext) {
+        if let Some(b) = store.backups.get_mut(&key) {
             b.custom_prog_id = p.cfg.prog_id.clone();
             b.icon_installed_path = p.icon_path.clone();
             b.last_applied = Some(now.clone());
@@ -678,13 +780,11 @@ pub fn rollback_extensions(
         };
         migrate_legacy_backup(&mut backup);
         let mut errors = Vec::new();
+        let mut signed_out = Vec::new();
 
         for user in &backup.user_overrides {
             if target.users_root.open_subkey(&user.sid).is_err() {
-                report.warnings.push(format!(
-                    "{}: user hive {} is not loaded, its overrides were not restored",
-                    ext, user.sid
-                ));
+                signed_out.push(user.clone());
                 continue;
             }
             let pairs = [
@@ -704,25 +804,39 @@ pub fn rollback_extensions(
             }
         }
 
-        for (pid, snap) in &backup.prog_id_snapshots {
-            if let Err(e) =
-                regsnap::restore_key(&target.machine_root, &target.class_path(pid), snap)
-            {
+        if !backup.machine_restored {
+            for (pid, snap) in &backup.prog_id_snapshots {
+                if let Err(e) =
+                    regsnap::restore_key(&target.machine_root, &target.class_path(pid), snap)
+                {
+                    errors.push(e);
+                }
+            }
+
+            if let Err(e) = regsnap::restore_key(
+                &target.machine_root,
+                &target.class_path(ext),
+                &backup.hklm_extension_key,
+            ) {
                 errors.push(e);
             }
         }
 
-        if let Err(e) = regsnap::restore_key(
-            &target.machine_root,
-            &target.class_path(ext),
-            &backup.hklm_extension_key,
-        ) {
-            errors.push(e);
-        }
-
-        if errors.is_empty() {
+        if errors.is_empty() && signed_out.is_empty() {
             store.backups.remove(ext);
             report.succeeded.push(ext.clone());
+        } else if errors.is_empty() {
+            // Everything reachable is restored; keep only what belongs to
+            // users who are signed out, to finish once they are back.
+            let users: Vec<String> = signed_out.iter().map(|u| u.sid.clone()).collect();
+            backup.user_overrides = signed_out;
+            backup.machine_restored = true;
+            store.backups.insert(ext.clone(), backup);
+            report.warnings.push(format!(
+                "{}: restored, except for signed-out user(s) {}; roll back again once they are signed in",
+                ext,
+                users.join(", ")
+            ));
         } else {
             report.errors.push(format!(
                 "{}: {} (snapshot kept, rollback can be retried)",
@@ -1349,6 +1463,198 @@ mod tests {
     #[test]
     fn find_rule_problems_is_empty_for_the_default_rules() {
         assert!(find_rule_problems(&crate::models::default_extensions()).is_empty());
+    }
+
+    // ---- Review fixes -------------------------------------------------
+
+    #[test]
+    fn system_progids_and_executable_extensions_are_rejected() {
+        for pid in [
+            "CLSID",
+            "clsid",
+            "Wow6432Node",
+            "Interface",
+            "Directory",
+            "Folder",
+            "exefile",
+            "LNKFILE",
+        ] {
+            assert!(
+                validate_extension(&foo_cfg(pid)).is_err(),
+                "ProgID {:?} accepted",
+                pid
+            );
+        }
+        for ext in [".exe", ".LNK", ".scr", ".dll"] {
+            let mut c = foo_cfg("CustomFooFile");
+            c.extension = ext.into();
+            assert!(
+                validate_extension(&c).is_err(),
+                "extension {:?} accepted",
+                ext
+            );
+        }
+    }
+
+    #[test]
+    fn an_existing_progid_of_another_app_is_overwritten_not_deleted() {
+        let env = Env::new();
+        seed_original_state(&env);
+        let (print, _) = env
+            .sb
+            .root
+            .create_subkey(env.classes("Old.File\\shell\\print\\command"))
+            .unwrap();
+        print.set_value("", &"print.exe \"%1\"").unwrap();
+        let before = env.snap(&env.classes("Old.File"));
+        let target = env.target(&[HIVE_A]);
+        let mut store = BackupStore::default();
+
+        let report = apply_extensions(
+            &target,
+            &mut store,
+            &[foo_cfg("Old.File")],
+            &env.opts(&icon_ok),
+        );
+
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert!(
+            env.exists(&env.classes("Old.File\\shell\\print\\command")),
+            "foreign subkey deleted"
+        );
+        assert_eq!(env.default_of(&env.classes("Old.File")), "Foo File");
+        rollback_extensions(&target, &mut store, &[".foo".to_string()], &no_progress);
+        assert_eq!(env.snap(&env.classes("Old.File")), before);
+    }
+
+    #[test]
+    fn a_progid_created_by_wintune_is_rewritten_from_scratch() {
+        let env = Env::new();
+        let target = env.target(&[HIVE_A]);
+        let mut store = BackupStore::default();
+        let mut cfg = foo_cfg("CustomFooFile");
+        cfg.extra_verbs.push(crate::models::CustomContextCommand {
+            verb_key: "old_verb".into(),
+            menu_label: "Old".into(),
+            command: "old.exe".into(),
+        });
+        apply_extensions(&target, &mut store, &[cfg], &env.opts(&icon_ok));
+
+        apply_extensions(
+            &target,
+            &mut store,
+            &[foo_cfg("CustomFooFile")],
+            &env.opts(&icon_ok),
+        );
+
+        assert!(!env.exists(&env.classes("CustomFooFile\\shell\\old_verb")));
+    }
+
+    #[test]
+    fn rules_sharing_a_progid_are_flagged() {
+        let mut yml = with_ext(".yml");
+        yml.prog_id = "CustomYamlFile".into();
+        let mut yaml = with_ext(".yaml");
+        yaml.prog_id = "customyamlfile".into();
+
+        let problems = find_rule_problems(&[yml, with_ext(".ok"), yaml]);
+
+        let indexes: Vec<usize> = problems.iter().map(|p| p.0).collect();
+        assert_eq!(indexes, vec![0, 2], "{:?}", problems);
+        assert!(
+            problems.iter().all(|p| p.1.contains("ProgID")),
+            "{:?}",
+            problems
+        );
+    }
+
+    #[test]
+    fn changing_only_the_case_of_an_extension_reuses_its_snapshot() {
+        let env = Env::new();
+        let target = env.target(&[HIVE_A]);
+        let mut store = BackupStore::default();
+        apply_extensions(
+            &target,
+            &mut store,
+            &[foo_cfg("CustomFooFile")],
+            &env.opts(&icon_ok),
+        );
+        let mut upper = foo_cfg("CustomFooFile");
+        upper.extension = ".FOO".into();
+
+        apply_extensions(&target, &mut store, &[upper], &env.opts(&icon_ok));
+
+        assert_eq!(store.backups.len(), 1, "{:?}", store.backups.keys());
+        let report = rollback_extensions(&target, &mut store, &[".foo".to_string()], &no_progress);
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert!(!env.exists(&env.classes(".foo")));
+        assert!(!env.exists(&env.classes("CustomFooFile")));
+    }
+
+    #[test]
+    fn a_progid_already_recorded_by_another_extension_keeps_its_true_original() {
+        let env = Env::new();
+        let target = env.target(&[HIVE_A]);
+        let mut store = BackupStore::default();
+        let mut foo = foo_cfg("CustomSharedFile");
+        foo.extension = ".foo".into();
+        apply_extensions(&target, &mut store, &[foo], &env.opts(&icon_ok));
+        let mut bar = foo_cfg("CustomSharedFile");
+        bar.extension = ".bar".into();
+
+        apply_extensions(&target, &mut store, &[bar], &env.opts(&icon_ok));
+
+        let original = &store.backups[".bar"].prog_id_snapshots["CustomSharedFile"];
+        assert!(
+            !original.exists,
+            "recorded WinTune's own key as the original"
+        );
+    }
+
+    #[test]
+    fn rollback_keeps_the_snapshot_of_a_signed_out_user_until_they_are_back() {
+        let env = Env::new();
+        let (uc, _) = env
+            .sb
+            .root
+            .create_subkey(env.user(HIVE_B, &format!("{}\\UserChoice", USER_CHOICE_REL)))
+            .unwrap();
+        uc.set_value("ProgId", &"B.File").unwrap();
+        let before_b = env.snap(&env.user(HIVE_B, USER_CHOICE_REL));
+        let target = env.target(&[HIVE_B]);
+        let mut store = BackupStore::default();
+        apply_extensions(
+            &target,
+            &mut store,
+            &[foo_cfg("CustomFooFile")],
+            &env.opts(&icon_ok),
+        );
+        // B signs out: the hive is no longer loaded.
+        env.sb
+            .root
+            .delete_subkey_all(env.sb.key(&format!("Users\\{}", HIVE_B)))
+            .unwrap();
+
+        let report = rollback_extensions(&target, &mut store, &[".foo".to_string()], &no_progress);
+
+        assert!(!report.warnings.is_empty());
+        assert!(!env.exists(&env.classes(".foo")), "machine part restored");
+        let kept = store
+            .backups
+            .get(".foo")
+            .expect("snapshot of the signed-out user dropped");
+        assert_eq!(kept.user_overrides.len(), 1);
+
+        // B signs back in: the next rollback finishes the job.
+        env.sb
+            .root
+            .create_subkey(env.sb.key(&format!("Users\\{}", HIVE_B)))
+            .unwrap();
+        let report = rollback_extensions(&target, &mut store, &[".foo".to_string()], &no_progress);
+
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(env.snap(&env.user(HIVE_B, USER_CHOICE_REL)), before_b);
+        assert!(store.backups.is_empty());
     }
 
     #[test]

@@ -268,8 +268,8 @@ impl WinTuneApp {
                 );
                 let has_backup = self
                     .backup_store
-                    .backups
-                    .contains_key(&self.config.extensions[self.selected_ext_index].extension);
+                    .find(&self.config.extensions[self.selected_ext_index].extension)
+                    .is_some();
 
                 let problem = find_rule_problems(&self.config.extensions)
                     .into_iter()

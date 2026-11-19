@@ -118,11 +118,14 @@ fn a_registry_job_that_panics_is_logged_in_the_history() {
     let fx = TempIcons::new(&["foo"]);
     let ctx = egui::Context::default();
     let mut app = fx.app_with_rules(&ctx, &[".foo"]);
-    app.job = Some(RunningJob::Tweaks(BackgroundJob::spawn(
-        "Applying tweaks",
-        || {},
-        |_| -> super::jobs::TweakOutcome { panic!("boom") },
-    )));
+    app.job = Some(RunningJob::Tweaks(
+        BackgroundJob::spawn(
+            "Applying tweaks",
+            || {},
+            |_| -> super::jobs::TweakOutcome { panic!("boom") },
+        ),
+        "Explorer & Taskbar",
+    ));
 
     run_until_idle(&mut app, &ctx);
 

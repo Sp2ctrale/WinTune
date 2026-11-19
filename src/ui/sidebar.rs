@@ -173,6 +173,9 @@ impl WinTuneApp {
                 self.reload_tweak_store();
                 self.refresh_tweak_statuses();
             }
+            if self.active_tab != tab {
+                self.focus_search = false;
+            }
             self.active_tab = tab;
         }
         ui.add_space(4.0);

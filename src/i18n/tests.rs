@@ -110,6 +110,135 @@ fn shipped_translations_use_the_same_placeholders_as_english() {
     }
 }
 
+#[test]
+fn every_engine_message_translates_in_every_shipped_language() {
+    use super::messages::{custom_reason, drift_reason, rule_problem};
+    use crate::associations::{DriftField, DriftReason, RuleProblem};
+    use crate::tweaks::CustomReason;
+
+    let s = |x: &str| x.to_string();
+    // (message builder, sample arguments it must contain)
+    type Case = (Box<dyn Fn(Tr) -> String>, Vec<&'static str>);
+    let mut cases: Vec<Case> = Vec::new();
+    let mut problem = |p: RuleProblem, args: Vec<&'static str>| {
+        cases.push((Box::new(move |tr| rule_problem(tr, &p)), args));
+    };
+    problem(
+        RuleProblem::InvalidExtension { ext: s("EXT1") },
+        vec!["EXT1"],
+    );
+    problem(
+        RuleProblem::ReservedExtension { ext: s("EXT2") },
+        vec!["EXT2"],
+    );
+    problem(
+        RuleProblem::InvalidProgId { prog_id: s("PID1") },
+        vec!["PID1"],
+    );
+    problem(
+        RuleProblem::ReservedProgId {
+            prog_id: s("PID2"),
+            suggestion: s("SUG2"),
+        },
+        vec!["PID2", "SUG2"],
+    );
+    problem(
+        RuleProblem::DuplicateExtension { ext: s("EXT3") },
+        vec!["EXT3"],
+    );
+    problem(
+        RuleProblem::SharedProgId { prog_id: s("PID3") },
+        vec!["PID3"],
+    );
+    let mut drift = |r: DriftReason, args: Vec<&'static str>| {
+        cases.push((Box::new(move |tr| drift_reason(tr, &r)), args));
+    };
+    drift(
+        DriftReason::DefaultChanged {
+            ext: s("EXT4"),
+            found: s("FOUND4"),
+            expected: s("EXP4"),
+        },
+        vec!["EXT4", "FOUND4", "EXP4"],
+    );
+    drift(
+        DriftReason::DefaultMissing {
+            ext: s("EXT5"),
+            expected: s("EXP5"),
+        },
+        vec!["EXT5", "EXP5"],
+    );
+    drift(
+        DriftReason::ProgIdMissing { prog_id: s("PID5") },
+        vec!["PID5"],
+    );
+    for field in [
+        DriftField::Description,
+        DriftField::Icon,
+        DriftField::OpenCommand,
+    ] {
+        drift(
+            DriftReason::ValueDiffers {
+                field,
+                expected: s("EXP6"),
+                found: s("FOUND6"),
+            },
+            vec!["EXP6", "FOUND6"],
+        );
+    }
+    drift(
+        DriftReason::UserChoice {
+            choice: s("CHOICE7"),
+            user: s("USER7"),
+            ext: s("EXT7"),
+            prog_id: s("PID7"),
+        },
+        vec!["CHOICE7", "USER7", "EXT7", "PID7"],
+    );
+    drift(
+        DriftReason::UserOverride {
+            user: s("USER8"),
+            ext: s("EXT8"),
+            prog_id: s("PID8"),
+        },
+        vec!["USER8", "EXT8", "PID8"],
+    );
+    let mut custom = |c: CustomReason, args: Vec<&'static str>| {
+        cases.push((Box::new(move |tr| custom_reason(tr, &c)), args));
+    };
+    custom(
+        CustomReason::UnexpectedValue {
+            name: s("NAME9"),
+            value: 4242,
+        },
+        vec!["NAME9", "4242"],
+    );
+    custom(
+        CustomReason::UnexpectedType { name: s("NAME10") },
+        vec!["NAME10"],
+    );
+    custom(CustomReason::Unreadable(s("WHY11")), vec!["WHY11"]);
+
+    for (code, _) in Tr::languages() {
+        let tr = Tr::new(code);
+        for (build, args) in &cases {
+            let text = build(tr);
+            assert!(!text.is_empty(), "{code}: empty message");
+            assert!(
+                !text.contains('{'),
+                "{code}: unfilled placeholder in {text:?}"
+            );
+            assert!(
+                !text.contains('.') || text.contains(' '),
+                "{code}: looks like a bare key: {text:?}"
+            );
+            for a in args {
+                assert!(text.contains(a), "{code}: {text:?} lacks {a:?}");
+            }
+        }
+    }
+}
+
 fn collect_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     for entry in std::fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();

@@ -80,10 +80,14 @@ pub(super) fn status_badge(ui: &mut egui::Ui, theme: ThemeMode, status: Option<&
 • {}
 
 Apply again to restore it.",
-                reasons.join(
-                    "
+                reasons
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(
+                        "
 • "
-                )
+                    )
             ));
         }
         Some(RuleStatus::NotApplied) | None => {}
@@ -106,6 +110,7 @@ mod tests {
     use super::super::jobs::RunningJob;
     use super::super::test_support::*;
     use super::*;
+    use crate::associations::DriftReason;
     use crate::gallery::PakStats;
     use egui::RawInput;
     use std::time::{Duration, Instant};
@@ -188,8 +193,12 @@ mod tests {
         let ctx = egui::Context::default();
         let mut app = fx.app_with_rules(&ctx, &[".foo", ".bar"]);
         app.rule_statuses.insert(".foo".into(), RuleStatus::Applied);
-        app.rule_statuses
-            .insert(".bar".into(), RuleStatus::Drifted(vec!["x".into()]));
+        app.rule_statuses.insert(
+            ".bar".into(),
+            RuleStatus::Drifted(vec![DriftReason::ProgIdMissing {
+                prog_id: "x".into(),
+            }]),
+        );
         app.selected_ext_index = 1;
 
         for tab in super::super::ActiveTab::ALL {

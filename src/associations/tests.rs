@@ -444,11 +444,70 @@ fn applied_foo(env: &Env, store: &mut BackupStore) -> AssocTarget {
     target
 }
 
-fn reasons(status: RuleStatus) -> Vec<String> {
+fn drift_codes(status: RuleStatus) -> Vec<DriftReason> {
     match status {
         RuleStatus::Drifted(r) => r,
         other => panic!("expected Drifted, got {:?}", other),
     }
+}
+
+fn reasons(status: RuleStatus) -> Vec<String> {
+    drift_codes(status)
+        .iter()
+        .map(ToString::to_string)
+        .collect()
+}
+
+#[test]
+fn drift_reasons_are_codes() {
+    let env = Env::new();
+    let mut store = BackupStore::default();
+    let target = applied_foo(&env, &mut store);
+    let (k, _) = env.sb.root.create_subkey(env.classes(".foo")).unwrap();
+    k.set_value("", &"OtherFile").unwrap();
+
+    let r = drift_codes(rule_status(
+        &target,
+        &foo_cfg("CustomFooFile"),
+        store.backups.get(".foo"),
+        &status_ctx(),
+    ));
+
+    assert!(r.contains(&DriftReason::DefaultChanged {
+        ext: ".foo".into(),
+        found: "OtherFile".into(),
+        expected: "CustomFooFile".into()
+    }));
+}
+
+#[test]
+fn rule_problems_are_codes() {
+    let rules = [with_ext(".foo"), with_ext(".FOO")];
+    assert_eq!(
+        find_rule_problems(&rules)[0].1,
+        RuleProblem::DuplicateExtension { ext: ".foo".into() }
+    );
+    let mut c = foo_cfg("CLSID");
+    assert_eq!(
+        validate_extension(&c),
+        Err(RuleProblem::ReservedProgId {
+            prog_id: "CLSID".into(),
+            suggestion: "CustomFOOFile".into()
+        })
+    );
+    c.extension = ".exe".into();
+    assert_eq!(
+        validate_extension(&c),
+        Err(RuleProblem::ReservedExtension { ext: ".exe".into() })
+    );
+}
+
+#[test]
+fn problem_display_keeps_the_english_sentences() {
+    assert_eq!(
+        RuleProblem::DuplicateExtension { ext: ".foo".into() }.to_string(),
+        ".foo is listed more than once"
+    );
 }
 
 #[test]
@@ -596,7 +655,7 @@ fn find_rule_problems_reports_invalid_values_with_their_index() {
 
     assert_eq!(problems.len(), 1, "{:?}", problems);
     assert_eq!(problems[0].0, 1);
-    assert!(problems[0].1.contains(".a b"), "{:?}", problems);
+    assert!(problems[0].1.to_string().contains(".a b"), "{:?}", problems);
 }
 
 #[test]
@@ -607,7 +666,9 @@ fn find_rule_problems_flags_every_duplicate_case_insensitively() {
 
     let indexes: Vec<usize> = problems.iter().map(|p| p.0).collect();
     assert_eq!(indexes, vec![0, 2], "{:?}", problems);
-    assert!(problems.iter().all(|p| p.1.contains("more than once")));
+    assert!(problems
+        .iter()
+        .all(|p| p.1.to_string().contains("more than once")));
 }
 
 #[test]
@@ -712,7 +773,7 @@ fn rules_sharing_a_progid_are_flagged() {
     let indexes: Vec<usize> = problems.iter().map(|p| p.0).collect();
     assert_eq!(indexes, vec![0, 2], "{:?}", problems);
     assert!(
-        problems.iter().all(|p| p.1.contains("ProgID")),
+        problems.iter().all(|p| p.1.to_string().contains("ProgID")),
         "{:?}",
         problems
     );

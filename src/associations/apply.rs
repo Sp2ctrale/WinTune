@@ -342,6 +342,7 @@ pub fn apply_extensions(
     let mut export: Vec<ExportItem> = Vec::new();
     for (i, cfg) in enabled.into_iter().enumerate() {
         let result = validate_extension(cfg)
+            .map_err(|e| e.to_string())
             .and_then(|_| prepare_extension(target, store, cfg, opts, &now, &mut export));
         match result {
             Ok(icon_path) => prepared.push(Prepared { cfg, icon_path }),

@@ -192,6 +192,7 @@ impl WinTuneApp {
                     let problems: std::collections::HashMap<usize, String> =
                         find_rule_problems(&self.config.extensions)
                             .into_iter()
+                            .map(|(i, p)| (i, p.to_string()))
                             .collect();
 
                     if filtered_indices.is_empty() {
@@ -292,7 +293,7 @@ impl WinTuneApp {
                 let problem = find_rule_problems(&self.config.extensions)
                     .into_iter()
                     .find(|(i, _)| *i == self.selected_ext_index)
-                    .map(|(_, msg)| msg);
+                    .map(|(_, p)| p.to_string());
 
                 let status = self
                     .rule_statuses
@@ -580,7 +581,7 @@ pub(super) fn problems_of_enabled(rules: &[ExtensionConfig]) -> Vec<String> {
     let enabled: Vec<ExtensionConfig> = rules.iter().filter(|r| r.enabled).cloned().collect();
     find_rule_problems(&enabled)
         .into_iter()
-        .map(|(_, msg)| msg)
+        .map(|(_, p)| p.to_string())
         .collect()
 }
 

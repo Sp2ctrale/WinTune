@@ -398,7 +398,34 @@ pub enum TweakStatus {
     /// Off, including "not set" (Windows then uses its default).
     Off,
     /// Set to something WinTune does not write, e.g. a value set by another tool.
-    Custom(String),
+    Custom(CustomReason),
+}
+
+/// Why a tweak reads as "Custom". Carries the values: the UI translates it
+/// (`i18n::messages::custom_reason`); `Display` is the English text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CustomReason {
+    UnexpectedValue {
+        name: String,
+        value: u32,
+    },
+    UnexpectedType {
+        name: String,
+    },
+    /// The registry read failed; carries the error text.
+    Unreadable(String),
+}
+
+impl std::fmt::Display for CustomReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CustomReason::UnexpectedValue { name, value } => write!(f, "{} = {}", name, value),
+            CustomReason::UnexpectedType { name } => {
+                write!(f, "{} has an unexpected type", name)
+            }
+            CustomReason::Unreadable(e) => write!(f, "unreadable: {}", e),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -508,11 +535,13 @@ pub fn tweak_status(target: &TweakTarget, tweak: &Tweak) -> Result<TweakStatus, 
             match dword_of(&value) {
                 Some(v) if v == on => Ok(TweakStatus::On),
                 Some(v) if v == off => Ok(TweakStatus::Off),
-                Some(v) => Ok(TweakStatus::Custom(format!("{} = {}", name, v))),
-                None => Ok(TweakStatus::Custom(format!(
-                    "{} has an unexpected type",
-                    name
-                ))),
+                Some(v) => Ok(TweakStatus::Custom(CustomReason::UnexpectedValue {
+                    name: name.to_string(),
+                    value: v,
+                })),
+                None => Ok(TweakStatus::Custom(CustomReason::UnexpectedType {
+                    name: name.to_string(),
+                })),
             }
         }
         TweakAction::Key { key, .. } => {
@@ -990,6 +1019,19 @@ mod tests {
             status(&env, "open_this_pc"),
             TweakStatus::Custom(_)
         ));
+    }
+
+    #[test]
+    fn a_dword_with_an_unknown_value_is_custom_with_its_value() {
+        let env = Env::new();
+        env.set_dword(ADVANCED, "HideFileExt", 7);
+        assert_eq!(
+            status(&env, "show_extensions"),
+            TweakStatus::Custom(CustomReason::UnexpectedValue {
+                name: "HideFileExt".into(),
+                value: 7
+            })
+        );
     }
 
     #[test]

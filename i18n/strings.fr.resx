@@ -15,4 +15,58 @@
   <data name="language.name" xml:space="preserve">
     <value>Français</value>
   </data>
+  <data name="problem.invalid_extension" xml:space="preserve">
+    <value>l'extension « {0} » n'est pas valide (attendu par exemple « .rs », sans espace ni caractère de chemin)</value>
+  </data>
+  <data name="problem.reserved_extension" xml:space="preserve">
+    <value>{0} est réservée : modifier la façon dont Windows l'exécute pourrait endommager le système</value>
+  </data>
+  <data name="problem.invalid_prog_id" xml:space="preserve">
+    <value>le ProgID « {0} » n'est pas valide (attendu par exemple « CustomRustFile », sans espace ni caractère de chemin)</value>
+  </data>
+  <data name="problem.reserved_prog_id" xml:space="preserve">
+    <value>le ProgID « {0} » est une clé système de Windows : choisissez un autre nom (par exemple « {1} »)</value>
+  </data>
+  <data name="problem.duplicate_extension" xml:space="preserve">
+    <value>{0} apparaît plusieurs fois dans la liste</value>
+  </data>
+  <data name="problem.shared_prog_id" xml:space="preserve">
+    <value>le ProgID {0} est utilisé par plusieurs règles : donnez à chaque règle le sien</value>
+  </data>
+  <data name="drift.default_changed" xml:space="preserve">
+    <value>{0} s'ouvre désormais avec {1} au lieu de {2}</value>
+  </data>
+  <data name="drift.default_missing" xml:space="preserve">
+    <value>{0} n'a plus de ProgID par défaut (attendu : {1})</value>
+  </data>
+  <data name="drift.prog_id_missing" xml:space="preserve">
+    <value>le ProgID {0} est introuvable</value>
+  </data>
+  <data name="drift.value_differs" xml:space="preserve">
+    <value>{0} diffère : attendu « {1} », trouvé « {2} »</value>
+  </data>
+  <data name="drift.field.description" xml:space="preserve">
+    <value>la description</value>
+  </data>
+  <data name="drift.field.icon" xml:space="preserve">
+    <value>l'icône</value>
+  </data>
+  <data name="drift.field.open_command" xml:space="preserve">
+    <value>la commande d'ouverture</value>
+  </data>
+  <data name="drift.user_choice" xml:space="preserve">
+    <value>le choix {0} de l'Explorateur pour l'utilisateur {1} ouvre {2} avec {3}</value>
+  </data>
+  <data name="drift.user_override" xml:space="preserve">
+    <value>un remplacement propre à l'utilisateur {0} fait pointer {1} vers {2}</value>
+  </data>
+  <data name="custom.unexpected_value" xml:space="preserve">
+    <value>{0} = {1}</value>
+  </data>
+  <data name="custom.unexpected_type" xml:space="preserve">
+    <value>{0} a un type inattendu</value>
+  </data>
+  <data name="custom.unreadable" xml:space="preserve">
+    <value>illisible : {0}</value>
+  </data>
 </root>

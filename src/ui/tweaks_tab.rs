@@ -9,8 +9,8 @@ use super::{ActiveTab, WinTuneApp};
 use crate::tasks::BackgroundJob;
 use crate::theme::{accent_button, card_frame, draw_badge, get_palette};
 use crate::tweaks::{
-    apply_tweaks, catalog, load_tweak_store, restore_tweaks, tweak_status, OsRequirement, Refresh,
-    Tweak, TweakBackupStore, TweakGroup, TweakOptions, TweakStatus,
+    apply_tweaks, catalog, load_tweak_store, restore_tweaks, tweak_status, CustomReason,
+    OsRequirement, Refresh, Tweak, TweakBackupStore, TweakGroup, TweakOptions, TweakStatus,
 };
 use eframe::egui::{self, Margin, RichText};
 
@@ -37,7 +37,7 @@ impl WinTuneApp {
             .iter()
             .map(|t| {
                 let status = tweak_status(&target, t)
-                    .unwrap_or_else(|e| TweakStatus::Custom(format!("unreadable: {}", e)));
+                    .unwrap_or_else(|e| TweakStatus::Custom(CustomReason::Unreadable(e)));
                 (t.id, status)
             })
             .collect();

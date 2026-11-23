@@ -16,4 +16,58 @@
     <value>English</value>
     <comment>The language's own name, shown in the language picker.</comment>
   </data>
+  <data name="problem.invalid_extension" xml:space="preserve">
+    <value>invalid extension '{0}' (expected e.g. '.rs', without spaces or path characters)</value>
+  </data>
+  <data name="problem.reserved_extension" xml:space="preserve">
+    <value>{0} is reserved: changing how Windows runs it could break the system</value>
+  </data>
+  <data name="problem.invalid_prog_id" xml:space="preserve">
+    <value>invalid ProgID '{0}' (expected e.g. 'CustomRustFile', without spaces or path characters)</value>
+  </data>
+  <data name="problem.reserved_prog_id" xml:space="preserve">
+    <value>ProgID '{0}' is a Windows system key: choose another name (e.g. '{1}')</value>
+  </data>
+  <data name="problem.duplicate_extension" xml:space="preserve">
+    <value>{0} is listed more than once</value>
+  </data>
+  <data name="problem.shared_prog_id" xml:space="preserve">
+    <value>ProgID {0} is used by several rules: give each rule its own</value>
+  </data>
+  <data name="drift.default_changed" xml:space="preserve">
+    <value>{0} now opens with {1} instead of {2}</value>
+  </data>
+  <data name="drift.default_missing" xml:space="preserve">
+    <value>{0} has no default ProgID any more (expected {1})</value>
+  </data>
+  <data name="drift.prog_id_missing" xml:space="preserve">
+    <value>ProgID {0} is missing</value>
+  </data>
+  <data name="drift.value_differs" xml:space="preserve">
+    <value>{0} differs: expected "{1}", found "{2}"</value>
+  </data>
+  <data name="drift.field.description" xml:space="preserve">
+    <value>description</value>
+  </data>
+  <data name="drift.field.icon" xml:space="preserve">
+    <value>icon</value>
+  </data>
+  <data name="drift.field.open_command" xml:space="preserve">
+    <value>open command</value>
+  </data>
+  <data name="drift.user_choice" xml:space="preserve">
+    <value>Explorer {0} of user {1} opens {2} with {3}</value>
+  </data>
+  <data name="drift.user_override" xml:space="preserve">
+    <value>a per-user override of user {0} points {1} to {2}</value>
+  </data>
+  <data name="custom.unexpected_value" xml:space="preserve">
+    <value>{0} = {1}</value>
+  </data>
+  <data name="custom.unexpected_type" xml:space="preserve">
+    <value>{0} has an unexpected type</value>
+  </data>
+  <data name="custom.unreadable" xml:space="preserve">
+    <value>unreadable: {0}</value>
+  </data>
 </root>

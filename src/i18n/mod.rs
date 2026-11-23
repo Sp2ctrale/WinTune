@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::sync::OnceLock;
 
+pub mod messages;
 pub mod resx;
 
 pub use resx::parse_resx;

@@ -69,6 +69,7 @@ fn shipped_languages_are_listed_with_their_own_names() {
     let langs = Tr::languages();
     assert_eq!(langs[0], ("en", "English".to_string()));
     assert!(langs.contains(&("fr", "Français".to_string())));
+    assert!(langs.iter().any(|(code, _)| *code == "en"), "no English");
 }
 
 fn placeholder_set(s: &str) -> BTreeSet<usize> {

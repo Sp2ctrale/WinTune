@@ -30,6 +30,9 @@ fn generate_language_table() {
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
+            if name.ends_with(".resx") {
+                println!("cargo:rerun-if-changed={}", path.display());
+            }
             if name == "strings.resx" {
                 langs.push(("en".to_string(), path.clone()));
             } else if let Some(code) = name
@@ -42,6 +45,11 @@ fn generate_language_table() {
             }
         }
     }
+    assert!(
+        langs.iter().any(|(code, _)| code == "en"),
+        "i18n/strings.resx is missing: the English reference catalog must exist in {}",
+        dir.display()
+    );
     langs.sort_by(|a, b| (a.0 != "en", &a.0).cmp(&(b.0 != "en", &b.0)));
 
     let mut src = String::from("pub(crate) static LANG_FILES: &[(&str, &str)] = &[\n");

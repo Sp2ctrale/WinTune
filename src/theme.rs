@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ThemeMode {
+    /// Follow the Windows light / dark setting.
     #[default]
+    System,
     Dark,
     Light,
 }
@@ -25,7 +27,9 @@ pub struct FluentColors {
 
 pub fn get_palette(mode: ThemeMode) -> FluentColors {
     match mode {
-        ThemeMode::Dark => FluentColors {
+        // `System` is never passed once the UI gives these helpers
+        // `ui::kit::resolved(...)`; until then it draws dark, as before.
+        ThemeMode::Dark | ThemeMode::System => FluentColors {
             bg_base: Color32::from_rgb(20, 22, 27),
             bg_sidebar: Color32::from_rgb(26, 28, 35),
             bg_card: Color32::from_rgb(31, 34, 42),
@@ -65,7 +69,8 @@ pub fn apply_fluent_theme(ctx: &Context, mode: ThemeMode) {
     style.spacing.window_margin = Margin::same(14.0);
 
     let mut visuals = match mode {
-        ThemeMode::Dark => Visuals::dark(),
+        // Same as `get_palette`: `System` is never passed once resolved.
+        ThemeMode::Dark | ThemeMode::System => Visuals::dark(),
         ThemeMode::Light => Visuals::light(),
     };
 

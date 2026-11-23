@@ -113,7 +113,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         let base = app_data_dir();
         Self {
-            theme: ThemeMode::Dark,
+            theme: ThemeMode::System,
             code_executable: String::new(),
             icon_source_folder: base.join("icons").to_string_lossy().into_owned(),
             icon_destination_folder: program_data_dir()

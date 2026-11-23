@@ -10,6 +10,7 @@ mod confirm;
 mod gallery_tab;
 mod history_panel;
 mod jobs;
+pub mod kit;
 mod polish;
 #[cfg(test)]
 mod review2_tests;

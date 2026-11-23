@@ -156,3 +156,174 @@ fn old_configs_keep_their_theme() {
 fn new_configs_follow_windows() {
     assert_eq!(crate::models::AppConfig::default().theme, ThemeMode::System);
 }
+
+// ---- fonts and icons ----
+
+use std::path::{Path, PathBuf};
+
+const WIN_FONTS: &str = r"C:\Windows\Fonts";
+
+fn temp_dir_with(tag: &str, files: &[(&str, &[u8])]) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("wintune-fonts-{}-{tag}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (name, bytes) in files {
+        std::fs::write(dir.join(name), bytes).unwrap();
+    }
+    dir
+}
+
+/// Copies the named system fonts into a fresh temp dir; None if any is absent.
+fn copy_system_fonts(tag: &str, names: &[&str]) -> Option<PathBuf> {
+    let mut files = Vec::new();
+    for n in names {
+        match std::fs::read(Path::new(WIN_FONTS).join(n)) {
+            Ok(b) => files.push((*n, b)),
+            Err(_) => {
+                eprintln!("skipping: {n} is absent from {WIN_FONTS}");
+                return None;
+            }
+        }
+    }
+    let refs: Vec<(&str, &[u8])> = files.iter().map(|(n, b)| (*n, b.as_slice())).collect();
+    Some(temp_dir_with(tag, &refs))
+}
+
+fn run_label_frame(ctx: &egui::Context) {
+    let _ = ctx.run(RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| ui.label("ok"));
+    });
+}
+
+#[test]
+fn missing_fonts_folder_falls_back_without_panicking() {
+    let ctx = egui::Context::default();
+    let r = fonts::install(&ctx, Path::new(r"C:\definitely\not\here"));
+    assert_eq!(
+        r,
+        FontReport {
+            text: None,
+            semibold: false,
+            icons: None
+        }
+    );
+    run_label_frame(&ctx);
+    assert!(!icons::icons_available(&ctx));
+    assert!(icons::icon_text(&ctx, Icon::Home, 16.0).is_none());
+    assert_eq!(
+        fonts::semibold(&ctx, 14.0),
+        egui::FontId::proportional(14.0)
+    );
+}
+
+#[test]
+fn corrupt_font_files_are_skipped() {
+    let dir = temp_dir_with(
+        "corrupt",
+        &[
+            ("SegUIVar.ttf", b"not a font"),
+            ("seguisb.ttf", b"nope"),
+            ("SegoeIcons.ttf", b"\0\0\0"),
+        ],
+    );
+    let ctx = egui::Context::default();
+    let r = fonts::install(&ctx, &dir);
+    assert_eq!(r.text, None);
+    assert!(!r.semibold);
+    assert_eq!(r.icons, None);
+    run_label_frame(&ctx);
+    assert_eq!(
+        fonts::semibold(&ctx, 14.0),
+        egui::FontId::proportional(14.0)
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn falls_back_to_the_next_candidate() {
+    let Some(dir) = copy_system_fonts("fallback", &["segoeui.ttf", "segmdl2.ttf"]) else {
+        return;
+    };
+    let ctx = egui::Context::default();
+    let r = fonts::install(&ctx, &dir);
+    assert_eq!(r.text, Some("segoeui.ttf"));
+    assert!(!r.semibold);
+    assert_eq!(r.icons, Some("segmdl2.ttf"));
+    run_label_frame(&ctx);
+    assert!(icons::icons_available(&ctx));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn corrupt_first_candidate_uses_the_second() {
+    let Some(good) = std::fs::read(Path::new(WIN_FONTS).join("segoeui.ttf")).ok() else {
+        eprintln!("skipping: segoeui.ttf is absent");
+        return;
+    };
+    let dir = temp_dir_with(
+        "corrupt-first",
+        &[("SegUIVar.ttf", b"garbage"), ("segoeui.ttf", &good)],
+    );
+    let ctx = egui::Context::default();
+    assert_eq!(fonts::install(&ctx, &dir).text, Some("segoeui.ttf"));
+    run_label_frame(&ctx);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn real_windows_fonts_load_when_present() {
+    let dir = Path::new(WIN_FONTS);
+    if !dir.join("SegUIVar.ttf").exists() {
+        eprintln!("skipping: SegUIVar.ttf is absent");
+        return;
+    }
+    let ctx = egui::Context::default();
+    let r = fonts::install(&ctx, dir);
+    assert_eq!(r.text, Some("SegUIVar.ttf"));
+    if dir.join("seguisb.ttf").exists() {
+        assert!(r.semibold);
+    }
+    assert!(r.icons.is_some());
+    run_label_frame(&ctx);
+    assert!(icons::icons_available(&ctx));
+    let t = icons::icon_text(&ctx, Icon::Settings, 16.0).expect("icon text");
+    let _ = ctx.run(RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.label(t.clone());
+            ui.label(egui::RichText::new("Bold").font(fonts::semibold(ctx, 14.0)));
+        });
+    });
+}
+
+#[test]
+fn glyphs_are_distinct_private_use_code_points() {
+    use Icon::*;
+    let all = [
+        Home,
+        Associations,
+        Explorer,
+        Start,
+        ContextMenu,
+        Icons,
+        History,
+        Settings,
+        Search,
+        Add,
+        Delete,
+        Restore,
+        Warning,
+        Info,
+        Error,
+        Success,
+        ChevronRight,
+        ChevronDown,
+        More,
+        Folder,
+    ];
+    for i in all {
+        let c = icons::glyph(i) as u32;
+        assert!((0xE000..=0xF8FF).contains(&c), "{i:?} is {c:X}");
+    }
+    assert_eq!(icons::glyph(Home), '\u{E80F}');
+    assert_eq!(icons::glyph(Folder), '\u{E8B7}');
+}

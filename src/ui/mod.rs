@@ -181,6 +181,8 @@ impl WinTuneApp {
             }
         }
         let mut app = Self::with_config(&cc.egui_ctx, config, has_wsl_distribution(), env);
+        let windir = std::env::var_os("WINDIR").unwrap_or_else(|| r"C:\Windows".into());
+        kit::fonts::install(&cc.egui_ctx, &std::path::Path::new(&windir).join("Fonts"));
         if let Some(e) = &config_error {
             app.set_status(format!(
                 "Using the default rules: {} Saving is disabled until it is fixed.",

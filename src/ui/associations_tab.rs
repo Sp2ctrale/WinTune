@@ -354,7 +354,7 @@ impl WinTuneApp {
 
                 if open_gallery_picker {
                     self.assign_icon_to_selected_ext = true;
-                    self.active_tab = ActiveTab::Gallery;
+                    self.open_page(ActiveTab::Gallery);
                 }
 
                 if apply_single {

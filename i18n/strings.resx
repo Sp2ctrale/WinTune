@@ -217,6 +217,24 @@
   <data name="job.restore_tweaks" xml:space="preserve">
     <value>Restoring original settings…</value>
   </data>
+  <data name="job.progress" xml:space="preserve">
+    <value>{0}/{1}</value>
+  </data>
+  <data name="job.name.apply_rules" xml:space="preserve">
+    <value>Applying file associations</value>
+  </data>
+  <data name="job.name.rollback" xml:space="preserve">
+    <value>Restoring extensions</value>
+  </data>
+  <data name="job.name.build_pak" xml:space="preserve">
+    <value>Building gallery.pak</value>
+  </data>
+  <data name="job.name.apply_tweaks" xml:space="preserve">
+    <value>Applying tweaks</value>
+  </data>
+  <data name="job.name.restore_tweaks" xml:space="preserve">
+    <value>Restoring original settings</value>
+  </data>
   <data name="toast.clear_all" xml:space="preserve">
     <value>Clear all</value>
   </data>
@@ -522,6 +540,9 @@
   </data>
   <data name="settings.open_data_folder" xml:space="preserve">
     <value>Open data folder</value>
+  </data>
+  <data name="settings.data_folder_failed" xml:space="preserve">
+    <value>Could not open the data folder.</value>
   </data>
   <data name="settings.about" xml:space="preserve">
     <value>About</value>

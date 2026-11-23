@@ -66,9 +66,9 @@ For a new module:
 3. **Add an `ActiveTab` variant** and a `src/ui/<module>_tab.rs` file. Add
    its entry to the navigation in `ui/shell.rs`, its summary to
    `module_summaries` in `ui/home.rs` (the tile on Home), and the `nav.*` and
-   `home.*` keys in every `.resx`. Switch to it only through `open_page`. Run long operations through `ui/jobs.rs`,
-   ask for confirmation before destructive actions, and record finished jobs
-   with `record_history`.
+   `home.*` keys in every `.resx`. Switch to it only through `open_page`.
+   Run long operations through `ui/jobs.rs`, ask for confirmation before
+   destructive actions, and record finished jobs with `record_history`.
 4. **Add headless UI tests** with `TempIcons`.
 
 ## Adding a language

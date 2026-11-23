@@ -81,6 +81,13 @@ fn nav_item<K: PartialEq + Copy>(ui: &mut Ui, selected: &mut K, item: &NavItem<'
                 p.surface_hover.gamma_multiply(0.6),
             );
         }
+        if item.enabled && response.has_focus() {
+            painter.rect_stroke(
+                rect.expand(1.0),
+                Rounding::same(radius::CONTROL),
+                Stroke::new(2.0_f32, p.accent),
+            );
+        }
         let mut text_x = rect.left() + space::M;
         if icons_available(ui.ctx()) {
             let galley = painter.layout_no_wrap(

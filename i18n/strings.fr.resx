@@ -216,6 +216,24 @@
   <data name="job.restore_tweaks" xml:space="preserve">
     <value>Restauration des réglages d'origine…</value>
   </data>
+  <data name="job.progress" xml:space="preserve">
+    <value>{0}/{1}</value>
+  </data>
+  <data name="job.name.apply_rules" xml:space="preserve">
+    <value>L'application des associations de fichiers</value>
+  </data>
+  <data name="job.name.rollback" xml:space="preserve">
+    <value>La restauration des extensions</value>
+  </data>
+  <data name="job.name.build_pak" xml:space="preserve">
+    <value>La création de gallery.pak</value>
+  </data>
+  <data name="job.name.apply_tweaks" xml:space="preserve">
+    <value>L'application des réglages</value>
+  </data>
+  <data name="job.name.restore_tweaks" xml:space="preserve">
+    <value>La restauration des réglages d'origine</value>
+  </data>
   <data name="toast.clear_all" xml:space="preserve">
     <value>Tout effacer</value>
   </data>
@@ -307,7 +325,7 @@
     <value>Erreur d'empaquetage : {0}</value>
   </data>
   <data name="notice.job_panicked" xml:space="preserve">
-    <value>Échec inattendu de {0} : {1}</value>
+    <value>{0} a échoué de façon inattendue : {1}</value>
   </data>
   <data name="notice.history_not_saved" xml:space="preserve">
     <value>Historique non enregistré : {0}</value>
@@ -379,16 +397,16 @@
     <value>Associations de fichiers</value>
   </data>
   <data name="history.module.explorer" xml:space="preserve">
-    <value>Explorateur &amp; barre des tâches</value>
+    <value>Explorateur et barre des tâches</value>
   </data>
   <data name="history.module.start" xml:space="preserve">
-    <value>Démarrer &amp; confidentialité</value>
+    <value>Démarrer et confidentialité</value>
   </data>
   <data name="history.action.apply" xml:space="preserve">
     <value>Appliquer</value>
   </data>
   <data name="history.action.rollback" xml:space="preserve">
-    <value>Annuler</value>
+    <value>Restauration</value>
   </data>
   <data name="history.action.restore" xml:space="preserve">
     <value>Restaurer</value>
@@ -409,7 +427,7 @@
     <value>Examiner</value>
   </data>
   <data name="home.rules_status" xml:space="preserve">
-    <value>{0} actives · {1} modifiée(s)</value>
+    <value>{0} active(s) · {1} modifiée(s)</value>
   </data>
   <data name="home.tweaks_status" xml:space="preserve">
     <value>{0} sur {1} activés</value>
@@ -521,6 +539,9 @@
   </data>
   <data name="settings.open_data_folder" xml:space="preserve">
     <value>Ouvrir le dossier de données</value>
+  </data>
+  <data name="settings.data_folder_failed" xml:space="preserve">
+    <value>Impossible d'ouvrir le dossier de données.</value>
   </data>
   <data name="settings.about" xml:space="preserve">
     <value>À propos</value>

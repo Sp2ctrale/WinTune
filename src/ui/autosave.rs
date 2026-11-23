@@ -68,7 +68,7 @@ impl WinTuneApp {
         if self.config != self.autosave.seen {
             self.autosave.seen = self.config.clone();
         }
-        if self.autosave.pending() {
+        if self.autosave.pending() || self.autosave.error.is_some() {
             self.autosave.changed_at = None;
             self.save_now();
         }
@@ -314,5 +314,45 @@ mod tests {
 
         assert!(app.autosave.error.is_none());
         assert!(on_disk(&fx).contains("retry.exe"));
+    }
+
+    #[test]
+    fn retry_saves_even_when_the_config_was_edited_back_to_the_saved_value() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        let original = app.config.code_executable.clone();
+        let blocker = fx.dir.join("blocker");
+        fs::write(&blocker, "a file").unwrap();
+        app.env.config_path = blocker.join("config.json");
+        app.config.code_executable = "edit.exe".into();
+        frame(&mut app, &ctx, at(0.0));
+        frame(&mut app, &ctx, at(2.0));
+        assert!(app.autosave.error.is_some());
+
+        // Back to what the autosave considers saved: nothing "pending".
+        app.config.code_executable = original;
+        frame(&mut app, &ctx, at(3.0));
+        assert!(!app.autosave.pending());
+        app.env.config_path = fx.dir.join("config.json");
+        app.flush_config();
+
+        assert!(app.autosave.error.is_none(), "retry did nothing");
+        assert!(!on_disk(&fx).is_empty());
+    }
+
+    #[test]
+    fn a_failed_save_shows_the_raw_error_without_a_second_prefix() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        let blocker = fx.dir.join("blocker");
+        fs::write(&blocker, "a file").unwrap();
+        app.env.config_path = blocker.join("config.json");
+
+        let e = app.try_save_config().unwrap_err();
+
+        assert!(!e.starts_with("cannot write"), "{e}");
+        assert!(e.matches("annot write").count() <= 1, "{e}");
     }
 }

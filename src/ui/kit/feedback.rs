@@ -276,11 +276,12 @@ pub fn dialog_buttons(ui: &mut Ui, id: &str, confirm: &str, cancel: &str) -> Opt
     let confirm_id = Id::new(("wintune_dialog_confirm", id));
     let cancel_id = Id::new(("wintune_dialog_cancel", id));
     let cancel_had = ui.memory(|m| m.has_focus(cancel_id));
-    // Tab is not a focus move for these buttons: egui leaves it to us.
+    // Tab is not a focus move for these buttons: egui leaves it to us. Arrows
+    // are locked too, or they would move focus to the page behind.
     let lock = egui::EventFilter {
         tab: true,
-        horizontal_arrows: false,
-        vertical_arrows: false,
+        horizontal_arrows: true,
+        vertical_arrows: true,
         escape: false,
     };
     ui.memory_mut(|m| {

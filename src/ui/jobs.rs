@@ -58,6 +58,18 @@ impl RunningJob {
         }
     }
 
+    /// Translation key of the job's name as it reads inside a sentence
+    /// (no trailing ellipsis).
+    pub(super) fn name_key(&self) -> &'static str {
+        match self.title_key() {
+            "job.apply_rules" => "job.name.apply_rules",
+            "job.rollback" => "job.name.rollback",
+            "job.build_pak" => "job.name.build_pak",
+            "job.restore_tweaks" => "job.name.restore_tweaks",
+            _ => "job.name.apply_tweaks",
+        }
+    }
+
     /// (module, action) under which a failed run of this job is logged.
     pub(super) fn history_label(&self) -> Option<(&'static str, &'static str)> {
         match self {
@@ -95,8 +107,8 @@ impl WinTuneApp {
             return true;
         }
         if let Some(job) = &self.job {
-            let title = self.tr.t(job.title_key());
-            let text = self.tr.t_args("notice.still_running", &[&title]);
+            let name = self.tr.t(job.name_key());
+            let text = self.tr.t_args("notice.still_running", &[&name]);
             self.notify(ToastKind::Info, text);
             return true;
         }
@@ -226,7 +238,7 @@ impl WinTuneApp {
             },
         };
         let title = job.title().to_string();
-        let title_text = self.tr.t(job.title_key());
+        let title_text = self.tr.t(job.name_key());
         let history_label = job.history_label();
         self.job = None;
 
@@ -371,6 +383,82 @@ mod tests {
     }
 
     #[test]
+    fn sentences_name_the_job_without_an_ellipsis() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        app.job = Some(RunningJob::BuildPak(BackgroundJob::spawn(
+            "Building gallery.pak",
+            || {},
+            move |_| {
+                release_rx.recv().unwrap();
+                Ok(PakStats {
+                    count: 0,
+                    bytes_before: 0,
+                    bytes_after: 0,
+                })
+            },
+        )));
+        app.start_build_pak(&ctx);
+        assert_eq!(
+            app.last_notice(),
+            "Please wait: Building gallery.pak is still running."
+        );
+        release_tx.send(()).unwrap();
+        run_until_idle(&mut app, &ctx);
+
+        app.job = Some(RunningJob::Apply(BackgroundJob::spawn(
+            "Applying file associations",
+            || {},
+            |_| -> StoreOutcome { panic!("boom") },
+        )));
+        run_until_idle(&mut app, &ctx);
+        assert!(
+            app.last_notice()
+                .starts_with("Applying file associations failed unexpectedly: "),
+            "{}",
+            app.last_notice()
+        );
+    }
+
+    #[test]
+    fn the_progress_bar_shows_counts_not_the_engine_label() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        app.job = Some(RunningJob::BuildPak(BackgroundJob::spawn(
+            "Building gallery.pak",
+            || {},
+            move |sink| {
+                sink.report(2, 5, "Compressing icons");
+                release_rx.recv().unwrap();
+                Ok(PakStats {
+                    count: 0,
+                    bytes_before: 0,
+                    bytes_after: 0,
+                })
+            },
+        )));
+        let mut texts = Vec::new();
+        for _ in 0..200 {
+            texts = drawn_texts(&frame(&mut app, &ctx, RawInput::default()));
+            if texts.contains(&"2/5".to_string()) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(texts.contains(&"2/5".to_string()), "{texts:?}");
+        assert!(
+            !texts.iter().any(|t| t.contains("Compressing")),
+            "{texts:?}"
+        );
+        release_tx.send(()).unwrap();
+        run_until_idle(&mut app, &ctx);
+    }
+
+    #[test]
     fn every_job_title_key_exists_in_english() {
         let tr = crate::i18n::Tr::english();
         for key in [
@@ -379,6 +467,12 @@ mod tests {
             "job.build_pak",
             "job.apply_tweaks",
             "job.restore_tweaks",
+            "job.progress",
+            "job.name.apply_rules",
+            "job.name.rollback",
+            "job.name.build_pak",
+            "job.name.apply_tweaks",
+            "job.name.restore_tweaks",
         ] {
             assert_ne!(tr.t(key), key);
         }

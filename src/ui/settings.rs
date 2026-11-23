@@ -4,7 +4,6 @@
 use super::{kit, WinTuneApp, APP_VERSION};
 use crate::detector::resolve_vscode_executable;
 use crate::i18n::Tr;
-use crate::models::app_data_dir;
 use crate::theme::ThemeMode;
 use eframe::egui;
 
@@ -227,8 +226,16 @@ impl WinTuneApp {
             .reload(&self.config.icon_source_folder, &self.config.pak_file_path);
     }
 
-    pub(super) fn open_data_folder(&self) {
-        (self.env.open_folder)(&app_data_dir());
+    /// Opens the data folder in Explorer, creating it first: a first run
+    /// has written nothing there yet.
+    pub(super) fn open_data_folder(&mut self) {
+        let dir = self.env.data_dir.clone();
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            let text = self.tr.t("settings.data_folder_failed");
+            self.notify_details(kit::ToastKind::Error, text, e.to_string());
+            return;
+        }
+        (self.env.open_folder)(&dir);
     }
 }
 
@@ -294,9 +301,30 @@ mod tests {
     fn open_data_folder_uses_the_env() {
         let fx = TempIcons::new(&[]);
         let ctx = egui::Context::default();
-        let app = fx.app(&ctx);
+        let mut app = fx.app(&ctx);
         app.open_data_folder();
-        assert_eq!(fx.opened_folders(), vec![app_data_dir()]);
+        assert_eq!(fx.opened_folders(), vec![fx.dir.join("data")]);
+        assert!(fx.dir.join("data").is_dir(), "created before opening");
+    }
+
+    #[test]
+    fn open_data_folder_reports_a_folder_that_cannot_be_created() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        // A file where the folder should be.
+        std::fs::write(fx.dir.join("blocker"), "a file").unwrap();
+        app.env.data_dir = fx.dir.join("blocker").join("data");
+
+        app.open_data_folder();
+
+        assert!(fx.opened_folders().is_empty());
+        assert!(
+            app.last_notice()
+                .starts_with(&app.tr.t("settings.data_folder_failed")),
+            "{}",
+            app.last_notice()
+        );
     }
 
     #[test]

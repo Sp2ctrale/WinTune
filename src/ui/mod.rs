@@ -69,6 +69,8 @@ pub(crate) struct AppEnv {
     pub user_label: String,
     /// Operation log (one JSON line per registry job).
     pub history_path: PathBuf,
+    /// Folder holding config.json, backups and the history.
+    pub data_dir: PathBuf,
     /// Opens a folder in Explorer.
     pub open_folder: Arc<dyn Fn(&Path) + Send + Sync>,
 }
@@ -87,6 +89,7 @@ impl AppEnv {
             is_windows_11: windows_build().is_some_and(is_windows_11_build),
             user_label: current_user_label(),
             history_path: crate::history::default_history_path(),
+            data_dir: app_data_dir(),
             open_folder: Arc::new(|path| {
                 // Nothing to report to from here: a failed spawn is ignored.
                 let _ = std::process::Command::new("explorer.exe").arg(path).spawn();
@@ -288,11 +291,14 @@ impl WinTuneApp {
         self.pump_status_refresh(ctx);
         self.guard_close_while_busy(ctx);
 
+        // Before the nav: the dialog claims the keyboard first (it is an Area,
+        // so the panel layout does not depend on the order).
+        self.show_confirm_dialog(ctx);
         self.show_nav(ctx);
         if let Some(job) = &self.job {
             let p = job.progress();
             let label = if p.total > 0 {
-                format!("{} ({}/{})", p.label, p.done, p.total)
+                self.tr.t_args("job.progress", &[&p.done, &p.total])
             } else {
                 String::new()
             };
@@ -307,7 +313,6 @@ impl WinTuneApp {
                 |_| {},
             );
         }
-        self.show_confirm_dialog(ctx);
         self.show_autosave_banner(ctx);
 
         match self.active_tab {
@@ -447,8 +452,9 @@ impl WinTuneApp {
             return Err(e.clone());
         }
         let path = &self.env.config_path;
+        // The persist error already names the file: it is the raw detail
+        // shown after the translated summary.
         crate::persist::save_json(&self.config, path)
-            .map_err(|e| format!("cannot write {}: {}", path.display(), e))
     }
 
     /// Never let the window close in the middle of a registry write.

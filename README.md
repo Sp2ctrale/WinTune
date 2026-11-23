@@ -160,7 +160,7 @@ Everything lives in `%ProgramData%\Wintune`:
 
 | File | Content |
 | --- | --- |
-| `config.json` | Rules, editor path, folders, theme |
+| `config.json` | Rules, editor path, folders, theme, language |
 | `backups.json` | Original-state snapshots of file associations, used by the rollback |
 | `tweaks-backups.json` | Original state of each Explorer & Taskbar tweak, per user |
 | `history.jsonl` | One line per operation (apply, rollback, restore), shown by the **History** page |
@@ -188,10 +188,16 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `ui` | egui interface, one file per page (`home`, `settings`, `history_panel`, `associations_tab`, `tweaks_tab`, `gallery_tab`, `rollback_tab`) plus `shell` (navigation), `autosave`, `confirm`, `rule_status` and `jobs` |
 | `main.rs` | Window setup only |
 
-Apply, rollback and pack building run on a background thread, and the status
-bar shows their progress. While one of them runs, the other buttons that
-change the registry or the pack are disabled. If you close the window
-mid-operation, WinTune waits for the operation to finish before closing.
+Apply, rollback and pack building run on a background thread, a progress bar
+shows their progress, and the result appears as a toast. While one of them
+runs, the other buttons that change the registry or the pack are disabled.
+If you close the window mid-operation, WinTune waits for the operation to
+finish before closing.
+
+The editor path, theme and language live in the **Settings** page. Changes
+there, and to the rules, are saved automatically about a second after the
+last edit and always before the window closes; if a save fails, a banner
+with a **Retry** button appears.
 
 **Ctrl+F** focuses the search box of the current tab, and **Esc** cancels a
 confirmation dialog. No keyboard shortcut changes the registry: those actions

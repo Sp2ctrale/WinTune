@@ -52,6 +52,7 @@ impl TempIcons {
             is_windows_11: true,
             user_label: "TEST\\user".into(),
             history_path: self.dir.join("history.jsonl"),
+            data_dir: self.dir.join("data"),
             open_folder: {
                 let opened = self.opened.clone();
                 Arc::new(move |path: &Path| opened.lock().unwrap().push(path.to_path_buf()))

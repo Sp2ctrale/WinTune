@@ -237,7 +237,7 @@ impl WinTuneApp {
         self.notify(super::kit::ToastKind::Success, msg);
         if self.assign_icon_to_selected_ext {
             self.assign_icon_to_selected_ext = false;
-            self.active_tab = ActiveTab::Associations;
+            self.open_page(ActiveTab::Associations);
         }
     }
 }

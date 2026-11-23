@@ -7,6 +7,10 @@ use eframe::egui::{self, Frame, Margin};
 impl WinTuneApp {
     /// Switches page. Stores are never reloaded under a running job.
     pub(super) fn open_page(&mut self, page: ActiveTab) {
+        if page == ActiveTab::ContextMenu {
+            // Shown in the navigation but not built yet: never openable.
+            return;
+        }
         if page == ActiveTab::Rollback && !self.is_busy() {
             self.reload_backup_store();
         }
@@ -206,6 +210,16 @@ mod tests {
     }
 
     #[test]
+    fn open_page_never_opens_the_context_menu() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        app.open_page(ActiveTab::History);
+        app.open_page(ActiveTab::ContextMenu);
+        assert_eq!(app.active_tab, ActiveTab::History);
+    }
+
+    #[test]
     fn changing_page_during_a_job_keeps_progress_and_stores() {
         let fx = TempIcons::new(&["foo"]);
         let ctx = egui::Context::default();
@@ -297,7 +311,31 @@ mod tests {
             id,
             crate::tweaks::TweakStatus::Custom(crate::tweaks::CustomReason::Unreadable("x".into())),
         );
+        // A toast from a translated key, then the dialog open over everything.
         app.request_remove_rule(0);
+        app.resolve_confirm(&ctx, false);
+        app.request_remove_rule(0);
+        // A job in flight: its progress bar must be French too.
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        app.job = Some(RunningJob::BuildPak(BackgroundJob::spawn(
+            "Building gallery.pak",
+            || {},
+            move |sink| {
+                sink.report(1, 3, "Compressing icons");
+                release_rx.recv().unwrap();
+                Ok(PakStats {
+                    count: 0,
+                    bytes_before: 0,
+                    bytes_after: 0,
+                })
+            },
+        )));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while app.job.as_ref().unwrap().progress().total == 0 {
+            assert!(std::time::Instant::now() < deadline, "no progress reported");
+            frame(&mut app, &ctx, RawInput::default());
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
 
         let en = crate::i18n::keys_of("en").unwrap();
         let fr = crate::i18n::keys_of("fr").unwrap();
@@ -322,6 +360,108 @@ mod tests {
                     "{tab:?} draws English-only text {value:?} (key {key})"
                 );
             }
+            // The engine's English label never reaches the bar.
+            assert!(
+                !texts.iter().any(|t| t.contains("Compressing")),
+                "{tab:?} shows the engine's English progress label"
+            );
+            for drawn in [
+                app.tr.t("job.build_pak"),
+                app.tr.t_args("job.progress", &[&1, &3]),
+                app.tr.t("notice.cancelled"),
+            ] {
+                assert!(
+                    texts.contains(&drawn),
+                    "{tab:?} did not draw {drawn:?}: {texts:?}"
+                );
+            }
         }
+        app.pending_confirm = None;
+        release_tx.send(()).unwrap();
+        run_until_idle(&mut app, &ctx);
+    }
+
+    fn key_press(key: egui::Key) -> Event {
+        Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        }
+    }
+
+    fn input_with(events: Vec<Event>) -> RawInput {
+        RawInput {
+            events,
+            ..Default::default()
+        }
+    }
+
+    fn app_with_dialog_on_settings(fx: &TempIcons, ctx: &egui::Context) -> WinTuneApp {
+        let mut app = fx.app_with_rules(ctx, &[".a", ".b"]);
+        app.open_page(ActiveTab::Settings);
+        app.request_remove_rule(0);
+        frame(&mut app, ctx, RawInput::default());
+        frame(&mut app, ctx, RawInput::default());
+        app
+    }
+
+    fn rule_names(app: &WinTuneApp) -> Vec<String> {
+        app.config
+            .extensions
+            .iter()
+            .map(|r| r.extension.clone())
+            .collect()
+    }
+
+    #[test]
+    fn arrow_keys_cannot_move_focus_from_the_dialog_to_the_nav() {
+        use egui::Key;
+        for same_frame in [true, false] {
+            let fx = TempIcons::new(&["foo"]);
+            let ctx = egui::Context::default();
+            let mut app = app_with_dialog_on_settings(&fx, &ctx);
+
+            frame(&mut app, &ctx, input_with(vec![key_press(Key::ArrowLeft)]));
+            frame(&mut app, &ctx, input_with(vec![key_press(Key::ArrowLeft)]));
+            if same_frame {
+                frame(
+                    &mut app,
+                    &ctx,
+                    input_with(vec![key_press(Key::ArrowUp), key_press(Key::Enter)]),
+                );
+            } else {
+                frame(&mut app, &ctx, input_with(vec![key_press(Key::ArrowUp)]));
+                frame(&mut app, &ctx, input_with(vec![key_press(Key::Enter)]));
+            }
+            frame(&mut app, &ctx, RawInput::default());
+
+            assert_eq!(
+                app.active_tab,
+                ActiveTab::Settings,
+                "same_frame={same_frame}"
+            );
+            // Enter acted on Cancel: the dialog closed and the rule is kept.
+            assert!(app.pending_confirm.is_none(), "same_frame={same_frame}");
+            assert_eq!(rule_names(&app), [".a", ".b"], "same_frame={same_frame}");
+        }
+    }
+
+    #[test]
+    fn escape_cancels_the_dialog_and_keeps_the_rule() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = app_with_dialog_on_settings(&fx, &ctx);
+
+        frame(
+            &mut app,
+            &ctx,
+            input_with(vec![key_press(egui::Key::Escape)]),
+        );
+
+        assert!(app.pending_confirm.is_none());
+        assert_eq!(rule_names(&app), [".a", ".b"]);
+        assert_eq!(app.last_notice(), app.tr.t("notice.cancelled"));
     }
 }

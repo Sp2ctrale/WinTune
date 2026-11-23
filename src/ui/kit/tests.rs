@@ -1094,6 +1094,43 @@ mod shell_kit {
     }
 
     #[test]
+    fn a_focused_nav_row_paints_a_focus_ring() {
+        fn ring(shape: &Shape) -> bool {
+            match shape {
+                Shape::Rect(r) => r.stroke.width == 2.0,
+                Shape::Vec(v) => v.iter().any(ring),
+                _ => false,
+            }
+        }
+        let ctx = ctx_for(ThemeMode::Light);
+        let brand = Brand {
+            logo: None,
+            name: "WinTune",
+            caption: "x",
+        };
+        let draw = |c: &Context| {
+            let mut sel = 0_u8;
+            let items = vec![NavItem {
+                key: 1_u8,
+                icon: Icon::Explorer,
+                label: "Row",
+                badge: None,
+                enabled: true,
+                disabled_hint: None,
+            }];
+            let groups = [NavGroup { title: None, items }];
+            nav_sidebar(c, &brand, &mut sel, &groups, &[]);
+        };
+        let has_ring = |out: &egui::FullOutput| out.shapes.iter().any(|c| ring(&c.shape));
+        let _ = ctx.run(frame_input(vec![]), draw);
+        let before = ctx.run(frame_input(vec![]), draw);
+        assert!(!has_ring(&before), "no ring while unfocused");
+        let _ = ctx.run(key(Key::Tab, Modifiers::NONE), draw);
+        let after = ctx.run(frame_input(vec![]), draw);
+        assert!(has_ring(&after), "Tab focuses the row and it paints a ring");
+    }
+
+    #[test]
     fn a_disabled_tile_does_not_click() {
         assert!(!tile_clicked(false));
     }

@@ -178,3 +178,33 @@ pub(super) fn run_until_idle(app: &mut WinTuneApp, ctx: &egui::Context) {
     }
     assert!(!app.is_busy(), "job did not finish");
 }
+
+/// Every text drawn in a frame, in paint order.
+pub(super) fn drawn_texts(out: &FullOutput) -> Vec<String> {
+    fn walk(shape: &egui::epaint::Shape, texts: &mut Vec<String>) {
+        match shape {
+            egui::epaint::Shape::Text(t) => texts.push(t.galley.text().to_string()),
+            egui::epaint::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, texts)),
+            _ => {}
+        }
+    }
+    let mut texts = Vec::new();
+    for clipped in &out.shapes {
+        walk(&clipped.shape, &mut texts);
+    }
+    texts
+}
+
+/// Center of the first text drawn as exactly `text`, to aim a click at it.
+pub(super) fn text_center(out: &FullOutput, text: &str) -> Option<egui::Pos2> {
+    fn find(shape: &egui::epaint::Shape, text: &str) -> Option<egui::Pos2> {
+        match shape {
+            egui::epaint::Shape::Text(t) if t.galley.text() == text => {
+                Some(t.pos + t.galley.rect.center().to_vec2())
+            }
+            egui::epaint::Shape::Vec(shapes) => shapes.iter().find_map(|s| find(s, text)),
+            _ => None,
+        }
+    }
+    out.shapes.iter().find_map(|c| find(&c.shape, text))
+}

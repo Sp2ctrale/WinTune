@@ -1,7 +1,7 @@
 //! Operation history: every registry job is appended to history.jsonl and
 //! listed (newest first) in a collapsible panel above the status bar.
 
-use super::WinTuneApp;
+use super::{kit, WinTuneApp};
 use crate::associations::OperationReport;
 use crate::history::{append_entry, read_recent, HistoryEntry};
 use crate::theme::get_palette;
@@ -16,15 +16,12 @@ impl WinTuneApp {
     }
 
     /// Logs a finished operation. A failure to write the log never hides the
-    /// operation's own outcome: it is only added to the status details.
+    /// operation's own outcome: it gets its own error toast.
     pub(super) fn record_history(&mut self, module: &str, action: &str, report: &OperationReport) {
         let entry = HistoryEntry::from_report(module, action, report);
         if let Err(e) = append_entry(&self.env.history_path, &entry) {
-            if !self.status_details.is_empty() {
-                self.status_details.push('\n');
-            }
-            self.status_details
-                .push_str(&format!("History not saved: {}", e));
+            let text = self.tr.t_args("notice.history_not_saved", &[&e]);
+            self.notify(kit::ToastKind::Error, text);
         }
         self.history.insert(0, entry);
         self.history.truncate(HISTORY_LIMIT);

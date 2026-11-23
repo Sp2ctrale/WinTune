@@ -201,4 +201,133 @@
   <data name="autosave.retry" xml:space="preserve">
     <value>Réessayer</value>
   </data>
+  <data name="job.apply_rules" xml:space="preserve">
+    <value>Application des associations de fichiers…</value>
+  </data>
+  <data name="job.rollback" xml:space="preserve">
+    <value>Restauration des extensions…</value>
+  </data>
+  <data name="job.build_pak" xml:space="preserve">
+    <value>Création de gallery.pak…</value>
+  </data>
+  <data name="job.apply_tweaks" xml:space="preserve">
+    <value>Application des réglages…</value>
+  </data>
+  <data name="job.restore_tweaks" xml:space="preserve">
+    <value>Restauration des réglages d'origine…</value>
+  </data>
+  <data name="toast.clear_all" xml:space="preserve">
+    <value>Tout effacer</value>
+  </data>
+  <data name="dialog.cancel" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
+  <data name="confirm.remove" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="confirm.restore" xml:space="preserve">
+    <value>Restaurer</value>
+  </data>
+  <data name="confirm.remove_rule.title" xml:space="preserve">
+    <value>Supprimer la règle</value>
+  </data>
+  <data name="confirm.remove_rule.body" xml:space="preserve">
+    <value>Supprimer la règle de {0} de la liste ?</value>
+  </data>
+  <data name="confirm.remove_rule.note" xml:space="preserve">
+    <value>Cela ne modifie que la liste de WinTune : une association déjà appliquée reste dans le registre jusqu'à sa restauration depuis l'onglet Restauration.</value>
+  </data>
+  <data name="confirm.rollback.title" xml:space="preserve">
+    <value>Restaurer l'état d'origine</value>
+  </data>
+  <data name="confirm.rollback.body" xml:space="preserve">
+    <value>Restaurer {0} extension(s) à leur état d'avant WinTune ?</value>
+  </data>
+  <data name="confirm.rollback.note" xml:space="preserve">
+    <value>Leurs icônes et commandes personnalisées seront supprimées, ainsi que leurs sauvegardes.</value>
+  </data>
+  <data name="confirm.restore_tweaks.title" xml:space="preserve">
+    <value>Restaurer les réglages d'origine</value>
+  </data>
+  <data name="confirm.restore_tweaks.body" xml:space="preserve">
+    <value>Remettre {0} réglage(s) exactement comme avant leur modification par WinTune ?</value>
+  </data>
+  <data name="report.applied_rules" xml:space="preserve">
+    <value>{0} extension(s) appliquée(s)</value>
+  </data>
+  <data name="report.restored_rules" xml:space="preserve">
+    <value>{0} extension(s) restaurée(s)</value>
+  </data>
+  <data name="report.applied_tweaks" xml:space="preserve">
+    <value>{0} réglage(s) appliqué(s)</value>
+  </data>
+  <data name="report.restored_tweaks" xml:space="preserve">
+    <value>{0} réglage(s) restauré(s)</value>
+  </data>
+  <data name="report.errors" xml:space="preserve">
+    <value>, {0} erreur(s) (première : {1})</value>
+  </data>
+  <data name="report.warnings" xml:space="preserve">
+    <value>, {0} avertissement(s)</value>
+  </data>
+  <data name="report.reg_backup" xml:space="preserve">
+    <value>Une sauvegarde .reg de l'état précédent a été enregistrée.</value>
+  </data>
+  <data name="report.detail_error" xml:space="preserve">
+    <value>Erreur : {0}</value>
+  </data>
+  <data name="report.detail_warning" xml:space="preserve">
+    <value>Avertissement : {0}</value>
+  </data>
+  <data name="report.detail_reg" xml:space="preserve">
+    <value>Sauvegarde .reg : {0}</value>
+  </data>
+  <data name="notice.answer_dialog" xml:space="preserve">
+    <value>Répondez d'abord à la boîte de dialogue ouverte.</value>
+  </data>
+  <data name="notice.still_running" xml:space="preserve">
+    <value>Patientez : {0} est en cours.</value>
+  </data>
+  <data name="notice.registry_blocked" xml:space="preserve">
+    <value>Les modifications du registre sont bloquées : {0}</value>
+  </data>
+  <data name="notice.rollback_blocked" xml:space="preserve">
+    <value>La restauration est bloquée : {0}</value>
+  </data>
+  <data name="notice.fix_problems" xml:space="preserve">
+    <value>Rien n'a été appliqué : corrigez d'abord {0} problème(s) de règle ({1}).</value>
+  </data>
+  <data name="notice.editor_missing" xml:space="preserve">
+    <value>Définissez l'éditeur de code par défaut avant d'appliquer les associations.</value>
+  </data>
+  <data name="notice.packed" xml:space="preserve">
+    <value>{0} icônes empaquetées : {1} Mo -&gt; {2} Mo</value>
+  </data>
+  <data name="notice.pack_failed" xml:space="preserve">
+    <value>Erreur d'empaquetage : {0}</value>
+  </data>
+  <data name="notice.job_panicked" xml:space="preserve">
+    <value>Échec inattendu de {0} : {1}</value>
+  </data>
+  <data name="notice.history_not_saved" xml:space="preserve">
+    <value>Historique non enregistré : {0}</value>
+  </data>
+  <data name="notice.status_failed" xml:space="preserve">
+    <value>Impossible de lire l'état des règles : {0}</value>
+  </data>
+  <data name="notice.cancelled" xml:space="preserve">
+    <value>Annulé.</value>
+  </data>
+  <data name="notice.rule_removed" xml:space="preserve">
+    <value>Règle de {0} supprimée.</value>
+  </data>
+  <data name="notice.rule_gone" xml:space="preserve">
+    <value>{0} n'est plus dans la liste.</value>
+  </data>
+  <data name="notice.close_after_job" xml:space="preserve">
+    <value>Une opération est en cours : WinTune se fermera dès qu'elle sera terminée.</value>
+  </data>
+  <data name="notice.config_unreadable" xml:space="preserve">
+    <value>Règles par défaut utilisées : {0} L'enregistrement est désactivé tant que ce n'est pas corrigé.</value>
+  </data>
 </root>

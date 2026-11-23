@@ -1,9 +1,10 @@
 //! Glue between the UI and [`crate::tasks`]: starts the long operations on a
 //! worker thread and applies their outcome once they finish.
 
-use super::WinTuneApp;
+use super::{kit::ToastKind, ReportKind, WinTuneApp};
 use crate::associations::{
-    apply_extensions, rollback_extensions, save_backup_store, ApplyOptions, OperationReport,
+    apply_extensions, find_rule_problems, rollback_extensions, save_backup_store, ApplyOptions,
+    OperationReport,
 };
 use crate::detector::{build_editor_command, editor_display_name};
 use crate::gallery::{build_compressed_pak, PakStats};
@@ -46,6 +47,17 @@ impl RunningJob {
         }
     }
 
+    /// Translation key of the text shown next to the progress bar.
+    pub(super) fn title_key(&self) -> &'static str {
+        match self {
+            RunningJob::Apply(_) => "job.apply_rules",
+            RunningJob::Rollback(_) => "job.rollback",
+            RunningJob::BuildPak(_) => "job.build_pak",
+            RunningJob::Tweaks(j, _) if j.title().starts_with("Restoring") => "job.restore_tweaks",
+            RunningJob::Tweaks(..) => "job.apply_tweaks",
+        }
+    }
+
     /// (module, action) under which a failed run of this job is logged.
     pub(super) fn history_label(&self) -> Option<(&'static str, &'static str)> {
         match self {
@@ -78,12 +90,14 @@ impl WinTuneApp {
     pub(super) fn refuse_if_busy(&mut self) -> bool {
         // The dialog blocks the mouse but not the keyboard (Tab + Space).
         if self.pending_confirm.is_some() {
-            self.set_status("Answer the open dialog first.");
+            let text = self.tr.t("notice.answer_dialog");
+            self.notify(ToastKind::Info, text);
             return true;
         }
         if let Some(job) = &self.job {
-            let msg = format!("Please wait: {} is still running.", job.title());
-            self.set_status(msg);
+            let title = self.tr.t(job.title_key());
+            let text = self.tr.t_args("notice.still_running", &[&title]);
+            self.notify(ToastKind::Info, text);
             return true;
         }
         false
@@ -96,22 +110,24 @@ impl WinTuneApp {
             return;
         }
         if let Some(err) = &self.backup_store_error {
-            let msg = format!("Registry changes are blocked: {}", err);
-            self.set_status(msg);
+            let text = self.tr.t_args("notice.registry_blocked", &[err]);
+            self.notify(ToastKind::Error, text);
             return;
         }
-        let problems = super::associations_tab::problems_of_enabled(&rules);
+        let enabled: Vec<ExtensionConfig> = rules.iter().filter(|r| r.enabled).cloned().collect();
+        let tr = self.tr;
+        let problems: Vec<String> = find_rule_problems(&enabled)
+            .iter()
+            .map(|(_, p)| crate::i18n::messages::rule_problem(tr, p))
+            .collect();
         if let Some(first) = problems.first() {
-            self.status_message = format!(
-                "Nothing applied: fix {} rule problem(s) first ({}).",
-                problems.len(),
-                first
-            );
-            self.status_details = problems.join("\n");
+            let text = tr.t_args("notice.fix_problems", &[&problems.len(), first]);
+            self.notify_details(ToastKind::Error, text, problems.join("\n"));
             return;
         }
         if self.config.code_executable.trim().is_empty() {
-            self.set_status("Set the default code editor before applying associations.");
+            let text = tr.t("notice.editor_missing");
+            self.notify(ToastKind::Error, text);
             return;
         }
 
@@ -141,7 +157,6 @@ impl WinTuneApp {
             StoreOutcome { report, store }
         });
         self.job = Some(RunningJob::Apply(job));
-        self.set_status("Applying file associations…");
     }
 
     pub(super) fn start_rollback(&mut self, ctx: &egui::Context, extensions: Vec<String>) {
@@ -149,8 +164,8 @@ impl WinTuneApp {
             return;
         }
         if let Some(err) = &self.backup_store_error {
-            let msg = format!("Rollback is blocked: {}", err);
-            self.set_status(msg);
+            let text = self.tr.t_args("notice.rollback_blocked", &[err]);
+            self.notify(ToastKind::Error, text);
             return;
         }
 
@@ -167,7 +182,6 @@ impl WinTuneApp {
             StoreOutcome { report, store }
         });
         self.job = Some(RunningJob::Rollback(job));
-        self.set_status("Restoring extensions…");
     }
 
     pub(super) fn start_build_pak(&mut self, ctx: &egui::Context) {
@@ -182,7 +196,6 @@ impl WinTuneApp {
             })
         });
         self.job = Some(RunningJob::BuildPak(job));
-        self.set_status("Building gallery.pak…");
     }
 
     /// Called every frame: forwards progress and handles a finished job.
@@ -213,6 +226,7 @@ impl WinTuneApp {
             },
         };
         let title = job.title().to_string();
+        let title_text = self.tr.t(job.title_key());
         let history_label = job.history_label();
         self.job = None;
 
@@ -225,28 +239,35 @@ impl WinTuneApp {
                         .warnings
                         .push(format!("Configuration not saved: {}", e));
                 }
-                self.show_report("Applied", "extension(s)", &report);
+                self.show_report(ReportKind::AppliedRules, &report);
                 self.record_history("File associations", "Apply", &report);
                 self.request_status_refresh();
             }
             Finished::Rollback(outcome) => {
                 self.backup_store = outcome.store;
                 self.rollback_selection.clear();
-                self.show_report("Restored", "extension(s)", &outcome.report);
+                self.show_report(ReportKind::RestoredRules, &outcome.report);
                 self.record_history("File associations", "Rollback", &outcome.report);
                 self.request_status_refresh();
             }
             Finished::BuildPak(Ok(stats)) => {
                 self.gallery
                     .reload(&self.config.icon_source_folder, &self.config.pak_file_path);
-                self.set_status(format!(
-                    "Packed {} icons: {:.1} MB -> {:.1} MB",
-                    stats.count,
-                    stats.bytes_before as f64 / 1_048_576.0,
-                    stats.bytes_after as f64 / 1_048_576.0
-                ));
+                let mb = |bytes: u64| format!("{:.1}", bytes as f64 / 1_048_576.0);
+                let text = self.tr.t_args(
+                    "notice.packed",
+                    &[
+                        &stats.count,
+                        &mb(stats.bytes_before),
+                        &mb(stats.bytes_after),
+                    ],
+                );
+                self.notify(ToastKind::Success, text);
             }
-            Finished::BuildPak(Err(e)) => self.set_status(format!("Pack error: {}", e)),
+            Finished::BuildPak(Err(e)) => {
+                let text = self.tr.t_args("notice.pack_failed", &[&e]);
+                self.notify(ToastKind::Error, text);
+            }
             Finished::Tweaks(outcome) => self.finish_tweaks_job(outcome),
             Finished::Panicked(msg) => {
                 if let Some((module, action)) = history_label {
@@ -257,7 +278,8 @@ impl WinTuneApp {
                     };
                     self.record_history(module, action, &report);
                 }
-                self.set_status(format!("{} failed unexpectedly: {}", title, msg));
+                let text = self.tr.t_args("notice.job_panicked", &[&title_text, &msg]);
+                self.notify(ToastKind::Error, text);
                 // The registry may have changed: re-read what is on disk.
                 self.reload_backup_store();
                 self.reload_tweak_store();
@@ -273,4 +295,92 @@ enum Finished {
     BuildPak(Result<PakStats, String>),
     Tweaks(TweakOutcome),
     Panicked(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_support::*;
+    use super::*;
+    use crate::gallery::PakStats;
+    use egui::RawInput;
+
+    #[test]
+    fn a_report_with_errors_is_an_error_toast_with_details() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        let report = OperationReport {
+            succeeded: vec![".a".into()],
+            errors: vec![".b: x".into()],
+            ..Default::default()
+        };
+
+        app.show_report(super::super::ReportKind::AppliedRules, &report);
+
+        let shown = app.last_notice();
+        assert!(shown.contains("1 error(s)"), "{shown}");
+        assert!(shown.contains("Error: .b: x"), "{shown}");
+    }
+
+    #[test]
+    fn job_start_shows_progress_not_a_toast() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        app.job = Some(RunningJob::BuildPak(BackgroundJob::spawn(
+            "Building gallery.pak",
+            || {},
+            move |_| {
+                release_rx.recv().unwrap();
+                Ok(PakStats {
+                    count: 0,
+                    bytes_before: 0,
+                    bytes_after: 0,
+                })
+            },
+        )));
+
+        let out = frame(&mut app, &ctx, RawInput::default());
+
+        assert!(app.toasts.is_empty());
+        assert!(drawn_texts(&out).contains(&app.tr.t("job.build_pak")));
+        release_tx.send(()).unwrap();
+        run_until_idle(&mut app, &ctx);
+    }
+
+    #[test]
+    fn history_not_saved_is_its_own_error_toast() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo"]);
+        // A directory cannot be appended to.
+        std::fs::create_dir_all(fx.dir.join("history-dir")).unwrap();
+        app.env.history_path = fx.dir.join("history-dir");
+        let rules = app.config.extensions.clone();
+
+        app.start_apply(&ctx, rules);
+        run_until_idle(&mut app, &ctx);
+
+        assert!(app.toasts.len() >= 2, "{}", app.toasts.len());
+        assert!(
+            app.last_notice().contains("History not saved"),
+            "{}",
+            app.last_notice()
+        );
+    }
+
+    #[test]
+    fn every_job_title_key_exists_in_english() {
+        let tr = crate::i18n::Tr::english();
+        for key in [
+            "job.apply_rules",
+            "job.rollback",
+            "job.build_pak",
+            "job.apply_tweaks",
+            "job.restore_tweaks",
+        ] {
+            assert_ne!(tr.t(key), key);
+        }
+    }
 }

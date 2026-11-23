@@ -24,7 +24,10 @@ impl WinTuneApp {
             return;
         };
         if let Err(e) = fs::create_dir_all(&self.config.icon_source_folder) {
-            self.set_status(format!("Cannot create the icon folder: {}", e));
+            self.notify(
+                super::kit::ToastKind::Error,
+                format!("Cannot create the icon folder: {}", e),
+            );
             return;
         }
         let dest_dir = Path::new(&self.config.icon_source_folder);
@@ -34,11 +37,14 @@ impl WinTuneApp {
             .filter(|(src, dest)| fs::copy(src, dest).is_ok())
             .count();
         self.reload_gallery();
-        self.set_status(format!(
-            "Imported {} of {} .ico files into the gallery.",
-            imported,
-            files.len()
-        ));
+        self.notify(
+            super::kit::ToastKind::Success,
+            format!(
+                "Imported {} of {} .ico files into the gallery.",
+                imported,
+                files.len()
+            ),
+        );
     }
 
     fn show_gallery_header(&mut self, ctx: &egui::Context) {
@@ -228,7 +234,7 @@ impl WinTuneApp {
         let ext = &mut self.config.extensions[self.selected_ext_index];
         ext.icon_name = icon_name.clone();
         let msg = format!("Assigned icon '{}' to {}.", icon_name, ext.extension);
-        self.set_status(msg);
+        self.notify(super::kit::ToastKind::Success, msg);
         if self.assign_icon_to_selected_ext {
             self.assign_icon_to_selected_ext = false;
             self.active_tab = ActiveTab::Associations;

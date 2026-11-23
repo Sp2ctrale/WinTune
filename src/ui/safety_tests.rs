@@ -88,9 +88,9 @@ fn no_job_starts_while_a_confirmation_is_open() {
 
     assert!(!app.is_busy(), "a job started behind the open dialog");
     assert!(
-        app.status_message.contains("dialog"),
+        app.last_notice().contains("dialog"),
         "{}",
-        app.status_message
+        app.last_notice()
     );
     assert!(!fx.key_exists(&fx.classes(".foo")));
 }

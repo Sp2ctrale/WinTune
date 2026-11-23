@@ -69,6 +69,12 @@ impl WinTuneApp {
                     draw_badge(ui, wsl_label, wsl_color);
 
                     ui.add_space(8.0);
+                    // Temporary: PR 2 Task 4 turns the history panel into a page.
+                    let history = format!("History ({})", self.history.len());
+                    if ui.selectable_label(self.show_history, history).clicked() {
+                        self.show_history = !self.show_history;
+                    }
+                    ui.add_space(4.0);
                     if ui
                         .add_sized(
                             [ui.available_width(), 32.0],
@@ -77,7 +83,10 @@ impl WinTuneApp {
                         .clicked()
                     {
                         notify_shell_associations();
-                        self.set_status("Windows Explorer refreshed via SHChangeNotify.");
+                        self.notify(
+                            super::kit::ToastKind::Success,
+                            "Windows Explorer refreshed via SHChangeNotify.",
+                        );
                     }
 
                     ui.add_space(10.0);

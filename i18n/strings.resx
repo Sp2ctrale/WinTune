@@ -202,4 +202,133 @@
   <data name="autosave.retry" xml:space="preserve">
     <value>Retry</value>
   </data>
+  <data name="job.apply_rules" xml:space="preserve">
+    <value>Applying file associations…</value>
+  </data>
+  <data name="job.rollback" xml:space="preserve">
+    <value>Restoring extensions…</value>
+  </data>
+  <data name="job.build_pak" xml:space="preserve">
+    <value>Building gallery.pak…</value>
+  </data>
+  <data name="job.apply_tweaks" xml:space="preserve">
+    <value>Applying tweaks…</value>
+  </data>
+  <data name="job.restore_tweaks" xml:space="preserve">
+    <value>Restoring original settings…</value>
+  </data>
+  <data name="toast.clear_all" xml:space="preserve">
+    <value>Clear all</value>
+  </data>
+  <data name="dialog.cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="confirm.remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="confirm.restore" xml:space="preserve">
+    <value>Restore</value>
+  </data>
+  <data name="confirm.remove_rule.title" xml:space="preserve">
+    <value>Remove rule</value>
+  </data>
+  <data name="confirm.remove_rule.body" xml:space="preserve">
+    <value>Remove the rule for {0} from the list?</value>
+  </data>
+  <data name="confirm.remove_rule.note" xml:space="preserve">
+    <value>This only edits WinTune's list: an association already applied stays in the registry until you restore it from the Rollback tab.</value>
+  </data>
+  <data name="confirm.rollback.title" xml:space="preserve">
+    <value>Restore original state</value>
+  </data>
+  <data name="confirm.rollback.body" xml:space="preserve">
+    <value>Restore {0} extension(s) to their state before WinTune?</value>
+  </data>
+  <data name="confirm.rollback.note" xml:space="preserve">
+    <value>Their custom icons and commands will be removed and their snapshots deleted.</value>
+  </data>
+  <data name="confirm.restore_tweaks.title" xml:space="preserve">
+    <value>Restore original settings</value>
+  </data>
+  <data name="confirm.restore_tweaks.body" xml:space="preserve">
+    <value>Put {0} setting(s) back exactly as they were before WinTune changed them?</value>
+  </data>
+  <data name="report.applied_rules" xml:space="preserve">
+    <value>Applied {0} extension(s)</value>
+  </data>
+  <data name="report.restored_rules" xml:space="preserve">
+    <value>Restored {0} extension(s)</value>
+  </data>
+  <data name="report.applied_tweaks" xml:space="preserve">
+    <value>Applied {0} tweak(s)</value>
+  </data>
+  <data name="report.restored_tweaks" xml:space="preserve">
+    <value>Restored {0} tweak(s)</value>
+  </data>
+  <data name="report.errors" xml:space="preserve">
+    <value>, {0} error(s) (first: {1})</value>
+  </data>
+  <data name="report.warnings" xml:space="preserve">
+    <value>, {0} warning(s)</value>
+  </data>
+  <data name="report.reg_backup" xml:space="preserve">
+    <value>A .reg backup of the previous state was saved.</value>
+  </data>
+  <data name="report.detail_error" xml:space="preserve">
+    <value>Error: {0}</value>
+  </data>
+  <data name="report.detail_warning" xml:space="preserve">
+    <value>Warning: {0}</value>
+  </data>
+  <data name="report.detail_reg" xml:space="preserve">
+    <value>.reg backup: {0}</value>
+  </data>
+  <data name="notice.answer_dialog" xml:space="preserve">
+    <value>Answer the open dialog first.</value>
+  </data>
+  <data name="notice.still_running" xml:space="preserve">
+    <value>Please wait: {0} is still running.</value>
+  </data>
+  <data name="notice.registry_blocked" xml:space="preserve">
+    <value>Registry changes are blocked: {0}</value>
+  </data>
+  <data name="notice.rollback_blocked" xml:space="preserve">
+    <value>Rollback is blocked: {0}</value>
+  </data>
+  <data name="notice.fix_problems" xml:space="preserve">
+    <value>Nothing applied: fix {0} rule problem(s) first ({1}).</value>
+  </data>
+  <data name="notice.editor_missing" xml:space="preserve">
+    <value>Set the default code editor before applying associations.</value>
+  </data>
+  <data name="notice.packed" xml:space="preserve">
+    <value>Packed {0} icons: {1} MB -&gt; {2} MB</value>
+  </data>
+  <data name="notice.pack_failed" xml:space="preserve">
+    <value>Pack error: {0}</value>
+  </data>
+  <data name="notice.job_panicked" xml:space="preserve">
+    <value>{0} failed unexpectedly: {1}</value>
+  </data>
+  <data name="notice.history_not_saved" xml:space="preserve">
+    <value>History not saved: {0}</value>
+  </data>
+  <data name="notice.status_failed" xml:space="preserve">
+    <value>Could not read the rules' status: {0}</value>
+  </data>
+  <data name="notice.cancelled" xml:space="preserve">
+    <value>Cancelled.</value>
+  </data>
+  <data name="notice.rule_removed" xml:space="preserve">
+    <value>Removed the rule for {0}.</value>
+  </data>
+  <data name="notice.rule_gone" xml:space="preserve">
+    <value>{0} is no longer in the list.</value>
+  </data>
+  <data name="notice.close_after_job" xml:space="preserve">
+    <value>An operation is running: WinTune will close as soon as it finishes.</value>
+  </data>
+  <data name="notice.config_unreadable" xml:space="preserve">
+    <value>Using the default rules: {0} Saving is disabled until it is fixed.</value>
+  </data>
 </root>

@@ -274,4 +274,45 @@ mod tests {
         assert_eq!(app.tr.code(), "fr");
         assert_eq!(fs::read_to_string(&path).unwrap(), "{ broken");
     }
+
+    #[test]
+    fn the_banner_is_drawn_and_its_retry_button_saves() {
+        use egui::{Event, Modifiers, PointerButton, Pos2, Rect};
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        app.config.code_executable = "retry.exe".into();
+        app.autosave.error = Some("disk full".into());
+        let screen = Rect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 600.0));
+        let input = |t: f64, events: Vec<Event>| RawInput {
+            time: Some(t),
+            screen_rect: Some(screen),
+            events,
+            ..Default::default()
+        };
+
+        frame(&mut app, &ctx, input(0.0, vec![]));
+        let out = frame(&mut app, &ctx, input(0.01, vec![]));
+        let banner = app.tr.t_args("autosave.failed", &[&"disk full"]);
+        assert!(drawn_texts(&out).contains(&banner), "banner not drawn");
+        let retry = text_center(&out, &app.tr.t("autosave.retry")).expect("retry button drawn");
+
+        let button = |pressed| Event::PointerButton {
+            pos: retry,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::default(),
+        };
+        frame(
+            &mut app,
+            &ctx,
+            input(0.02, vec![Event::PointerMoved(retry)]),
+        );
+        frame(&mut app, &ctx, input(0.03, vec![button(true)]));
+        assert!(app.autosave.error.is_some(), "saved before the release");
+        frame(&mut app, &ctx, input(0.04, vec![button(false)]));
+
+        assert!(app.autosave.error.is_none());
+        assert!(on_disk(&fx).contains("retry.exe"));
+    }
 }

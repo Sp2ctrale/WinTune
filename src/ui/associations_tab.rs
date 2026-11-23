@@ -52,9 +52,15 @@ impl WinTuneApp {
                         if ui.button("Auto-Detect").clicked() {
                             if let Some(found) = resolve_vscode_executable(None) {
                                 self.config.code_executable = found;
-                                self.set_status("VS Code path resolved automatically.");
+                                self.notify(
+                                    super::kit::ToastKind::Success,
+                                    "VS Code path resolved automatically.",
+                                );
                             } else {
-                                self.set_status("Could not locate Code.exe automatically.");
+                                self.notify(
+                                    super::kit::ToastKind::Error,
+                                    "Could not locate Code.exe automatically.",
+                                );
                             }
                         }
 
@@ -92,7 +98,10 @@ impl WinTuneApp {
             .iter()
             .any(|e| e.extension.eq_ignore_ascii_case(&ext))
         {
-            self.set_status(format!("{} is already in the list.", ext));
+            self.notify(
+                super::kit::ToastKind::Info,
+                format!("{} is already in the list.", ext),
+            );
             return;
         }
         let clean = ext.trim_start_matches('.').to_uppercase();
@@ -114,7 +123,10 @@ impl WinTuneApp {
             extra_verbs: Vec::new(),
         };
         if let Err(e) = validate_extension(&candidate) {
-            self.set_status(format!("Cannot add {}: {}", ext, e));
+            self.notify(
+                super::kit::ToastKind::Error,
+                format!("Cannot add {}: {}", ext, e),
+            );
             return;
         }
         self.config.extensions.push(candidate);
@@ -604,11 +616,7 @@ mod tests {
         app.start_apply(&ctx, rules);
 
         assert!(!app.is_busy(), "apply started despite an invalid rule");
-        assert!(
-            app.status_message.contains(".a b"),
-            "{}",
-            app.status_message
-        );
+        assert!(app.last_notice().contains(".a b"), "{}", app.last_notice());
         assert!(!fx.key_exists(&fx.classes(".foo")));
         assert!(!app.apply_blockers().is_empty());
     }
@@ -624,9 +632,9 @@ mod tests {
 
         assert!(!app.is_busy());
         assert!(
-            app.status_message.contains("more than once"),
+            app.last_notice().contains("more than once"),
             "{}",
-            app.status_message
+            app.last_notice()
         );
     }
 
@@ -642,7 +650,7 @@ mod tests {
         app.start_apply(&ctx, rules);
         run_until_idle(&mut app, &ctx);
 
-        assert!(fx.key_exists(&fx.classes(".foo")), "{}", app.status_message);
+        assert!(fx.key_exists(&fx.classes(".foo")), "{}", app.last_notice());
     }
 
     #[test]
@@ -656,9 +664,9 @@ mod tests {
 
         assert_eq!(app.config.extensions.len(), 1);
         assert!(
-            app.status_message.contains("invalid"),
+            app.last_notice().contains("invalid"),
             "{}",
-            app.status_message
+            app.last_notice()
         );
         assert_eq!(app.new_ext_input, "my ext", "input kept so it can be fixed");
     }

@@ -138,6 +138,6 @@ fn a_refused_config_save_is_reported_after_an_apply() {
     app.start_apply(&ctx, rules);
     run_until_idle(&mut app, &ctx);
 
-    let shown = format!("{}\n{}", app.status_message, app.status_details);
+    let shown = app.last_notice();
     assert!(shown.contains("Configuration not saved"), "{}", shown);
 }

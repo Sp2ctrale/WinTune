@@ -1,0 +1,80 @@
+<!doctype html><meta charset="utf-8"><title>wintune_direction_a_home_and_associations</title>
+<style>:root{--surface-1:#ffffff;--surface-2:#f6f6f7;--fill-ghost-selected:rgba(0,0,0,.06);--border:rgba(0,0,0,.10);--border-strong:rgba(0,0,0,.18);--border-stronger:rgba(0,0,0,.30);--border-accent:#0078d4;--text-primary:#1b1b1f;--text-secondary:#5c5f66;--text-muted:#8b8e95;--text-accent:#0067c0;--text-success:#0f7b0f;--text-warning:#9d5d00;--fill-accent:#0078d4;--on-accent:#fff;--bg-accent:#e6f1fb;--bg-neutral:#f0f0f2;--bg-success:#e7f4e7;--bg-warning:#fff4e0;--radius:8px;--font-sans:"Segoe UI Variable","Segoe UI",system-ui,sans-serif;--font-mono:"Cascadia Mono",Consolas,monospace}body{margin:0;padding:24px;background:#fff;font-family:var(--font-sans);color:var(--text-primary)}</style>
+<h2 class="sr-only">Maquettes détaillées de la direction A : écran d'accueil et écran des associations de fichiers</h2>
+<style>
+.mk{border:0.5px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface-2);display:grid;grid-template-columns:168px minmax(0,1fr);margin:0 0 6px}
+.nav{background:var(--surface-1);padding:12px 8px;font-size:13px}
+.ni{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--radius);color:var(--text-secondary)}
+.ni.on{background:var(--fill-ghost-selected);color:var(--text-primary)}
+.grp{font-size:11px;color:var(--text-muted);padding:10px 8px 4px}
+.tg{width:34px;height:18px;border-radius:9px;background:var(--fill-accent);position:relative;flex:none}
+.tg::after{content:"";position:absolute;top:3px;right:3px;width:12px;height:12px;border-radius:50%;background:var(--on-accent)}
+.tg.off{background:transparent;border:1px solid var(--border-stronger)}
+.tg.off::after{left:3px;right:auto;top:2px;background:var(--text-secondary)}
+.pill{font-size:11px;padding:2px 8px;border-radius:var(--radius);display:inline-block}
+.lbl{font-size:13px;color:var(--text-secondary);margin:14px 0 6px}
+</style>
+
+<p class="lbl">Écran d'accueil</p>
+<div class="mk">
+  <div class="nav">
+    <div style="display:flex;align-items:center;gap:8px;padding:4px 8px 8px;font-weight:500;color:var(--text-primary)"><i class="ti ti-adjustments" aria-hidden="true"></i>WinTune</div>
+    <div class="ni on"><i class="ti ti-home" aria-hidden="true"></i>Accueil</div>
+    <div class="grp">Personnaliser</div>
+    <div class="ni"><i class="ti ti-file-code" aria-hidden="true"></i>Associations</div>
+    <div class="ni"><i class="ti ti-folder" aria-hidden="true"></i>Explorateur</div>
+    <div class="ni"><i class="ti ti-layout-bottombar" aria-hidden="true"></i>Démarrer</div>
+    <div class="ni"><i class="ti ti-menu-2" aria-hidden="true"></i>Menu contextuel</div>
+    <div class="grp">Outils</div>
+    <div class="ni"><i class="ti ti-photo" aria-hidden="true"></i>Icônes</div>
+    <div class="ni"><i class="ti ti-history" aria-hidden="true"></i>Historique</div>
+    <div class="ni" style="margin-top:14px"><i class="ti ti-settings" aria-hidden="true"></i>Paramètres</div>
+  </div>
+  <div style="padding:16px 18px">
+    <div style="font-size:20px;font-weight:500">Bonjour</div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Tout ce que WinTune a changé est réversible.</div>
+    <div style="display:flex;align-items:center;gap:10px;background:var(--bg-warning);color:var(--text-warning);border-radius:var(--radius);padding:8px 12px;font-size:13px;margin-bottom:12px"><i class="ti ti-alert-triangle" aria-hidden="true"></i><span style="flex:1">Windows a repris 2 associations (.py, .json)</span><button style="font-size:12px">Voir</button></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">
+      <div style="background:var(--surface-1);border-radius:12px;padding:12px"><i class="ti ti-file-code" style="font-size:18px" aria-hidden="true"></i><div style="font-size:14px;font-weight:500;margin-top:4px">Associations</div><div style="font-size:12px;color:var(--text-secondary)">42 actives</div></div>
+      <div style="background:var(--surface-1);border-radius:12px;padding:12px"><i class="ti ti-folder" style="font-size:18px" aria-hidden="true"></i><div style="font-size:14px;font-weight:500;margin-top:4px">Explorateur</div><div style="font-size:12px;color:var(--text-secondary)">5 sur 13</div></div>
+      <div style="background:var(--surface-1);border-radius:12px;padding:12px"><i class="ti ti-layout-bottombar" style="font-size:18px" aria-hidden="true"></i><div style="font-size:14px;font-weight:500;margin-top:4px">Démarrer</div><div style="font-size:12px;color:var(--text-secondary)">2 sur 6</div></div>
+    </div>
+    <div style="font-size:13px;font-weight:500;margin:14px 0 6px">Récemment</div>
+    <div style="font-size:13px;display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;gap:8px"><i class="ti ti-check" style="color:var(--text-success)" aria-hidden="true"></i><span style="flex:1">Explorateur · 2 réglages appliqués</span><span style="color:var(--text-muted)">il y a 3 min</span></div>
+      <div style="display:flex;gap:8px"><i class="ti ti-arrow-back-up" style="color:var(--text-secondary)" aria-hidden="true"></i><span style="flex:1">Associations · .toml restaurée</span><span style="color:var(--text-muted)">hier</span></div>
+    </div>
+  </div>
+</div>
+
+<p class="lbl">Associations de fichiers</p>
+<div class="mk">
+  <div class="nav">
+    <div style="display:flex;align-items:center;gap:8px;padding:4px 8px 8px;font-weight:500;color:var(--text-primary)"><i class="ti ti-adjustments" aria-hidden="true"></i>WinTune</div>
+    <div class="ni"><i class="ti ti-home" aria-hidden="true"></i>Accueil</div>
+    <div class="grp">Personnaliser</div>
+    <div class="ni on"><i class="ti ti-file-code" aria-hidden="true"></i>Associations</div>
+    <div class="ni"><i class="ti ti-folder" aria-hidden="true"></i>Explorateur</div>
+    <div class="ni"><i class="ti ti-layout-bottombar" aria-hidden="true"></i>Démarrer</div>
+  </div>
+  <div style="display:grid;grid-template-columns:170px minmax(0,1fr)">
+    <div style="border-right:0.5px solid var(--border);padding:10px 8px;font-size:13px">
+      <div style="display:flex;align-items:center;gap:6px;border:0.5px solid var(--border);border-radius:var(--radius);padding:5px 8px;color:var(--text-muted);margin-bottom:8px"><i class="ti ti-search" aria-hidden="true"></i>Rechercher</div>
+      <div style="display:flex;align-items:center;gap:8px;padding:6px;border-radius:var(--radius)"><i class="ti ti-brand-python" aria-hidden="true"></i><span style="flex:1">.py</span><span style="width:8px;height:8px;border-radius:50%;background:var(--text-warning)"></span></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:6px;border-radius:var(--radius);background:var(--fill-ghost-selected)"><i class="ti ti-brand-rust" aria-hidden="true"></i><span style="flex:1">.rs</span><span style="width:8px;height:8px;border-radius:50%;background:var(--text-success)"></span></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:6px;border-radius:var(--radius)"><i class="ti ti-markdown" aria-hidden="true"></i><span style="flex:1">.md</span><span style="width:8px;height:8px;border-radius:50%;background:var(--text-success)"></span></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:6px;border-radius:var(--radius);color:var(--text-secondary)"><i class="ti ti-file" aria-hidden="true"></i><span style="flex:1">.toml</span><span style="width:8px;height:8px;border-radius:50%;border:1px solid var(--border-stronger)"></span></div>
+      <div style="padding:6px;color:var(--text-accent)"><i class="ti ti-plus" aria-hidden="true"></i> Ajouter</div>
+    </div>
+    <div style="padding:14px 16px">
+      <div style="display:flex;align-items:center;gap:12px"><i class="ti ti-brand-rust" style="font-size:24px" aria-hidden="true"></i><div style="flex:1"><div style="font-size:18px;font-weight:500">.rs · Rust</div><div style="font-size:12px;color:var(--text-secondary)">Ouvert avec VS Code · appliqué</div></div><span class="pill" style="background:var(--bg-success);color:var(--text-success)">À jour</span></div>
+      <div style="font-size:13px;font-weight:500;margin:14px 0 6px">Au double-clic</div>
+      <div style="display:flex;gap:6px;font-size:13px"><span class="pill" style="background:var(--bg-accent);color:var(--text-accent);font-size:13px;padding:5px 10px">Ouvrir dans l'éditeur</span><span class="pill" style="border:0.5px solid var(--border);font-size:13px;padding:5px 10px;color:var(--text-secondary)">Exécuter</span></div>
+      <div style="font-size:13px;font-weight:500;margin:14px 0 6px">Apparence</div>
+      <div style="display:flex;align-items:center;gap:10px;background:var(--surface-1);border-radius:var(--radius);padding:8px 10px;font-size:13px"><i class="ti ti-brand-rust" style="font-size:20px" aria-hidden="true"></i><span style="flex:1">Icône « rust »</span><button style="font-size:12px">Changer</button></div>
+      <div style="display:flex;align-items:center;gap:10px;background:var(--surface-1);border-radius:var(--radius);padding:8px 10px;font-size:13px;margin-top:4px"><span style="flex:1">Ignorer les choix « Ouvrir avec » de Windows</span><div class="tg"></div></div>
+      <div style="font-size:12px;color:var(--text-accent);margin-top:10px"><i class="ti ti-chevron-down" aria-hidden="true"></i> Options avancées (ProgID, type MIME, verbes)</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;padding-top:10px;border-top:0.5px solid var(--border)"><button style="font-size:13px">Restaurer l'original</button><button style="font-size:13px;background:var(--fill-accent);color:var(--on-accent);border:none">Appliquer</button></div>
+    </div>
+  </div>
+</div>

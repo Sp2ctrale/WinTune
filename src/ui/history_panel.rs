@@ -4,6 +4,7 @@
 use super::{kit, WinTuneApp};
 use crate::associations::OperationReport;
 use crate::history::{append_entry, read_recent, HistoryEntry};
+use crate::i18n::messages;
 use eframe::egui::{self, RichText};
 
 /// Entries kept in memory and shown.
@@ -45,9 +46,10 @@ impl WinTuneApp {
                     .show(ui, |ui| {
                         for entry in &self.history {
                             ui.label(RichText::new(&entry.time).color(p.text_secondary));
-                            // Stored labels, shown as they are until Task 7.
-                            ui.label(&entry.module);
-                            ui.label(RichText::new(&entry.action).strong());
+                            ui.label(messages::history_module(tr, &entry.module));
+                            ui.label(
+                                RichText::new(messages::history_action(tr, &entry.action)).strong(),
+                            );
                             let summary = if entry.is_success() {
                                 RichText::new(tr.t_args("history.ok", &[&entry.succeeded.len()]))
                                     .color(p.success)

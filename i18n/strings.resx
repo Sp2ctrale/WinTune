@@ -376,6 +376,24 @@
   <data name="history.copy_reg" xml:space="preserve">
     <value>Copy .reg path</value>
   </data>
+  <data name="history.module.associations" xml:space="preserve">
+    <value>File associations</value>
+  </data>
+  <data name="history.module.explorer" xml:space="preserve">
+    <value>Explorer &amp; Taskbar</value>
+  </data>
+  <data name="history.module.start" xml:space="preserve">
+    <value>Start &amp; Privacy</value>
+  </data>
+  <data name="history.action.apply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="history.action.rollback" xml:space="preserve">
+    <value>Rollback</value>
+  </data>
+  <data name="history.action.restore" xml:space="preserve">
+    <value>Restore</value>
+  </data>
   <data name="history.empty" xml:space="preserve">
     <value>No operation recorded yet.</value>
   </data>

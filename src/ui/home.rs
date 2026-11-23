@@ -3,6 +3,7 @@
 
 use super::{kit, ActiveTab, WinTuneApp};
 use crate::associations::RuleStatus;
+use crate::i18n::messages;
 use crate::tweaks::TweakStatus;
 use eframe::egui;
 
@@ -143,8 +144,14 @@ impl WinTuneApp {
                                     ui.label(
                                         egui::RichText::new(&entry.time).color(p.text_secondary),
                                     );
-                                    ui.label(&entry.module);
-                                    ui.label(egui::RichText::new(&entry.action).strong());
+                                    ui.label(messages::history_module(tr, &entry.module));
+                                    ui.label(
+                                        egui::RichText::new(messages::history_action(
+                                            tr,
+                                            &entry.action,
+                                        ))
+                                        .strong(),
+                                    );
                                     let n = entry.succeeded.len();
                                     ui.label(if entry.is_success() {
                                         egui::RichText::new(tr.t_args("history.ok", &[&n]))

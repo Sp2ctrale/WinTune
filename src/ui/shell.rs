@@ -273,4 +273,55 @@ mod tests {
             assert!(super::super::polish::search_box_id(tab).is_none());
         }
     }
+
+    #[test]
+    fn shell_pages_draw_no_english_only_text_in_french() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".a", ".b"]);
+        app.set_language("fr");
+        app.record_history(
+            "File associations",
+            "Apply",
+            &crate::associations::OperationReport {
+                succeeded: vec![".a".into()],
+                ..Default::default()
+            },
+        );
+        let id = crate::tweaks::catalog()
+            .iter()
+            .find(|t| WinTuneApp::tweak_groups_of(ActiveTab::StartPrivacy).contains(&t.group))
+            .unwrap()
+            .id;
+        app.tweak_statuses.insert(
+            id,
+            crate::tweaks::TweakStatus::Custom(crate::tweaks::CustomReason::Unreadable("x".into())),
+        );
+        app.request_remove_rule(0);
+
+        let en = crate::i18n::keys_of("en").unwrap();
+        let fr = crate::i18n::keys_of("fr").unwrap();
+        let english_only: Vec<(&String, &String)> = en
+            .iter()
+            // The language picker shows each language by its own name.
+            .filter(|(k, _)| k.as_str() != "language.name")
+            .filter(|(k, v)| v.chars().count() >= 4 && fr.get(*k).is_some_and(|f| f != *v))
+            .collect();
+        assert!(!english_only.is_empty());
+
+        for tab in [ActiveTab::Home, ActiveTab::Settings, ActiveTab::History] {
+            app.active_tab = tab;
+            let mut texts = Vec::new();
+            for _ in 0..3 {
+                let out = frame(&mut app, &ctx, RawInput::default());
+                texts.extend(drawn_texts(&out));
+            }
+            for (key, value) in &english_only {
+                assert!(
+                    !texts.iter().any(|t| t == *value),
+                    "{tab:?} draws English-only text {value:?} (key {key})"
+                );
+            }
+        }
+    }
 }

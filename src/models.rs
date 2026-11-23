@@ -10,14 +10,14 @@ pub enum DoubleClickMode {
     ExecuteScript,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CustomContextCommand {
     pub verb_key: String,
     pub menu_label: String,
     pub command: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExtensionConfig {
     pub enabled: bool,
     pub extension: String,
@@ -89,7 +89,7 @@ impl BackupStore {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AppConfig {
     #[serde(default)]
     pub theme: ThemeMode,

@@ -195,4 +195,10 @@
   <data name="tweak.no_recent_documents.description" xml:space="preserve">
     <value>Masquer les fichiers recommandés dans Démarrer, les fichiers récents dans l'Explorateur et les éléments récents dans les listes de raccourcis.</value>
   </data>
+  <data name="autosave.failed" xml:space="preserve">
+    <value>Paramètres non enregistrés : {0}</value>
+  </data>
+  <data name="autosave.retry" xml:space="preserve">
+    <value>Réessayer</value>
+  </data>
 </root>

@@ -80,17 +80,6 @@ impl WinTuneApp {
                         self.set_status("Windows Explorer refreshed via SHChangeNotify.");
                     }
 
-                    ui.add_space(6.0);
-                    if ui
-                        .add_sized(
-                            [ui.available_width(), 32.0],
-                            egui::Button::new("Save Configuration"),
-                        )
-                        .clicked()
-                    {
-                        self.save_config();
-                    }
-
                     ui.add_space(10.0);
                     ui.separator();
                     ui.add_space(6.0);
@@ -120,7 +109,6 @@ impl WinTuneApp {
         self.config.theme = mode;
         super::kit::set_theme_mode(ctx, mode);
         self.ui_theme = super::kit::resolved(mode, ctx);
-        self.save_config();
     }
 
     fn sidebar_nav_button(&mut self, ui: &mut egui::Ui, tab: ActiveTab, subtitle: &str) {

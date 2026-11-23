@@ -196,4 +196,10 @@
   <data name="tweak.no_recent_documents.description" xml:space="preserve">
     <value>Hide recommended files in Start, recent files in Explorer and recent items in Jump Lists.</value>
   </data>
+  <data name="autosave.failed" xml:space="preserve">
+    <value>Settings not saved: {0}</value>
+  </data>
+  <data name="autosave.retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
 </root>

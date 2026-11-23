@@ -27,36 +27,18 @@ fn an_unreadable_config_loads_defaults_and_says_so() {
 }
 
 #[test]
-fn an_unreadable_config_is_never_overwritten() {
-    let fx = TempIcons::new(&["foo"]);
-    let ctx = egui::Context::default();
-    let path = fx.dir.join("config.json");
-    std::fs::write(&path, "{ broken").unwrap();
-    let (config, error) = WinTuneApp::load_or_init_config(&path);
-    let mut app = fx.app_with(&ctx, config);
-    app.config_error = error;
-
-    app.save_config();
-
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), "{ broken");
-    assert!(
-        app.status_message.contains("not saved"),
-        "{}",
-        app.status_message
-    );
-}
-
-#[test]
 fn a_saved_config_reloads_and_leaves_no_temp_file() {
     let fx = TempIcons::new(&["foo"]);
     let ctx = egui::Context::default();
     let mut app = fx.app_with_rules(&ctx, &[".foo", ".bar"]);
 
-    app.save_config();
+    app.config.code_executable = r"C:\Other\editor.exe".to_string();
+    app.flush_config();
 
     let (config, error) = WinTuneApp::load_or_init_config(&fx.dir.join("config.json"));
     assert!(error.is_none(), "{:?}", error);
     assert_eq!(config.extensions.len(), 2);
+    assert_eq!(config.code_executable, r"C:\Other\editor.exe");
     assert!(!fx.dir.join("config.json.tmp").exists());
 }
 

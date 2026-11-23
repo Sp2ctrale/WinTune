@@ -6,6 +6,7 @@
 //! thread through `jobs`, so the window never freezes.
 
 mod associations_tab;
+mod autosave;
 mod confirm;
 mod gallery_tab;
 mod history_panel;
@@ -169,6 +170,8 @@ pub struct WinTuneApp {
     /// Set when config.json exists but is unreadable: saving is refused so
     /// the user's rules are never replaced by the defaults.
     config_error: Option<String>,
+    /// Debounced writes of config.json.
+    autosave: autosave::Autosave,
 }
 
 impl WinTuneApp {
@@ -209,6 +212,7 @@ impl WinTuneApp {
         kit::set_theme_mode(ctx, config.theme);
         let ui_theme = kit::resolved(config.theme, ctx);
         let tr = Tr::new(&config.language);
+        let autosave = autosave::Autosave::new(&config);
 
         let mut gallery = IconGallery::default();
         gallery.reload(&config.icon_source_folder, &config.pak_file_path);
@@ -248,6 +252,7 @@ impl WinTuneApp {
             history: Vec::new(),
             show_history: false,
             config_error: None,
+            autosave,
         }
     }
 
@@ -257,12 +262,14 @@ impl WinTuneApp {
         self.poll_job();
         self.handle_shortcuts(ctx);
         self.pump_status_refresh(ctx);
+        self.pump_autosave(ctx);
         self.guard_close_while_busy(ctx);
 
         self.show_sidebar(ctx);
         self.show_status_bar(ctx);
         self.show_history_panel(ctx);
         self.show_confirm_dialog(ctx);
+        self.show_autosave_banner(ctx);
 
         match self.active_tab {
             ActiveTab::Associations => self.show_associations_tab(ctx),
@@ -278,7 +285,6 @@ impl WinTuneApp {
     pub(super) fn set_language(&mut self, code: &str) {
         self.tr = Tr::new(code);
         self.config.language = self.tr.code().to_string();
-        self.save_config();
     }
 
     fn is_busy(&self) -> bool {
@@ -360,26 +366,6 @@ impl WinTuneApp {
             .map_err(|e| format!("cannot write {}: {}", path.display(), e))
     }
 
-    fn save_config(&mut self) {
-        if self.config_error.is_some() {
-            let msg = format!(
-                "Configuration not saved: {}",
-                self.config_error.clone().unwrap_or_default()
-            );
-            self.set_status(msg);
-            return;
-        }
-        let path = self.env.config_path.clone();
-        match crate::persist::save_json(&self.config, &path) {
-            Ok(()) => self.set_status("Configuration saved."),
-            Err(e) => self.set_status(format!(
-                "Cannot save configuration to {}: {}",
-                path.display(),
-                e
-            )),
-        }
-    }
-
     /// Never let the window close in the middle of a registry write.
     fn guard_close_while_busy(&mut self, ctx: &egui::Context) {
         if self.is_busy() && ctx.input(|i| i.viewport().close_requested()) {
@@ -387,7 +373,11 @@ impl WinTuneApp {
             self.close_when_idle = true;
             self.set_status("An operation is running: WinTune will close as soon as it finishes.");
         }
+        if ctx.input(|i| i.viewport().close_requested()) && !self.is_busy() {
+            self.flush_config();
+        }
         if self.close_when_idle && !self.is_busy() {
+            self.flush_config();
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }

@@ -69,6 +69,30 @@ For a new module:
    with `record_history`.
 4. **Add headless UI tests** with `TempIcons`.
 
+## Adding a language
+
+1. **Copy `i18n/strings.resx` to `i18n/strings.<code>.resx`**, for example
+   `strings.de.resx`. The build picks the file up on its own.
+2. **Translate the values**, not the keys. Set `language.name` to the
+   language's own name (`Deutsch`): that is what the picker shows.
+3. **Keep placeholders.** `{0}`, `{1}` must appear in the translation as in
+   English, and a literal brace is written `{{` or `}}`.
+4. **Run `cargo test --lib i18n`.** These tests tell you what is missing:
+   - `shipped_translations_are_complete`: every English key exists in
+     French. It names `fr` explicitly, so add your language to it once you
+     ship it as complete.
+   - `shipped_translations_have_no_orphan_keys`: no key that English lacks
+     (a typo in a key name shows up here).
+   - `shipped_translations_use_the_same_placeholders_as_english`: same
+     `{n}` placeholders as English, for every language.
+   - `every_engine_message_translates_in_every_shipped_language` and
+     `every_tweak_and_group_has_texts_in_every_shipped_language` also run
+     on every language, so a new file must cover those texts.
+
+A key you leave out falls back to English at run time, so an unfinished
+translation still works. A new key in English needs its translations in
+the same PR, because the tests above fail until the shipped languages have it.
+
 ## Commits and PRs
 
 - Keep one coherent change per PR, and explain what changed and why.

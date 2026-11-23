@@ -13,10 +13,55 @@ fn rc_path(p: &Path) -> String {
     p.to_string_lossy().replace('\\', "\\\\")
 }
 
+/// Writes `$OUT_DIR/i18n_langs.rs`: one `include_str!` per `i18n/strings*.resx`
+/// (`strings.resx` is `en`, `strings.<code>.resx` is `<code>`), English first,
+/// then by code. Runs on every target.
+fn generate_language_table() {
+    println!("cargo:rerun-if-changed=i18n");
+
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let dir = manifest_dir.join("i18n");
+
+    let mut langs: Vec<(String, PathBuf)> = Vec::new();
+    if let Ok(entries) = fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if name == "strings.resx" {
+                langs.push(("en".to_string(), path.clone()));
+            } else if let Some(code) = name
+                .strip_prefix("strings.")
+                .and_then(|n| n.strip_suffix(".resx"))
+            {
+                if !code.is_empty() {
+                    langs.push((code.to_string(), path.clone()));
+                }
+            }
+        }
+    }
+    langs.sort_by(|a, b| (a.0 != "en", &a.0).cmp(&(b.0 != "en", &b.0)));
+
+    let mut src = String::from("pub(crate) static LANG_FILES: &[(&str, &str)] = &[\n");
+    for (code, path) in &langs {
+        // `{:?}` yields an escaped string literal (backslashes on Windows).
+        src.push_str(&format!(
+            "    ({code:?}, include_str!({:?})),\n",
+            path.to_string_lossy()
+        ));
+    }
+    src.push_str("];\n");
+    fs::write(out_dir.join("i18n_langs.rs"), src).expect("Failed to write i18n_langs.rs");
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=assets/WinTune.ico");
     println!("cargo:rerun-if-changed=assets/WinTune.manifest");
+
+    generate_language_table();
 
     if env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() != "windows" {
         return;

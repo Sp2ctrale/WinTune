@@ -1,11 +1,10 @@
 //! Operation history: every registry job is appended to history.jsonl and
-//! listed (newest first) in a collapsible panel above the status bar.
+//! listed (newest first) on the History page.
 
 use super::{kit, WinTuneApp};
 use crate::associations::OperationReport;
 use crate::history::{append_entry, read_recent, HistoryEntry};
-use crate::theme::get_palette;
-use eframe::egui::{self, Margin, RichText, Stroke};
+use eframe::egui::{self, RichText};
 
 /// Entries kept in memory and shown.
 pub(super) const HISTORY_LIMIT: usize = 200;
@@ -27,90 +26,63 @@ impl WinTuneApp {
         self.history.truncate(HISTORY_LIMIT);
     }
 
-    pub(super) fn show_history_panel(&mut self, ctx: &egui::Context) {
-        if !self.show_history {
-            return;
-        }
-        let palette = get_palette(self.ui_theme);
-
-        egui::TopBottomPanel::bottom("history_panel")
-            .resizable(true)
-            .default_height(190.0)
-            .frame(
-                egui::Frame::none()
-                    .fill(palette.bg_base)
-                    .stroke(Stroke::new(1.0_f32, palette.border))
-                    .inner_margin(Margin::symmetric(14.0, 8.0)),
-            )
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Operation history").strong());
-                    ui.label(
-                        RichText::new(format!("{} most recent first", self.history.len()))
-                            .size(11.0)
-                            .color(palette.text_secondary),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Close").clicked() {
-                            self.show_history = false;
+    /// The History page: one row per recorded operation, newest first.
+    pub(super) fn show_history_page(&mut self, ctx: &egui::Context) {
+        let p = kit::current_palette(ctx);
+        let tr = self.tr;
+        let title = tr.t("nav.history");
+        Self::page_panel(ctx, |ui| {
+            kit::page_header(ui, &[], &title, None, |_| {});
+            if self.history.is_empty() {
+                kit::empty_state(ui, kit::Icon::History, &tr.t("history.empty"), None);
+                return;
+            }
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                egui::Grid::new("history_grid")
+                    .striped(true)
+                    .num_columns(5)
+                    .spacing([kit::space::XL, kit::space::XS])
+                    .show(ui, |ui| {
+                        for entry in &self.history {
+                            ui.label(RichText::new(&entry.time).color(p.text_secondary));
+                            // Stored labels, shown as they are until Task 7.
+                            ui.label(&entry.module);
+                            ui.label(RichText::new(&entry.action).strong());
+                            let summary = if entry.is_success() {
+                                RichText::new(tr.t_args("history.ok", &[&entry.succeeded.len()]))
+                                    .color(p.success)
+                            } else {
+                                RichText::new(tr.t_args(
+                                    "history.ok_errors",
+                                    &[&entry.succeeded.len(), &entry.errors.len()],
+                                ))
+                                .color(p.warning)
+                            };
+                            let mut details = entry.succeeded.join(", ");
+                            for e in entry.errors.iter().chain(&entry.warnings) {
+                                details.push('\n');
+                                details.push_str(e);
+                            }
+                            ui.label(summary).on_hover_text(details);
+                            match &entry.reg_backup {
+                                Some(path) => {
+                                    if ui
+                                        .small_button(tr.t("history.copy_reg"))
+                                        .on_hover_text(path)
+                                        .clicked()
+                                    {
+                                        ui.ctx().copy_text(path.clone());
+                                    }
+                                }
+                                None => {
+                                    ui.label("");
+                                }
+                            }
+                            ui.end_row();
                         }
                     });
-                });
-                ui.separator();
-
-                if self.history.is_empty() {
-                    ui.label(
-                        RichText::new("No operation recorded yet.").color(palette.text_secondary),
-                    );
-                    return;
-                }
-
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    egui::Grid::new("history_grid")
-                        .striped(true)
-                        .num_columns(5)
-                        .spacing([18.0, 4.0])
-                        .show(ui, |ui| {
-                            for entry in &self.history {
-                                ui.label(RichText::new(&entry.time).color(palette.text_secondary));
-                                ui.label(&entry.module);
-                                ui.label(RichText::new(&entry.action).strong());
-                                let summary = if entry.is_success() {
-                                    RichText::new(format!("{} ok", entry.succeeded.len()))
-                                        .color(palette.success)
-                                } else {
-                                    RichText::new(format!(
-                                        "{} ok, {} error(s)",
-                                        entry.succeeded.len(),
-                                        entry.errors.len()
-                                    ))
-                                    .color(palette.warning)
-                                };
-                                let mut details = entry.succeeded.join(", ");
-                                for e in entry.errors.iter().chain(&entry.warnings) {
-                                    details.push('\n');
-                                    details.push_str(e);
-                                }
-                                ui.label(summary).on_hover_text(details);
-                                match &entry.reg_backup {
-                                    Some(path) => {
-                                        if ui
-                                            .small_button("Copy .reg path")
-                                            .on_hover_text(path)
-                                            .clicked()
-                                        {
-                                            ui.ctx().copy_text(path.clone());
-                                        }
-                                    }
-                                    None => {
-                                        ui.label("");
-                                    }
-                                }
-                                ui.end_row();
-                            }
-                        });
-                });
             });
+        });
     }
 }
 
@@ -181,7 +153,7 @@ mod tests {
     }
 
     #[test]
-    fn the_panel_renders_with_entries_on_every_tab() {
+    fn the_page_renders_with_entries_and_empty() {
         let fx = TempIcons::new(&["foo"]);
         let ctx = egui::Context::default();
         let mut app = fx.app_with_rules(&ctx, &[".foo"]);
@@ -191,11 +163,14 @@ mod tests {
             ..Default::default()
         };
         app.record_history("File associations", "Apply", &report);
-        app.show_history = true;
 
-        for tab in ActiveTab::ALL {
-            app.active_tab = tab;
-            frame(&mut app, &ctx, RawInput::default());
-        }
+        app.active_tab = ActiveTab::History;
+        let out = frame(&mut app, &ctx, RawInput::default());
+        let texts = drawn_texts(&out);
+        assert!(texts.contains(&"1 ok, 1 error(s)".to_string()), "{texts:?}");
+
+        app.history.clear();
+        let out = frame(&mut app, &ctx, RawInput::default());
+        assert!(drawn_texts(&out).contains(&"No operation recorded yet.".to_string()));
     }
 }

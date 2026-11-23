@@ -330,4 +330,58 @@
   <data name="notice.config_unreadable" xml:space="preserve">
     <value>Règles par défaut utilisées : {0} L'enregistrement est désactivé tant que ce n'est pas corrigé.</value>
   </data>
+  <data name="nav.home" xml:space="preserve">
+    <value>Accueil</value>
+  </data>
+  <data name="nav.associations" xml:space="preserve">
+    <value>Associations de fichiers</value>
+  </data>
+  <data name="nav.explorer" xml:space="preserve">
+    <value>Explorateur et barre des tâches</value>
+  </data>
+  <data name="nav.start" xml:space="preserve">
+    <value>Démarrer et confidentialité</value>
+  </data>
+  <data name="nav.context_menu" xml:space="preserve">
+    <value>Menu contextuel</value>
+  </data>
+  <data name="nav.icons" xml:space="preserve">
+    <value>Icônes</value>
+  </data>
+  <data name="nav.history" xml:space="preserve">
+    <value>Historique</value>
+  </data>
+  <data name="nav.rollback" xml:space="preserve">
+    <value>Restauration</value>
+  </data>
+  <data name="nav.settings" xml:space="preserve">
+    <value>Paramètres</value>
+  </data>
+  <data name="nav.group.customize" xml:space="preserve">
+    <value>Personnaliser</value>
+  </data>
+  <data name="nav.group.tools" xml:space="preserve">
+    <value>Outils</value>
+  </data>
+  <data name="nav.coming_soon" xml:space="preserve">
+    <value>Bientôt disponible</value>
+  </data>
+  <data name="history.ok" xml:space="preserve">
+    <value>{0} réussie(s)</value>
+  </data>
+  <data name="history.ok_errors" xml:space="preserve">
+    <value>{0} réussie(s), {1} erreur(s)</value>
+  </data>
+  <data name="history.copy_reg" xml:space="preserve">
+    <value>Copier le chemin du .reg</value>
+  </data>
+  <data name="history.empty" xml:space="preserve">
+    <value>Aucune opération enregistrée.</value>
+  </data>
+  <data name="home.placeholder" xml:space="preserve">
+    <value>L'accueil arrive bientôt.</value>
+  </data>
+  <data name="settings.placeholder" xml:space="preserve">
+    <value>Les paramètres arrivent bientôt.</value>
+  </data>
 </root>

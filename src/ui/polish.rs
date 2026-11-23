@@ -10,7 +10,11 @@ pub(super) fn search_box_id(tab: ActiveTab) -> Option<egui::Id> {
         ActiveTab::Associations => Some(egui::Id::new("search_associations")),
         ActiveTab::Tweaks | ActiveTab::StartPrivacy => Some(egui::Id::new("search_tweaks")),
         ActiveTab::Gallery => Some(egui::Id::new("search_gallery")),
-        ActiveTab::Rollback => None,
+        ActiveTab::Rollback
+        | ActiveTab::Home
+        | ActiveTab::History
+        | ActiveTab::Settings
+        | ActiveTab::ContextMenu => None,
     }
 }
 

@@ -1,6 +1,6 @@
 //! egui front-end. Each module of the app is one tab, in its own file:
 //! adding a customization module means adding an `ActiveTab` variant, its
-//! sidebar subtitle and a `show_*_tab` method in a new file.
+//! navigation entry and a `show_*_tab` method in a new file.
 //!
 //! Long operations (apply, rollback, icon pack build) run on a background
 //! thread through `jobs`, so the window never freezes.
@@ -19,7 +19,7 @@ mod rollback_tab;
 mod rule_status;
 #[cfg(test)]
 mod safety_tests;
-mod sidebar;
+mod shell;
 #[cfg(test)]
 mod test_support;
 mod tweaks_tab;
@@ -89,23 +89,34 @@ impl AppEnv {
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub(crate) enum ActiveTab {
+    Home,
     Associations,
     Tweaks,
     StartPrivacy,
     Gallery,
+    History,
     Rollback,
+    Settings,
+    /// Not built yet: shown in the navigation, disabled.
+    ContextMenu,
 }
 
 impl ActiveTab {
-    /// Sidebar order.
-    pub(crate) const ALL: [ActiveTab; 5] = [
+    /// Every page that can be opened, in navigation order (the tests walk it).
+    #[cfg(test)]
+    pub(crate) const ALL: [ActiveTab; 8] = [
+        ActiveTab::Home,
         ActiveTab::Associations,
         ActiveTab::Tweaks,
         ActiveTab::StartPrivacy,
         ActiveTab::Gallery,
+        ActiveTab::History,
         ActiveTab::Rollback,
+        ActiveTab::Settings,
     ];
 
+    /// English module label written to history.jsonl (not a navigation
+    /// label: those are translated). Empty for pages that are not modules.
     pub(crate) fn title(self) -> &'static str {
         match self {
             ActiveTab::Associations => "File Associations",
@@ -113,6 +124,9 @@ impl ActiveTab {
             ActiveTab::StartPrivacy => "Start & Privacy",
             ActiveTab::Gallery => "Icon Gallery",
             ActiveTab::Rollback => "Selective Rollback",
+            ActiveTab::Home | ActiveTab::History | ActiveTab::Settings | ActiveTab::ContextMenu => {
+                ""
+            }
         }
     }
 }
@@ -173,7 +187,6 @@ pub struct WinTuneApp {
     focus_search: bool,
     /// Recent operations, newest first.
     history: Vec<crate::history::HistoryEntry>,
-    show_history: bool,
     /// Set when config.json exists but is unreadable: saving is refused so
     /// the user's rules are never replaced by the defaults.
     config_error: Option<String>,
@@ -227,7 +240,7 @@ impl WinTuneApp {
             config,
             gallery,
             backup_store: BackupStore::default(),
-            active_tab: ActiveTab::Associations,
+            active_tab: ActiveTab::Home,
             selected_ext_index: 0,
             ext_search_query: String::new(),
             gallery_search_query: String::new(),
@@ -254,7 +267,6 @@ impl WinTuneApp {
             ui_theme,
             focus_search: false,
             history: Vec::new(),
-            show_history: false,
             config_error: None,
             autosave,
         }
@@ -268,7 +280,7 @@ impl WinTuneApp {
         self.pump_status_refresh(ctx);
         self.guard_close_while_busy(ctx);
 
-        self.show_sidebar(ctx);
+        self.show_nav(ctx);
         if let Some(job) = &self.job {
             let p = job.progress();
             let label = if p.total > 0 {
@@ -287,11 +299,13 @@ impl WinTuneApp {
                 |_| {},
             );
         }
-        self.show_history_panel(ctx);
         self.show_confirm_dialog(ctx);
         self.show_autosave_banner(ctx);
 
         match self.active_tab {
+            ActiveTab::Home | ActiveTab::ContextMenu => self.show_home_placeholder(ctx),
+            ActiveTab::History => self.show_history_page(ctx),
+            ActiveTab::Settings => self.show_settings_placeholder(ctx),
             ActiveTab::Associations => self.show_associations_tab(ctx),
             ActiveTab::Tweaks | ActiveTab::StartPrivacy => self.show_tweaks_tab(ctx),
             ActiveTab::Gallery => self.show_gallery_tab(ctx),
@@ -309,6 +323,13 @@ impl WinTuneApp {
     pub(super) fn set_language(&mut self, code: &str) {
         self.tr = Tr::new(code);
         self.config.language = self.tr.code().to_string();
+    }
+
+    #[allow(dead_code)] // called by the Settings page (Task 6)
+    fn set_theme(&mut self, ctx: &egui::Context, mode: ThemeMode) {
+        self.config.theme = mode;
+        kit::set_theme_mode(ctx, mode);
+        self.ui_theme = kit::resolved(mode, ctx);
     }
 
     fn is_busy(&self) -> bool {

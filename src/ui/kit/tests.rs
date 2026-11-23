@@ -478,6 +478,49 @@ mod controls {
     }
 
     #[test]
+    fn a_long_banner_message_wraps_inside_the_banner() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let height = Cell::new(0.0_f32);
+        let right = Cell::new(0.0_f32);
+        let long = "word ".repeat(60);
+        let _ = ctx.run(frame_input(vec![]), |c| {
+            CentralPanel::default().show(c, |ui| {
+                let r = ui.allocate_ui(egui::vec2(360.0, 0.0), |ui| {
+                    banner(ui, BannerKind::Error, &long, Some("Retry"));
+                });
+                height.set(r.response.rect.height());
+                right.set(r.response.rect.right());
+            });
+        });
+        // One row is about 48 px; 300 characters must take several rows.
+        assert!(height.get() > 100.0, "banner height {}", height.get());
+        assert!(
+            right.get() <= 360.0 + 16.0 + 1.0,
+            "banner overflows: {}",
+            right.get()
+        );
+    }
+
+    #[test]
+    fn segmented_clicking_the_selected_option_does_not_change() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let changed = Cell::new(false);
+        let rect = Cell::new(Rect::NOTHING);
+        let mut draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                let mut v = 1;
+                let r = segmented(ui, &mut v, &[(1, "One"), (2, "Two")]);
+                rect.set(r.rect);
+                changed.set(changed.get() || r.changed());
+            });
+        };
+        let _ = layout(&ctx, &rect, &mut draw);
+        let r = rect.get();
+        click_frames(&ctx, egui::pos2(r.left() + 8.0, r.center().y), &mut draw);
+        assert!(!changed.get());
+    }
+
+    #[test]
     fn every_control_renders_in_both_themes_without_fonts() {
         for mode in [ThemeMode::Light, ThemeMode::Dark] {
             let ctx = ctx_for(mode);

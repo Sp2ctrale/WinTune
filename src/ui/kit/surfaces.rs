@@ -67,6 +67,8 @@ pub struct SettingRow<'a> {
 }
 
 impl SettingRow<'_> {
+    /// `trailing` is laid out right-to-left: the first widget it adds sits at
+    /// the far right edge.
     pub fn show<R>(self, ui: &mut Ui, trailing: impl FnOnce(&mut Ui) -> R) -> R {
         let p = current_palette(ui.ctx());
         split_row(ui, 48.0, trailing, |ui| {
@@ -127,7 +129,10 @@ pub fn banner(ui: &mut Ui, kind: BannerKind, text: &str, action: Option<&str>) -
                         ui.label(i.color(color));
                         ui.add_space(space::S);
                     }
-                    ui.label(RichText::new(text).size(text_size::BODY).color(p.text));
+                    ui.add(
+                        egui::Label::new(RichText::new(text).size(text_size::BODY).color(p.text))
+                            .wrap(),
+                    );
                 },
             );
         });

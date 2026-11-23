@@ -762,4 +762,106 @@ mod layout {
             }
         }
     }
+
+    struct ModalScene {
+        bg_rect: Cell<egui::Rect>,
+        ok_rect: Cell<egui::Rect>,
+        bg_clicked: Cell<bool>,
+        ok_clicked: Cell<bool>,
+        open: Cell<bool>,
+        focus_bg: Cell<bool>,
+    }
+
+    impl ModalScene {
+        fn new() -> Self {
+            Self {
+                bg_rect: Cell::new(egui::Rect::NOTHING),
+                ok_rect: Cell::new(egui::Rect::NOTHING),
+                bg_clicked: Cell::new(false),
+                ok_clicked: Cell::new(false),
+                open: Cell::new(false),
+                focus_bg: Cell::new(false),
+            }
+        }
+
+        fn draw(&self, c: &Context) {
+            CentralPanel::default().show(c, |ui| {
+                let r = ui.button("Apply");
+                if self.focus_bg.get() {
+                    r.request_focus();
+                    self.focus_bg.set(false);
+                }
+                self.bg_rect.set(r.rect);
+                if r.clicked() {
+                    self.bg_clicked.set(true);
+                }
+            });
+            if self.open.get() {
+                dialog(c, "confirm", "Confirm", 360.0, |ui| {
+                    let r = ui.button("OK");
+                    self.ok_rect.set(r.rect);
+                    if r.clicked() {
+                        self.ok_clicked.set(true);
+                    }
+                });
+            }
+        }
+    }
+
+    #[test]
+    fn clicking_the_scrim_does_not_bury_the_dialog() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let scene = ModalScene::new();
+        scene.open.set(true);
+        let _ = ctx.run(frame_input(vec![]), |c| scene.draw(c));
+        // Click the dimmed area on top of the page's button, then the dialog.
+        click_frames(&ctx, scene.bg_rect.get().center(), |c| scene.draw(c));
+        click_frames(&ctx, egui::pos2(700.0, 550.0), |c| scene.draw(c));
+        click_frames(&ctx, scene.ok_rect.get().center(), |c| scene.draw(c));
+        assert!(scene.ok_clicked.get());
+        assert!(!scene.bg_clicked.get());
+    }
+
+    #[test]
+    fn keys_cannot_reach_a_focused_widget_behind_a_dialog() {
+        use egui::{Event, Key, Modifiers};
+        let ctx = ctx_for(ThemeMode::Light);
+        let scene = ModalScene::new();
+        scene.focus_bg.set(true);
+        let _ = ctx.run(frame_input(vec![]), |c| scene.draw(c));
+        let _ = ctx.run(frame_input(vec![]), |c| scene.draw(c));
+        // The dialog opens while the page button holds keyboard focus.
+        scene.open.set(true);
+        let _ = ctx.run(frame_input(vec![]), |c| scene.draw(c));
+        for key in [Key::Enter, Key::Space] {
+            for pressed in [true, false] {
+                let ev = Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed,
+                    repeat: false,
+                    modifiers: Modifiers::NONE,
+                };
+                let _ = ctx.run(frame_input(vec![ev]), |c| scene.draw(c));
+            }
+        }
+        assert!(!scene.bg_clicked.get());
+    }
+
+    #[test]
+    fn dismissing_an_error_toast_with_its_cross() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let mut toasts = Toasts::default();
+        toasts.push(ToastKind::Error, "Failed");
+        for _ in 0..2 {
+            let _ = ctx.run(frame_input(vec![]), |c| toasts.show(c));
+        }
+        let rect = ctx
+            .memory(|m| m.area_rect(egui::Id::new("wintune_toasts")))
+            .unwrap();
+        // The cross sits at the right edge, inside the card padding.
+        let at = egui::pos2(rect.right() - 20.0, rect.center().y);
+        click_frames(&ctx, at, |c| toasts.show(c));
+        assert!(toasts.is_empty());
+    }
 }

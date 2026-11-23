@@ -2,8 +2,8 @@
 //! They return values or draw state they were given and never act.
 
 use egui::{
-    vec2, Align, Align2, Area, Color32, Frame, Id, Layout, Margin, Order, RichText, Rounding,
-    Sense, Shadow, Stroke, Ui,
+    vec2, Align, Align2, Area, Color32, Frame, Id, LayerId, Layout, Margin, Order, RichText,
+    Rounding, Sense, Shadow, Stroke, Ui,
 };
 
 use super::fonts::semibold;
@@ -46,10 +46,14 @@ pub fn action_bar(
                     ActionBarState::Idle => actions(ui),
                     ActionBarState::Busy { label, fraction } => {
                         ui.add(
-                            egui::ProgressBar::new(fraction.clamp(0.0, 1.0))
-                                .desired_width(240.0)
-                                .desired_height(8.0)
-                                .rounding(Rounding::same(4.0)),
+                            egui::ProgressBar::new(if fraction.is_nan() {
+                                0.0
+                            } else {
+                                fraction.clamp(0.0, 1.0)
+                            })
+                            .desired_width(240.0)
+                            .desired_height(8.0)
+                            .rounding(Rounding::same(radius::CONTROL)),
                         );
                         ui.label(
                             RichText::new(label)
@@ -208,8 +212,22 @@ pub fn dialog(ctx: &egui::Context, id: &str, title: &str, width: f32, body: impl
             let (rect, _) = ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
             ui.painter().rect_filled(rect, Rounding::ZERO, scrim);
         });
-    Area::new(Id::new(("wintune_dialog", id)))
-        .order(Order::Foreground)
+    // A strictly higher order than the scrim: clicking the scrim raises the
+    // scrim within its own order, which must never put it above the dialog.
+    let dialog_id = Id::new(("wintune_dialog", id));
+    let dialog_layer = LayerId::new(Order::Tooltip, dialog_id);
+    // Modal: focus held by anything outside the dialog is dropped so Enter
+    // and Space cannot reach the page behind it.
+    if let Some(focused) = ctx.memory(|m| m.focused()) {
+        let outside = ctx
+            .read_response(focused)
+            .is_some_and(|r| r.layer_id != dialog_layer);
+        if outside {
+            ctx.memory_mut(|m| m.surrender_focus(focused));
+        }
+    }
+    Area::new(dialog_id)
+        .order(Order::Tooltip)
         .anchor(Align2::CENTER_CENTER, vec2(0.0, 0.0))
         .show(ctx, |ui| {
             Frame::none()

@@ -8,7 +8,7 @@ use crate::regsnap::test_support::Sandbox;
 use eframe::egui::{self, FullOutput, RawInput, ViewportCommand, ViewportEvent, ViewportId};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use winreg::enums::HKEY_CURRENT_USER;
 use winreg::RegKey;
@@ -18,6 +18,7 @@ use winreg::RegKey;
 pub(super) struct TempIcons {
     pub(super) dir: PathBuf,
     pub(super) sandbox: Sandbox,
+    opened: Arc<Mutex<Vec<PathBuf>>>,
 }
 
 pub(super) const TEST_HIVE: &str = "S-1-5-21-test";
@@ -51,6 +52,10 @@ impl TempIcons {
             is_windows_11: true,
             user_label: "TEST\\user".into(),
             history_path: self.dir.join("history.jsonl"),
+            open_folder: {
+                let opened = self.opened.clone();
+                Arc::new(move |path: &Path| opened.lock().unwrap().push(path.to_path_buf()))
+            },
         }
     }
 
@@ -87,7 +92,16 @@ impl TempIcons {
             .root
             .create_subkey(sandbox.key(&format!("Users\\{}", TEST_HIVE)))
             .expect("create test user hive");
-        Self { dir, sandbox }
+        Self {
+            dir,
+            sandbox,
+            opened: Arc::default(),
+        }
+    }
+
+    /// Folders the app asked Explorer to open (nothing is really opened).
+    pub(super) fn opened_folders(&self) -> Vec<PathBuf> {
+        self.opened.lock().unwrap().clone()
     }
 
     pub(super) fn config(&self) -> AppConfig {

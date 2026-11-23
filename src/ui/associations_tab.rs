@@ -1,7 +1,6 @@
 use super::rule_status::{status_badge, status_details};
 use super::{ActiveTab, WinTuneApp};
 use crate::associations::{find_rule_problems, validate_extension};
-use crate::detector::resolve_vscode_executable;
 use crate::models::{CustomContextCommand, DoubleClickMode, ExtensionConfig};
 use crate::theme::{accent_button, card_frame, draw_badge, get_palette};
 use eframe::egui::{self, Margin, RichText};
@@ -26,20 +25,6 @@ impl WinTuneApp {
             .show(ctx, |ui| {
                 card_frame(self.ui_theme).show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Default Code Editor:").strong());
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.config.code_executable)
-                                .hint_text("C:\\...\\Microsoft VS Code\\Code.exe")
-                                .desired_width(320.0),
-                        );
-                        if ui.button("Browse...").clicked() {
-                            if let Some(file) = rfd::FileDialog::new()
-                                .add_filter("Executable", &["exe"])
-                                .pick_file()
-                            {
-                                self.config.code_executable = file.to_string_lossy().to_string();
-                            }
-                        }
                         if ui
                             .add_enabled(!busy, egui::Button::new("Refresh status"))
                             .on_hover_text(
@@ -49,21 +34,6 @@ impl WinTuneApp {
                         {
                             self.request_status_refresh();
                         }
-                        if ui.button("Auto-Detect").clicked() {
-                            if let Some(found) = resolve_vscode_executable(None) {
-                                self.config.code_executable = found;
-                                self.notify(
-                                    super::kit::ToastKind::Success,
-                                    "VS Code path resolved automatically.",
-                                );
-                            } else {
-                                self.notify(
-                                    super::kit::ToastKind::Error,
-                                    "Could not locate Code.exe automatically.",
-                                );
-                            }
-                        }
-
                         let disabled_reason = self.apply_disabled_reason();
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let resp = ui.add_enabled(

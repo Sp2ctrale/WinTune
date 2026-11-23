@@ -409,7 +409,112 @@
   <data name="home.view_all" xml:space="preserve">
     <value>View all</value>
   </data>
-  <data name="settings.placeholder" xml:space="preserve">
-    <value>Settings are coming soon.</value>
+  <data name="settings.appearance" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="settings.language.title" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="settings.language.desc" xml:space="preserve">
+    <value>The language of the whole interface.</value>
+  </data>
+  <data name="settings.theme.title" xml:space="preserve">
+    <value>Theme</value>
+  </data>
+  <data name="settings.theme.desc" xml:space="preserve">
+    <value>Follow Windows or force light or dark.</value>
+  </data>
+  <data name="settings.theme.system" xml:space="preserve">
+    <value>System</value>
+  </data>
+  <data name="settings.theme.light" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="settings.theme.dark" xml:space="preserve">
+    <value>Dark</value>
+  </data>
+  <data name="settings.associations" xml:space="preserve">
+    <value>Associations</value>
+  </data>
+  <data name="settings.editor.title" xml:space="preserve">
+    <value>Default code editor</value>
+  </data>
+  <data name="settings.editor.desc" xml:space="preserve">
+    <value>Opens the files you associate with it.</value>
+  </data>
+  <data name="settings.browse" xml:space="preserve">
+    <value>Browse</value>
+  </data>
+  <data name="settings.auto_detect" xml:space="preserve">
+    <value>Auto-detect</value>
+  </data>
+  <data name="settings.editor_found" xml:space="preserve">
+    <value>Editor found and set.</value>
+  </data>
+  <data name="settings.editor_not_found" xml:space="preserve">
+    <value>No editor found automatically.</value>
+  </data>
+  <data name="settings.icons" xml:space="preserve">
+    <value>Icons</value>
+  </data>
+  <data name="settings.icon_folder.title" xml:space="preserve">
+    <value>Icon folder</value>
+  </data>
+  <data name="settings.icon_folder.desc" xml:space="preserve">
+    <value>Where your .ico files are read from.</value>
+  </data>
+  <data name="settings.change" xml:space="preserve">
+    <value>Change</value>
+  </data>
+  <data name="settings.system" xml:space="preserve">
+    <value>System</value>
+  </data>
+  <data name="settings.wsl.title" xml:space="preserve">
+    <value>WSL</value>
+  </data>
+  <data name="settings.wsl.desc" xml:space="preserve">
+    <value>Decides how .sh files are opened.</value>
+  </data>
+  <data name="settings.wsl_on" xml:space="preserve">
+    <value>WSL 2 detected</value>
+  </data>
+  <data name="settings.wsl_off" xml:space="preserve">
+    <value>No WSL: .sh opens in the editor</value>
+  </data>
+  <data name="settings.refresh_explorer.title" xml:space="preserve">
+    <value>Explorer</value>
+  </data>
+  <data name="settings.refresh_explorer.desc" xml:space="preserve">
+    <value>Tells Explorer to reload icons and associations.</value>
+  </data>
+  <data name="settings.refresh_explorer" xml:space="preserve">
+    <value>Refresh Explorer</value>
+  </data>
+  <data name="settings.explorer_refreshed" xml:space="preserve">
+    <value>Explorer notified.</value>
+  </data>
+  <data name="settings.data" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="settings.data_folder.title" xml:space="preserve">
+    <value>Data folder</value>
+  </data>
+  <data name="settings.data_folder.desc" xml:space="preserve">
+    <value>Configuration, backups and history.</value>
+  </data>
+  <data name="settings.open_data_folder" xml:space="preserve">
+    <value>Open data folder</value>
+  </data>
+  <data name="settings.about" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="settings.version" xml:space="preserve">
+    <value>WinTune version {0}</value>
+  </data>
+  <data name="settings.repo_link" xml:space="preserve">
+    <value>Project on GitHub</value>
+  </data>
+  <data name="settings.config_unreadable" xml:space="preserve">
+    <value>config.json can't be read: {0} Changes aren't saved until it is fixed.</value>
   </data>
 </root>

@@ -408,7 +408,112 @@
   <data name="home.view_all" xml:space="preserve">
     <value>Tout afficher</value>
   </data>
-  <data name="settings.placeholder" xml:space="preserve">
-    <value>Les paramètres arrivent bientôt.</value>
+  <data name="settings.appearance" xml:space="preserve">
+    <value>Apparence</value>
+  </data>
+  <data name="settings.language.title" xml:space="preserve">
+    <value>Langue</value>
+  </data>
+  <data name="settings.language.desc" xml:space="preserve">
+    <value>La langue de toute l'interface.</value>
+  </data>
+  <data name="settings.theme.title" xml:space="preserve">
+    <value>Thème</value>
+  </data>
+  <data name="settings.theme.desc" xml:space="preserve">
+    <value>Suivre Windows, ou forcer clair ou sombre.</value>
+  </data>
+  <data name="settings.theme.system" xml:space="preserve">
+    <value>Système</value>
+  </data>
+  <data name="settings.theme.light" xml:space="preserve">
+    <value>Clair</value>
+  </data>
+  <data name="settings.theme.dark" xml:space="preserve">
+    <value>Sombre</value>
+  </data>
+  <data name="settings.associations" xml:space="preserve">
+    <value>Associations</value>
+  </data>
+  <data name="settings.editor.title" xml:space="preserve">
+    <value>Éditeur de code par défaut</value>
+  </data>
+  <data name="settings.editor.desc" xml:space="preserve">
+    <value>Ouvre les fichiers que vous lui associez.</value>
+  </data>
+  <data name="settings.browse" xml:space="preserve">
+    <value>Parcourir</value>
+  </data>
+  <data name="settings.auto_detect" xml:space="preserve">
+    <value>Détecter</value>
+  </data>
+  <data name="settings.editor_found" xml:space="preserve">
+    <value>Éditeur trouvé et défini.</value>
+  </data>
+  <data name="settings.editor_not_found" xml:space="preserve">
+    <value>Aucun éditeur trouvé automatiquement.</value>
+  </data>
+  <data name="settings.icons" xml:space="preserve">
+    <value>Icônes</value>
+  </data>
+  <data name="settings.icon_folder.title" xml:space="preserve">
+    <value>Dossier d'icônes</value>
+  </data>
+  <data name="settings.icon_folder.desc" xml:space="preserve">
+    <value>D'où sont lus vos fichiers .ico.</value>
+  </data>
+  <data name="settings.change" xml:space="preserve">
+    <value>Modifier</value>
+  </data>
+  <data name="settings.system" xml:space="preserve">
+    <value>Système</value>
+  </data>
+  <data name="settings.wsl.title" xml:space="preserve">
+    <value>WSL</value>
+  </data>
+  <data name="settings.wsl.desc" xml:space="preserve">
+    <value>Détermine comment les fichiers .sh s'ouvrent.</value>
+  </data>
+  <data name="settings.wsl_on" xml:space="preserve">
+    <value>WSL 2 détecté</value>
+  </data>
+  <data name="settings.wsl_off" xml:space="preserve">
+    <value>Pas de WSL : .sh s'ouvre dans l'éditeur</value>
+  </data>
+  <data name="settings.refresh_explorer.title" xml:space="preserve">
+    <value>Explorateur</value>
+  </data>
+  <data name="settings.refresh_explorer.desc" xml:space="preserve">
+    <value>Demande à l'Explorateur de recharger icônes et associations.</value>
+  </data>
+  <data name="settings.refresh_explorer" xml:space="preserve">
+    <value>Actualiser l'Explorateur</value>
+  </data>
+  <data name="settings.explorer_refreshed" xml:space="preserve">
+    <value>Explorateur notifié.</value>
+  </data>
+  <data name="settings.data" xml:space="preserve">
+    <value>Données</value>
+  </data>
+  <data name="settings.data_folder.title" xml:space="preserve">
+    <value>Dossier de données</value>
+  </data>
+  <data name="settings.data_folder.desc" xml:space="preserve">
+    <value>Configuration, sauvegardes et historique.</value>
+  </data>
+  <data name="settings.open_data_folder" xml:space="preserve">
+    <value>Ouvrir le dossier de données</value>
+  </data>
+  <data name="settings.about" xml:space="preserve">
+    <value>À propos</value>
+  </data>
+  <data name="settings.version" xml:space="preserve">
+    <value>WinTune version {0}</value>
+  </data>
+  <data name="settings.repo_link" xml:space="preserve">
+    <value>Projet sur GitHub</value>
+  </data>
+  <data name="settings.config_unreadable" xml:space="preserve">
+    <value>config.json est illisible : {0} Les modifications ne sont pas enregistrées tant qu'il n'est pas réparé.</value>
   </data>
 </root>

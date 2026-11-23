@@ -20,6 +20,7 @@ mod rollback_tab;
 mod rule_status;
 #[cfg(test)]
 mod safety_tests;
+mod settings;
 mod shell;
 #[cfg(test)]
 mod test_support;
@@ -68,6 +69,8 @@ pub(crate) struct AppEnv {
     pub user_label: String,
     /// Operation log (one JSON line per registry job).
     pub history_path: PathBuf,
+    /// Opens a folder in Explorer.
+    pub open_folder: Arc<dyn Fn(&Path) + Send + Sync>,
 }
 
 impl AppEnv {
@@ -84,6 +87,10 @@ impl AppEnv {
             is_windows_11: windows_build().is_some_and(is_windows_11_build),
             user_label: current_user_label(),
             history_path: crate::history::default_history_path(),
+            open_folder: Arc::new(|path| {
+                // Nothing to report to from here: a failed spawn is ignored.
+                let _ = std::process::Command::new("explorer.exe").arg(path).spawn();
+            }),
         }
     }
 }
@@ -306,7 +313,7 @@ impl WinTuneApp {
         match self.active_tab {
             ActiveTab::Home | ActiveTab::ContextMenu => self.show_home(ctx),
             ActiveTab::History => self.show_history_page(ctx),
-            ActiveTab::Settings => self.show_settings_placeholder(ctx),
+            ActiveTab::Settings => self.show_settings(ctx),
             ActiveTab::Associations => self.show_associations_tab(ctx),
             ActiveTab::Tweaks | ActiveTab::StartPrivacy => self.show_tweaks_tab(ctx),
             ActiveTab::Gallery => self.show_gallery_tab(ctx),
@@ -320,13 +327,11 @@ impl WinTuneApp {
 
     /// Switches the language now and remembers it. An unshipped code is
     /// stored as the English fallback actually in use.
-    #[allow(dead_code)] // called by the Settings page (PR 2)
     pub(super) fn set_language(&mut self, code: &str) {
         self.tr = Tr::new(code);
         self.config.language = self.tr.code().to_string();
     }
 
-    #[allow(dead_code)] // called by the Settings page (Task 6)
     fn set_theme(&mut self, ctx: &egui::Context, mode: ThemeMode) {
         self.config.theme = mode;
         kit::set_theme_mode(ctx, mode);

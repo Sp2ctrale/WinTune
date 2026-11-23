@@ -1,5 +1,5 @@
 //! The shell around the pages: grouped navigation, page switching with its
-//! safety guards, and the Settings placeholder (Task 6 replaces it).
+//! safety guards.
 
 use super::{kit, ActiveTab, WinTuneApp, APP_VERSION};
 use eframe::egui::{self, Frame, Margin};
@@ -111,13 +111,6 @@ impl WinTuneApp {
         egui::CentralPanel::default()
             .frame(Frame::central_panel(&ctx.style()).inner_margin(Margin::same(kit::space::XL)))
             .show(ctx, body);
-    }
-
-    pub(super) fn show_settings_placeholder(&mut self, ctx: &egui::Context) {
-        let text = self.tr.t("settings.placeholder");
-        Self::page_panel(ctx, |ui| {
-            kit::empty_state(ui, kit::Icon::Settings, &text, None);
-        });
     }
 }
 

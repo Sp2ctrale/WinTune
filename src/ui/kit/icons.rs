@@ -62,7 +62,7 @@ pub fn glyph(icon: Icon) -> char {
         Icon::Home => '\u{E80F}',
         Icon::Associations => '\u{E8A5}', // Document
         Icon::Explorer => '\u{E8B7}',     // Folder
-        Icon::Start => '\u{E7C4}',        // TaskView
+        Icon::Start => '\u{ECA5}',        // Tiles
         Icon::ContextMenu => '\u{E8A9}',  // ViewAll
         Icon::Icons => '\u{E8B9}',        // Picture
         Icon::History => '\u{E81C}',

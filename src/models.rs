@@ -98,6 +98,13 @@ pub struct AppConfig {
     pub icon_destination_folder: String,
     pub pak_file_path: String,
     pub extensions: Vec<ExtensionConfig>,
+    /// UI language code; unknown codes fall back to English.
+    #[serde(default = "default_language")]
+    pub language: String,
+}
+
+fn default_language() -> String {
+    "en".to_string()
 }
 
 fn program_data_dir() -> PathBuf {
@@ -113,7 +120,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         let base = app_data_dir();
         Self {
-            theme: ThemeMode::Dark,
+            theme: ThemeMode::System,
             code_executable: String::new(),
             icon_source_folder: base.join("icons").to_string_lossy().into_owned(),
             icon_destination_folder: program_data_dir()
@@ -122,6 +129,7 @@ impl Default for AppConfig {
                 .into_owned(),
             pak_file_path: base.join("gallery.pak").to_string_lossy().into_owned(),
             extensions: default_extensions(),
+            language: default_language(),
         }
     }
 }

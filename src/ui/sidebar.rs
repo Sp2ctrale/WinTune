@@ -1,6 +1,6 @@
 use super::{ActiveTab, WinTuneApp, APP_VERSION};
 use crate::associations::notify_shell_associations;
-use crate::theme::{apply_fluent_theme, draw_badge, get_palette, sidebar_frame, ThemeMode};
+use crate::theme::{draw_badge, get_palette, sidebar_frame, ThemeMode};
 use eframe::egui::{self, Margin, RichText, Rounding, Stroke};
 
 impl WinTuneApp {
@@ -24,12 +24,12 @@ impl WinTuneApp {
     }
 
     pub(super) fn show_sidebar(&mut self, ctx: &egui::Context) {
-        let palette = get_palette(self.config.theme);
+        let palette = get_palette(self.ui_theme);
 
         egui::SidePanel::left("fluent_sidebar")
             .resizable(false)
             .exact_width(235.0)
-            .frame(sidebar_frame(self.config.theme))
+            .frame(sidebar_frame(self.ui_theme))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     if let Some(logo) = &self.logo_texture {
@@ -95,21 +95,22 @@ impl WinTuneApp {
                     ui.separator();
                     ui.add_space(6.0);
 
+                    ui.label(
+                        RichText::new("Theme")
+                            .size(12.0)
+                            .color(palette.text_secondary),
+                    );
                     ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new("Theme")
-                                .size(12.0)
-                                .color(palette.text_secondary),
-                        );
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let is_dark = self.config.theme == ThemeMode::Dark;
-                            if ui.selectable_label(!is_dark, "Light").clicked() {
-                                self.set_theme(ctx, ThemeMode::Light);
+                        let current = self.config.theme;
+                        for (mode, label) in [
+                            (ThemeMode::System, "System"),
+                            (ThemeMode::Light, "Light"),
+                            (ThemeMode::Dark, "Dark"),
+                        ] {
+                            if ui.selectable_label(current == mode, label).clicked() {
+                                self.set_theme(ctx, mode);
                             }
-                            if ui.selectable_label(is_dark, "Dark").clicked() {
-                                self.set_theme(ctx, ThemeMode::Dark);
-                            }
-                        });
+                        }
                     });
                 });
             });
@@ -117,12 +118,13 @@ impl WinTuneApp {
 
     fn set_theme(&mut self, ctx: &egui::Context, mode: ThemeMode) {
         self.config.theme = mode;
-        apply_fluent_theme(ctx, mode);
+        super::kit::set_theme_mode(ctx, mode);
+        self.ui_theme = super::kit::resolved(mode, ctx);
         self.save_config();
     }
 
     fn sidebar_nav_button(&mut self, ui: &mut egui::Ui, tab: ActiveTab, subtitle: &str) {
-        let palette = get_palette(self.config.theme);
+        let palette = get_palette(self.ui_theme);
         let is_active = self.active_tab == tab;
         let (fill, stroke) = if is_active {
             (

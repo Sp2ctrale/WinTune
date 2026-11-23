@@ -10,6 +10,7 @@ mod confirm;
 mod gallery_tab;
 mod history_panel;
 mod jobs;
+pub mod kit;
 mod polish;
 #[cfg(test)]
 mod review2_tests;
@@ -31,8 +32,9 @@ use crate::detector::{
     has_wsl_distribution, is_windows_11_build, resolve_vscode_executable, windows_build,
 };
 use crate::gallery::{IconCategory, IconGallery};
+use crate::i18n::Tr;
 use crate::models::{app_data_dir, AppConfig, BackupStore};
-use crate::theme::apply_fluent_theme;
+use crate::theme::ThemeMode;
 use crate::tweaks::{
     current_user_label, default_tweak_store_path, notify_explorer_settings, TweakBackupStore,
     TweakStatus, TweakTarget,
@@ -155,6 +157,10 @@ pub struct WinTuneApp {
     tweak_desired: HashMap<&'static str, bool>,
     /// Filter typed in the tweaks tab (title / description).
     tweak_search: String,
+    tr: Tr,
+    /// The theme actually shown this frame (Light or Dark, never System):
+    /// what the old palette helpers receive.
+    ui_theme: ThemeMode,
     /// Ctrl+F was pressed: focus the current tab's search box.
     focus_search: bool,
     /// Recent operations, newest first.
@@ -175,6 +181,8 @@ impl WinTuneApp {
             }
         }
         let mut app = Self::with_config(&cc.egui_ctx, config, has_wsl_distribution(), env);
+        let windir = std::env::var_os("WINDIR").unwrap_or_else(|| r"C:\Windows".into());
+        kit::fonts::install(&cc.egui_ctx, &std::path::Path::new(&windir).join("Fonts"));
         if let Some(e) = &config_error {
             app.set_status(format!(
                 "Using the default rules: {} Saving is disabled until it is fixed.",
@@ -197,7 +205,10 @@ impl WinTuneApp {
         wsl_detected: bool,
         env: AppEnv,
     ) -> Self {
-        apply_fluent_theme(ctx, config.theme);
+        kit::install_styles(ctx);
+        kit::set_theme_mode(ctx, config.theme);
+        let ui_theme = kit::resolved(config.theme, ctx);
+        let tr = Tr::new(&config.language);
 
         let mut gallery = IconGallery::default();
         gallery.reload(&config.icon_source_folder, &config.pak_file_path);
@@ -231,6 +242,8 @@ impl WinTuneApp {
             tweak_statuses: HashMap::new(),
             tweak_desired: HashMap::new(),
             tweak_search: String::new(),
+            tr,
+            ui_theme,
             focus_search: false,
             history: Vec::new(),
             show_history: false,
@@ -240,6 +253,7 @@ impl WinTuneApp {
 
     /// One frame of the whole UI.
     fn ui(&mut self, ctx: &egui::Context) {
+        self.ui_theme = kit::resolved(self.config.theme, ctx);
         self.poll_job();
         self.handle_shortcuts(ctx);
         self.pump_status_refresh(ctx);
@@ -256,6 +270,15 @@ impl WinTuneApp {
             ActiveTab::Gallery => self.show_gallery_tab(ctx),
             ActiveTab::Rollback => self.show_rollback_tab(ctx),
         }
+    }
+
+    /// Switches the language now and remembers it. An unshipped code is
+    /// stored as the English fallback actually in use.
+    #[allow(dead_code)] // called by the Settings page (PR 2)
+    pub(super) fn set_language(&mut self, code: &str) {
+        self.tr = Tr::new(code);
+        self.config.language = self.tr.code().to_string();
+        self.save_config();
     }
 
     fn is_busy(&self) -> bool {
@@ -385,6 +408,57 @@ mod tests {
     use crate::tasks::BackgroundJob;
     use egui::{RawInput, ViewportCommand};
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn configs_without_language_load_as_english() {
+        let c: AppConfig = serde_json::from_str(
+            r#"{"theme":"Dark","code_executable":"","icon_source_folder":"","icon_destination_folder":"","pak_file_path":"","extensions":[]}"#,
+        )
+        .unwrap();
+        assert_eq!(c.language, "en");
+        assert_eq!(c.theme, crate::theme::ThemeMode::Dark);
+    }
+
+    #[test]
+    fn an_unshipped_language_renders_in_english() {
+        let icons = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut config = icons.config();
+        config.language = "de".into();
+        let app = icons.app_with(&ctx, config);
+        assert_eq!(app.tr.code(), "en");
+    }
+
+    #[test]
+    fn set_language_switches_immediately() {
+        let icons = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = icons.app(&ctx);
+        assert_eq!(app.tr.code(), "en");
+        app.set_language("fr");
+        assert_eq!(app.tr.code(), "fr");
+        assert_eq!(app.config.language, "fr");
+        frame(&mut app, &ctx, RawInput::default());
+        app.set_language("de");
+        assert_eq!(app.config.language, "en");
+    }
+
+    #[test]
+    fn the_app_renders_a_frame_in_every_theme_mode() {
+        use crate::theme::ThemeMode;
+        let icons = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        for mode in [ThemeMode::Light, ThemeMode::Dark, ThemeMode::System] {
+            let mut config = icons.config();
+            config.theme = mode;
+            let mut app = icons.app_with(&ctx, config);
+            frame(&mut app, &ctx, RawInput::default());
+            assert_ne!(app.ui_theme, ThemeMode::System);
+            if mode != ThemeMode::System {
+                assert_eq!(app.ui_theme, mode);
+            }
+        }
+    }
 
     #[test]
     fn every_tab_renders_without_panicking() {

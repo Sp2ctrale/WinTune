@@ -129,10 +129,7 @@ impl WinTuneApp {
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
                     if ui
-                        .add(crate::theme::accent_button(
-                            confirm_label,
-                            self.config.theme,
-                        ))
+                        .add(crate::theme::accent_button(confirm_label, self.ui_theme))
                         .clicked()
                     {
                         decision = Some(true);

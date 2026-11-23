@@ -4103,11 +4103,13 @@ dependencies = [
 name = "wintune"
 version = "0.2.0"
 dependencies = [
+ "ab_glyph",
  "eframe",
  "egui",
  "embed-resource",
  "ico",
  "image",
+ "quick-xml 0.41.0",
  "regex",
  "rfd",
  "serde",

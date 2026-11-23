@@ -18,6 +18,7 @@ test = false
 [dependencies]
 eframe = "0.29"
 egui = "0.29"
+ab_glyph = "0.2"
 winreg = "0.52"
 windows-sys = { version = "0.59", features = [
     "Win32_UI_Shell",
@@ -31,6 +32,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rfd = "0.15"
 regex = "1.11"
+quick-xml = "0.41"
 
 [build-dependencies]
 embed-resource = "3"

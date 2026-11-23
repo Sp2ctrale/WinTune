@@ -6,11 +6,12 @@
 use super::confirm::{Confirm, ConfirmAction};
 use super::jobs::{RunningJob, TweakOutcome};
 use super::{ActiveTab, WinTuneApp};
+use crate::i18n::messages;
 use crate::tasks::BackgroundJob;
 use crate::theme::{accent_button, card_frame, draw_badge, get_palette};
 use crate::tweaks::{
-    apply_tweaks, catalog, load_tweak_store, restore_tweaks, tweak_status, OsRequirement, Refresh,
-    Tweak, TweakBackupStore, TweakGroup, TweakOptions, TweakStatus,
+    apply_tweaks, catalog, load_tweak_store, restore_tweaks, tweak_status, CustomReason,
+    OsRequirement, Refresh, Tweak, TweakBackupStore, TweakGroup, TweakOptions, TweakStatus,
 };
 use eframe::egui::{self, Margin, RichText};
 
@@ -37,7 +38,7 @@ impl WinTuneApp {
             .iter()
             .map(|t| {
                 let status = tweak_status(&target, t)
-                    .unwrap_or_else(|e| TweakStatus::Custom(format!("unreadable: {}", e)));
+                    .unwrap_or_else(|e| TweakStatus::Custom(CustomReason::Unreadable(e)));
                 (t.id, status)
             })
             .collect();
@@ -47,13 +48,18 @@ impl WinTuneApp {
     /// case-insensitive), in catalog order.
     pub(super) fn visible_tweaks(&self, group: TweakGroup) -> Vec<&'static Tweak> {
         let query = self.tweak_search.trim().to_lowercase();
+        let tr = self.tr;
         catalog()
             .iter()
             .filter(|t| t.group == group)
             .filter(|t| {
                 query.is_empty()
-                    || t.title.to_lowercase().contains(&query)
-                    || t.description.to_lowercase().contains(&query)
+                    || messages::tweak_title(tr, t.id)
+                        .to_lowercase()
+                        .contains(&query)
+                    || messages::tweak_description(tr, t.id)
+                        .to_lowercase()
+                        .contains(&query)
             })
             .collect()
     }
@@ -201,9 +207,10 @@ impl WinTuneApp {
         if ids.is_empty() {
             return;
         }
-        let titles: Vec<&str> = ids
+        let tr = self.tr;
+        let titles: Vec<String> = ids
             .iter()
-            .filter_map(|id| crate::tweaks::find_tweak(id).map(|t| t.title))
+            .filter_map(|id| crate::tweaks::find_tweak(id).map(|t| messages::tweak_title(tr, t.id)))
             .collect();
         self.pending_confirm = Some(Confirm {
             title: "Restore original settings".to_string(),
@@ -280,7 +287,7 @@ impl WinTuneApp {
     }
 
     pub(super) fn show_tweaks_tab(&mut self, ctx: &egui::Context) {
-        let palette = get_palette(self.config.theme);
+        let palette = get_palette(self.ui_theme);
         let busy = self.is_busy();
         let pending = self
             .pending_tweak_changes_in(Self::tweak_groups_of(self.active_tab))
@@ -297,7 +304,7 @@ impl WinTuneApp {
                     .inner_margin(Margin::symmetric(16.0, 12.0)),
             )
             .show(ctx, |ui| {
-                card_frame(self.config.theme).show(ui, |ui| {
+                card_frame(self.ui_theme).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
                             ui.heading(tab.title());
@@ -313,7 +320,7 @@ impl WinTuneApp {
                             let apply_reason = self.tweak_apply_disabled_reason();
                             let apply = ui.add_enabled(
                                 apply_reason.is_none(),
-                                accent_button(format!("Apply ({})", pending), self.config.theme),
+                                accent_button(format!("Apply ({})", pending), self.ui_theme),
                             );
                             let apply = match &apply_reason {
                                 Some(r) => apply.on_disabled_hover_text(r),
@@ -371,13 +378,13 @@ impl WinTuneApp {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     let mut shown = 0;
                     for &group in groups {
-                        let title = group.title();
+                        let title = messages::group_title(self.tr, group);
                         let tweaks = self.visible_tweaks(group);
                         if tweaks.is_empty() {
                             continue;
                         }
                         shown += tweaks.len();
-                        card_frame(self.config.theme).show(ui, |ui| {
+                        card_frame(self.ui_theme).show(ui, |ui| {
                             ui.set_min_width(ui.available_width());
                             ui.label(RichText::new(title).size(15.0).strong());
                             for tweak in tweaks {
@@ -401,7 +408,7 @@ impl WinTuneApp {
     }
 
     fn tweak_row(&mut self, ui: &mut egui::Ui, tweak: &'static Tweak, locked: bool) {
-        let palette = get_palette(self.config.theme);
+        let palette = get_palette(self.ui_theme);
         let available = self.tweak_available(tweak);
         let current_on = self.tweak_is_on(tweak.id);
         let mut wanted = self
@@ -425,7 +432,7 @@ impl WinTuneApp {
             }
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
-                    let title = RichText::new(tweak.title).strong();
+                    let title = RichText::new(messages::tweak_title(self.tr, tweak.id)).strong();
                     ui.label(if available { title } else { title.color(palette.text_secondary) });
                     match self.tweak_statuses.get(tweak.id) {
                         Some(TweakStatus::On) => {
@@ -459,7 +466,7 @@ impl WinTuneApp {
                             .on_hover_text("Relies on undocumented Windows behaviour that an update could change.");
                     }
                 });
-                ui.label(RichText::new(tweak.description).size(12.0).color(palette.text_secondary));
+                ui.label(RichText::new(messages::tweak_description(self.tr, tweak.id)).size(12.0).color(palette.text_secondary));
             });
             if has_backup {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

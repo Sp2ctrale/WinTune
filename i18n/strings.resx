@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="language.name" xml:space="preserve">
+    <value>English</value>
+    <comment>The language's own name, shown in the language picker.</comment>
+  </data>
+  <data name="problem.invalid_extension" xml:space="preserve">
+    <value>invalid extension '{0}' (expected e.g. '.rs', without spaces or path characters)</value>
+  </data>
+  <data name="problem.reserved_extension" xml:space="preserve">
+    <value>{0} is reserved: changing how Windows runs it could break the system</value>
+  </data>
+  <data name="problem.invalid_prog_id" xml:space="preserve">
+    <value>invalid ProgID '{0}' (expected e.g. 'CustomRustFile', without spaces or path characters)</value>
+  </data>
+  <data name="problem.reserved_prog_id" xml:space="preserve">
+    <value>ProgID '{0}' is a Windows system key: choose another name (e.g. '{1}')</value>
+  </data>
+  <data name="problem.duplicate_extension" xml:space="preserve">
+    <value>{0} is listed more than once</value>
+  </data>
+  <data name="problem.shared_prog_id" xml:space="preserve">
+    <value>ProgID {0} is used by several rules: give each rule its own</value>
+  </data>
+  <data name="drift.default_changed" xml:space="preserve">
+    <value>{0} now opens with {1} instead of {2}</value>
+  </data>
+  <data name="drift.default_missing" xml:space="preserve">
+    <value>{0} has no default ProgID any more (expected {1})</value>
+  </data>
+  <data name="drift.prog_id_missing" xml:space="preserve">
+    <value>ProgID {0} is missing</value>
+  </data>
+  <data name="drift.value_differs" xml:space="preserve">
+    <value>{0} differs: expected "{1}", found "{2}"</value>
+  </data>
+  <data name="drift.field.description" xml:space="preserve">
+    <value>description</value>
+  </data>
+  <data name="drift.field.icon" xml:space="preserve">
+    <value>icon</value>
+  </data>
+  <data name="drift.field.open_command" xml:space="preserve">
+    <value>open command</value>
+  </data>
+  <data name="drift.user_choice" xml:space="preserve">
+    <value>Explorer {0} of user {1} opens {2} with {3}</value>
+  </data>
+  <data name="drift.user_override" xml:space="preserve">
+    <value>a per-user override of user {0} points {1} to {2}</value>
+  </data>
+  <data name="custom.unexpected_value" xml:space="preserve">
+    <value>{0} = {1}</value>
+  </data>
+  <data name="custom.unexpected_type" xml:space="preserve">
+    <value>{0} has an unexpected type</value>
+  </data>
+  <data name="custom.unreadable" xml:space="preserve">
+    <value>unreadable: {0}</value>
+  </data>
+  <data name="group.file_explorer" xml:space="preserve">
+    <value>File Explorer</value>
+  </data>
+  <data name="group.taskbar" xml:space="preserve">
+    <value>Taskbar</value>
+  </data>
+  <data name="group.start" xml:space="preserve">
+    <value>Start menu</value>
+  </data>
+  <data name="group.privacy" xml:space="preserve">
+    <value>Privacy</value>
+  </data>
+  <data name="tweak.show_extensions.title" xml:space="preserve">
+    <value>Show file extensions</value>
+  </data>
+  <data name="tweak.show_extensions.description" xml:space="preserve">
+    <value>Always show extensions such as .txt or .exe in file names.</value>
+  </data>
+  <data name="tweak.show_hidden.title" xml:space="preserve">
+    <value>Show hidden files</value>
+  </data>
+  <data name="tweak.show_hidden.description" xml:space="preserve">
+    <value>Show files and folders marked as hidden.</value>
+  </data>
+  <data name="tweak.show_protected_os_files.title" xml:space="preserve">
+    <value>Show protected system files</value>
+  </data>
+  <data name="tweak.show_protected_os_files.description" xml:space="preserve">
+    <value>Show operating system files that Explorer normally hides. Deleting them can break Windows.</value>
+  </data>
+  <data name="tweak.open_this_pc.title" xml:space="preserve">
+    <value>Open Explorer to This PC</value>
+  </data>
+  <data name="tweak.open_this_pc.description" xml:space="preserve">
+    <value>New Explorer windows open on This PC instead of Home / Quick access.</value>
+  </data>
+  <data name="tweak.full_path_title.title" xml:space="preserve">
+    <value>Show full path in the title bar</value>
+  </data>
+  <data name="tweak.full_path_title.description" xml:space="preserve">
+    <value>Show the folder's full path in the Explorer title bar.</value>
+  </data>
+  <data name="tweak.compact_mode.title" xml:space="preserve">
+    <value>Compact view</value>
+  </data>
+  <data name="tweak.compact_mode.description" xml:space="preserve">
+    <value>Reduce the space between items in Explorer lists.</value>
+  </data>
+  <data name="tweak.item_checkboxes.title" xml:space="preserve">
+    <value>Item check boxes</value>
+  </data>
+  <data name="tweak.item_checkboxes.description" xml:space="preserve">
+    <value>Show a check box on each item to select several files with the mouse.</value>
+  </data>
+  <data name="tweak.hide_recent_files.title" xml:space="preserve">
+    <value>Hide recent files in Quick access</value>
+  </data>
+  <data name="tweak.hide_recent_files.description" xml:space="preserve">
+    <value>Stop listing recently used files on Home / Quick access.</value>
+  </data>
+  <data name="tweak.hide_frequent_folders.title" xml:space="preserve">
+    <value>Hide frequent folders in Quick access</value>
+  </data>
+  <data name="tweak.hide_frequent_folders.description" xml:space="preserve">
+    <value>Stop listing frequently used folders on Home / Quick access.</value>
+  </data>
+  <data name="tweak.classic_context_menu.title" xml:space="preserve">
+    <value>Classic right-click menu</value>
+  </data>
+  <data name="tweak.classic_context_menu.description" xml:space="preserve">
+    <value>Show the full Windows 10-style context menu directly, without "Show more options".</value>
+  </data>
+  <data name="tweak.taskbar_left.title" xml:space="preserve">
+    <value>Align taskbar to the left</value>
+  </data>
+  <data name="tweak.taskbar_left.description" xml:space="preserve">
+    <value>Put the Start button and app icons on the left, like Windows 10.</value>
+  </data>
+  <data name="tweak.hide_task_view.title" xml:space="preserve">
+    <value>Hide the Task View button</value>
+  </data>
+  <data name="tweak.hide_task_view.description" xml:space="preserve">
+    <value>Remove the Task View button from the taskbar.</value>
+  </data>
+  <data name="tweak.hide_search.title" xml:space="preserve">
+    <value>Hide the taskbar search</value>
+  </data>
+  <data name="tweak.hide_search.description" xml:space="preserve">
+    <value>Remove the search box or icon from the taskbar. Turning it off shows the search icon.</value>
+  </data>
+  <data name="tweak.start_recommendations.title" xml:space="preserve">
+    <value>Hide recommendations in Start</value>
+  </data>
+  <data name="tweak.start_recommendations.description" xml:space="preserve">
+    <value>Turn off recommendations for tips, shortcuts and new apps in Start.</value>
+  </data>
+  <data name="tweak.start_more_pins.title" xml:space="preserve">
+    <value>More pins in Start</value>
+  </data>
+  <data name="tweak.start_more_pins.description" xml:space="preserve">
+    <value>Use the Start layout that shows more pinned apps and fewer recommendations.</value>
+  </data>
+  <data name="tweak.start_hide_recent_apps.title" xml:space="preserve">
+    <value>Hide recently added apps</value>
+  </data>
+  <data name="tweak.start_hide_recent_apps.description" xml:space="preserve">
+    <value>Don't list newly installed apps in Start.</value>
+  </data>
+  <data name="tweak.start_show_all_pins.title" xml:space="preserve">
+    <value>Show all pins by default</value>
+  </data>
+  <data name="tweak.start_show_all_pins.description" xml:space="preserve">
+    <value>Expand the pinned section of Start so every pin is visible.</value>
+  </data>
+  <data name="tweak.no_app_launch_tracking.title" xml:space="preserve">
+    <value>Don't track app launches</value>
+  </data>
+  <data name="tweak.no_app_launch_tracking.description" xml:space="preserve">
+    <value>Stop Windows from tracking app launches to improve Start and search results (this also empties "Most used").</value>
+  </data>
+  <data name="tweak.no_recent_documents.title" xml:space="preserve">
+    <value>Don't show recent files</value>
+  </data>
+  <data name="tweak.no_recent_documents.description" xml:space="preserve">
+    <value>Hide recommended files in Start, recent files in Explorer and recent items in Jump Lists.</value>
+  </data>
+</root>

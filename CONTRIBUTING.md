@@ -69,6 +69,32 @@ For a new module:
    with `record_history`.
 4. **Add headless UI tests** with `TempIcons`.
 
+## Adding a language
+
+1. **Copy `i18n/strings.resx` to `i18n/strings.<code>.resx`**, for example
+   `strings.de.resx`. The build picks the file up on its own.
+2. **Translate the values**, not the keys. Set `language.name` to the
+   language's own name (`Deutsch`): that is what the picker shows.
+3. **Keep placeholders.** `{0}`, `{1}` must appear in the translation as in
+   English, and a literal brace is written `{{` or `}}` (this escape applies to
+   `t_args` only, not to `t`).
+4. **Run `cargo test --lib i18n`.** These tests tell you what is missing:
+   - `shipped_translations_are_complete`: every English key exists in every
+     shipped language's own file. A new language must be complete before it
+     ships.
+   - `shipped_translations_have_no_orphan_keys`: no key that English lacks
+     (a typo in a key name shows up here).
+   - `shipped_translations_use_the_same_placeholders_as_english`: same
+     `{n}` placeholders as English, for every language.
+   - `every_engine_message_translates_in_every_shipped_language` and
+     `every_tweak_and_group_has_texts_in_every_shipped_language` also run
+     on every language, so a new file must cover those texts.
+
+A key a language lacks would silently fall back to English at run time, which
+is why the tests above insist that every shipped language is complete. A new
+key in English needs its translations in the same PR, because the tests fail
+until every shipped language has it.
+
 ## Commits and PRs
 
 - Keep one coherent change per PR, and explain what changed and why.

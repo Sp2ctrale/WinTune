@@ -14,7 +14,9 @@ makes can be undone. It has two modules:
   layout, recently added apps) and for what Windows tracks (app launches,
   recent files).
 
-Built with Rust and [egui](https://github.com/emilk/egui).
+Built with Rust and [egui](https://github.com/emilk/egui). The interface is
+available in English and Français, and the theme follows Windows (or can be
+forced light or dark).
 
 - [docs/registry-reference.md](docs/registry-reference.md): every key and
   value WinTune can write, how each change is undone, and the values that
@@ -181,7 +183,8 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `tasks` | Background jobs with progress reporting and panic capture |
 | `detector` | VS Code, WSL and user-hive detection |
 | `clock` | Local timestamps |
-| `theme` | Fluent-style dark and light theme |
+| `theme` | Fluent-style dark and light theme (old screens; being replaced by `ui::kit`) |
+| `i18n` | Translations: `.resx` catalogs in `i18n/`, the `Tr` handle, and engine message codes turned into text |
 | `ui` | egui interface, one file per tab (`associations_tab`, `tweaks_tab`, `gallery_tab`, `rollback_tab`) plus `sidebar`, `status_bar`, `confirm`, `rule_status` and `jobs` |
 | `main.rs` | Window setup only |
 

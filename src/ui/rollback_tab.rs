@@ -4,7 +4,7 @@ use eframe::egui::{self, Margin, RichText};
 
 impl WinTuneApp {
     pub(super) fn show_rollback_tab(&mut self, ctx: &egui::Context) {
-        let palette = get_palette(self.config.theme);
+        let palette = get_palette(self.ui_theme);
 
         egui::CentralPanel::default()
             .frame(
@@ -13,7 +13,7 @@ impl WinTuneApp {
                     .inner_margin(Margin::symmetric(16.0, 12.0)),
             )
             .show(ctx, |ui| {
-                card_frame(self.config.theme).show(ui, |ui| {
+                card_frame(self.ui_theme).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
                             ui.heading("Selective Registry Rollback");
@@ -30,7 +30,7 @@ impl WinTuneApp {
                                 format!("Restore Selected ({})", self.rollback_selection.len());
                             let reason = self.rollback_disabled_reason();
                             let resp =
-                                ui.add_enabled(reason.is_none(), accent_button(label, self.config.theme));
+                                ui.add_enabled(reason.is_none(), accent_button(label, self.ui_theme));
                             let resp = match &reason {
                                 Some(r) => resp.on_disabled_hover_text(r),
                                 None => resp,
@@ -55,7 +55,7 @@ impl WinTuneApp {
 
                 ui.add_space(10.0);
 
-                card_frame(self.config.theme).show(ui, |ui| {
+                card_frame(self.ui_theme).show(ui, |ui| {
                     if self.backup_store.backups.is_empty() {
                         ui.label(
                             RichText::new(

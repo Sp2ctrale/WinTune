@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="language.name" xml:space="preserve">
+    <value>Français</value>
+  </data>
+  <data name="problem.invalid_extension" xml:space="preserve">
+    <value>l'extension « {0} » n'est pas valide (attendu par exemple « .rs », sans espace ni caractère de chemin)</value>
+  </data>
+  <data name="problem.reserved_extension" xml:space="preserve">
+    <value>{0} est réservée : modifier la façon dont Windows l'exécute pourrait endommager le système</value>
+  </data>
+  <data name="problem.invalid_prog_id" xml:space="preserve">
+    <value>le ProgID « {0} » n'est pas valide (attendu par exemple « CustomRustFile », sans espace ni caractère de chemin)</value>
+  </data>
+  <data name="problem.reserved_prog_id" xml:space="preserve">
+    <value>le ProgID « {0} » est une clé système de Windows : choisissez un autre nom (par exemple « {1} »)</value>
+  </data>
+  <data name="problem.duplicate_extension" xml:space="preserve">
+    <value>{0} apparaît plusieurs fois dans la liste</value>
+  </data>
+  <data name="problem.shared_prog_id" xml:space="preserve">
+    <value>le ProgID {0} est utilisé par plusieurs règles : donnez à chaque règle le sien</value>
+  </data>
+  <data name="drift.default_changed" xml:space="preserve">
+    <value>{0} s'ouvre désormais avec {1} au lieu de {2}</value>
+  </data>
+  <data name="drift.default_missing" xml:space="preserve">
+    <value>{0} n'a plus de ProgID par défaut (attendu : {1})</value>
+  </data>
+  <data name="drift.prog_id_missing" xml:space="preserve">
+    <value>le ProgID {0} est introuvable</value>
+  </data>
+  <data name="drift.value_differs" xml:space="preserve">
+    <value>{0} diffère : attendu « {1} », trouvé « {2} »</value>
+  </data>
+  <data name="drift.field.description" xml:space="preserve">
+    <value>la description</value>
+  </data>
+  <data name="drift.field.icon" xml:space="preserve">
+    <value>l'icône</value>
+  </data>
+  <data name="drift.field.open_command" xml:space="preserve">
+    <value>la commande d'ouverture</value>
+  </data>
+  <data name="drift.user_choice" xml:space="preserve">
+    <value>le choix {0} de l'Explorateur pour l'utilisateur {1} ouvre {2} avec {3}</value>
+  </data>
+  <data name="drift.user_override" xml:space="preserve">
+    <value>un remplacement propre à l'utilisateur {0} fait pointer {1} vers {2}</value>
+  </data>
+  <data name="custom.unexpected_value" xml:space="preserve">
+    <value>{0} = {1}</value>
+  </data>
+  <data name="custom.unexpected_type" xml:space="preserve">
+    <value>{0} a un type inattendu</value>
+  </data>
+  <data name="custom.unreadable" xml:space="preserve">
+    <value>illisible : {0}</value>
+  </data>
+  <data name="group.file_explorer" xml:space="preserve">
+    <value>Explorateur de fichiers</value>
+  </data>
+  <data name="group.taskbar" xml:space="preserve">
+    <value>Barre des tâches</value>
+  </data>
+  <data name="group.start" xml:space="preserve">
+    <value>Menu Démarrer</value>
+  </data>
+  <data name="group.privacy" xml:space="preserve">
+    <value>Confidentialité</value>
+  </data>
+  <data name="tweak.show_extensions.title" xml:space="preserve">
+    <value>Afficher les extensions de fichier</value>
+  </data>
+  <data name="tweak.show_extensions.description" xml:space="preserve">
+    <value>Toujours afficher les extensions comme .txt ou .exe dans les noms de fichiers.</value>
+  </data>
+  <data name="tweak.show_hidden.title" xml:space="preserve">
+    <value>Afficher les fichiers cachés</value>
+  </data>
+  <data name="tweak.show_hidden.description" xml:space="preserve">
+    <value>Afficher les fichiers et dossiers marqués comme cachés.</value>
+  </data>
+  <data name="tweak.show_protected_os_files.title" xml:space="preserve">
+    <value>Afficher les fichiers système protégés</value>
+  </data>
+  <data name="tweak.show_protected_os_files.description" xml:space="preserve">
+    <value>Afficher les fichiers du système que l'Explorateur masque normalement. Les supprimer peut endommager Windows.</value>
+  </data>
+  <data name="tweak.open_this_pc.title" xml:space="preserve">
+    <value>Ouvrir l'Explorateur sur Ce PC</value>
+  </data>
+  <data name="tweak.open_this_pc.description" xml:space="preserve">
+    <value>Les nouvelles fenêtres de l'Explorateur s'ouvrent sur Ce PC au lieu d'Accueil / Accès rapide.</value>
+  </data>
+  <data name="tweak.full_path_title.title" xml:space="preserve">
+    <value>Afficher le chemin complet dans la barre de titre</value>
+  </data>
+  <data name="tweak.full_path_title.description" xml:space="preserve">
+    <value>Afficher le chemin complet du dossier dans la barre de titre de l'Explorateur.</value>
+  </data>
+  <data name="tweak.compact_mode.title" xml:space="preserve">
+    <value>Affichage compact</value>
+  </data>
+  <data name="tweak.compact_mode.description" xml:space="preserve">
+    <value>Réduire l'espace entre les éléments des listes de l'Explorateur.</value>
+  </data>
+  <data name="tweak.item_checkboxes.title" xml:space="preserve">
+    <value>Cases à cocher des éléments</value>
+  </data>
+  <data name="tweak.item_checkboxes.description" xml:space="preserve">
+    <value>Afficher une case à cocher sur chaque élément pour sélectionner plusieurs fichiers à la souris.</value>
+  </data>
+  <data name="tweak.hide_recent_files.title" xml:space="preserve">
+    <value>Masquer les fichiers récents dans l'Accès rapide</value>
+  </data>
+  <data name="tweak.hide_recent_files.description" xml:space="preserve">
+    <value>Ne plus lister les fichiers récemment utilisés dans Accueil / Accès rapide.</value>
+  </data>
+  <data name="tweak.hide_frequent_folders.title" xml:space="preserve">
+    <value>Masquer les dossiers fréquents dans l'Accès rapide</value>
+  </data>
+  <data name="tweak.hide_frequent_folders.description" xml:space="preserve">
+    <value>Ne plus lister les dossiers fréquemment utilisés dans Accueil / Accès rapide.</value>
+  </data>
+  <data name="tweak.classic_context_menu.title" xml:space="preserve">
+    <value>Menu contextuel classique</value>
+  </data>
+  <data name="tweak.classic_context_menu.description" xml:space="preserve">
+    <value>Afficher directement le menu contextuel complet de style Windows 10, sans « Afficher plus d'options ».</value>
+  </data>
+  <data name="tweak.taskbar_left.title" xml:space="preserve">
+    <value>Aligner la barre des tâches à gauche</value>
+  </data>
+  <data name="tweak.taskbar_left.description" xml:space="preserve">
+    <value>Placer le bouton Démarrer et les icônes d'applications à gauche, comme dans Windows 10.</value>
+  </data>
+  <data name="tweak.hide_task_view.title" xml:space="preserve">
+    <value>Masquer le bouton Vue des tâches</value>
+  </data>
+  <data name="tweak.hide_task_view.description" xml:space="preserve">
+    <value>Retirer le bouton Vue des tâches de la barre des tâches.</value>
+  </data>
+  <data name="tweak.hide_search.title" xml:space="preserve">
+    <value>Masquer la recherche de la barre des tâches</value>
+  </data>
+  <data name="tweak.hide_search.description" xml:space="preserve">
+    <value>Retirer la zone ou l'icône de recherche de la barre des tâches. Désactiver l'option affiche l'icône de recherche.</value>
+  </data>
+  <data name="tweak.start_recommendations.title" xml:space="preserve">
+    <value>Masquer les recommandations dans Démarrer</value>
+  </data>
+  <data name="tweak.start_recommendations.description" xml:space="preserve">
+    <value>Désactiver les recommandations de conseils, de raccourcis et de nouvelles applications dans Démarrer.</value>
+  </data>
+  <data name="tweak.start_more_pins.title" xml:space="preserve">
+    <value>Plus d'épingles dans Démarrer</value>
+  </data>
+  <data name="tweak.start_more_pins.description" xml:space="preserve">
+    <value>Utiliser la disposition de Démarrer qui affiche plus d'applications épinglées et moins de recommandations.</value>
+  </data>
+  <data name="tweak.start_hide_recent_apps.title" xml:space="preserve">
+    <value>Masquer les applications récemment ajoutées</value>
+  </data>
+  <data name="tweak.start_hide_recent_apps.description" xml:space="preserve">
+    <value>Ne pas lister les applications nouvellement installées dans Démarrer.</value>
+  </data>
+  <data name="tweak.start_show_all_pins.title" xml:space="preserve">
+    <value>Afficher toutes les épingles par défaut</value>
+  </data>
+  <data name="tweak.start_show_all_pins.description" xml:space="preserve">
+    <value>Développer la section des épingles de Démarrer pour que toutes soient visibles.</value>
+  </data>
+  <data name="tweak.no_app_launch_tracking.title" xml:space="preserve">
+    <value>Ne pas suivre les lancements d'applications</value>
+  </data>
+  <data name="tweak.no_app_launch_tracking.description" xml:space="preserve">
+    <value>Empêcher Windows de suivre les lancements d'applications pour améliorer Démarrer et la recherche (cela vide aussi « Les plus utilisées »).</value>
+  </data>
+  <data name="tweak.no_recent_documents.title" xml:space="preserve">
+    <value>Ne pas afficher les fichiers récents</value>
+  </data>
+  <data name="tweak.no_recent_documents.description" xml:space="preserve">
+    <value>Masquer les fichiers recommandés dans Démarrer, les fichiers récents dans l'Explorateur et les éléments récents dans les listes de raccourcis.</value>
+  </data>
+</root>

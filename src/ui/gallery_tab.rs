@@ -42,7 +42,7 @@ impl WinTuneApp {
     }
 
     fn show_gallery_header(&mut self, ctx: &egui::Context) {
-        let palette = get_palette(self.config.theme);
+        let palette = get_palette(self.ui_theme);
         let busy = self.is_busy();
 
         egui::TopBottomPanel::top("gallery_header")
@@ -52,7 +52,7 @@ impl WinTuneApp {
                     .inner_margin(Margin::symmetric(16.0, 12.0)),
             )
             .show(ctx, |ui| {
-                card_frame(self.config.theme).show(ui, |ui| {
+                card_frame(self.ui_theme).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Icon Source Folder:").strong());
                         ui.add(
@@ -74,10 +74,7 @@ impl WinTuneApp {
                             if ui
                                 .add_enabled(
                                     !busy,
-                                    accent_button(
-                                        "Build Compressed gallery.pak",
-                                        self.config.theme,
-                                    ),
+                                    accent_button("Build Compressed gallery.pak", self.ui_theme),
                                 )
                                 .clicked()
                             {
@@ -128,7 +125,7 @@ impl WinTuneApp {
     }
 
     fn show_gallery_grid(&mut self, ctx: &egui::Context) {
-        let palette = get_palette(self.config.theme);
+        let palette = get_palette(self.ui_theme);
 
         egui::CentralPanel::default()
             .frame(
@@ -197,9 +194,9 @@ impl WinTuneApp {
         item_width: f32,
         item_height: f32,
     ) -> bool {
-        let palette = get_palette(self.config.theme);
+        let palette = get_palette(self.ui_theme);
         let mut clicked = false;
-        card_frame(self.config.theme).show(ui, |ui| {
+        card_frame(self.ui_theme).show(ui, |ui| {
             ui.set_min_size(egui::vec2(item_width - 28.0, item_height - 28.0));
             ui.vertical_centered(|ui| {
                 match self.gallery.texture(ctx, name) {

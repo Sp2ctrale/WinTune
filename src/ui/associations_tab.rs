@@ -14,7 +14,7 @@ impl WinTuneApp {
     }
 
     fn show_editor_bar(&mut self, ctx: &egui::Context) {
-        let palette = get_palette(self.config.theme);
+        let palette = get_palette(self.ui_theme);
         let busy = self.is_busy();
 
         egui::TopBottomPanel::top("associations_top_bar")
@@ -24,7 +24,7 @@ impl WinTuneApp {
                     .inner_margin(Margin::symmetric(16.0, 12.0)),
             )
             .show(ctx, |ui| {
-                card_frame(self.config.theme).show(ui, |ui| {
+                card_frame(self.ui_theme).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Default Code Editor:").strong());
                         ui.add(
@@ -62,7 +62,7 @@ impl WinTuneApp {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let resp = ui.add_enabled(
                                 disabled_reason.is_none(),
-                                accent_button("Apply Checked Extensions", self.config.theme),
+                                accent_button("Apply Checked Extensions", self.ui_theme),
                             );
                             let resp = match &disabled_reason {
                                 Some(reason) => resp.on_disabled_hover_text(reason),
@@ -123,7 +123,7 @@ impl WinTuneApp {
     }
 
     fn show_extension_list(&mut self, ctx: &egui::Context) {
-        let palette = get_palette(self.config.theme);
+        let palette = get_palette(self.ui_theme);
 
         egui::SidePanel::left("extensions_master_list")
             .resizable(true)
@@ -134,7 +134,7 @@ impl WinTuneApp {
                     .inner_margin(Margin::symmetric(16.0, 4.0)),
             )
             .show(ctx, |ui| {
-                card_frame(self.config.theme).show(ui, |ui| {
+                card_frame(self.ui_theme).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         let search = ui.add(
                             egui::TextEdit::singleline(&mut self.ext_search_query)
@@ -192,6 +192,7 @@ impl WinTuneApp {
                     let problems: std::collections::HashMap<usize, String> =
                         find_rule_problems(&self.config.extensions)
                             .into_iter()
+                            .map(|(i, p)| (i, p.to_string()))
                             .collect();
 
                     if filtered_indices.is_empty() {
@@ -240,7 +241,7 @@ impl WinTuneApp {
                                 }
                                 status_badge(
                                     ui,
-                                    self.config.theme,
+                                    self.ui_theme,
                                     self.rule_statuses
                                         .get(&self.config.extensions[idx].extension),
                                 );
@@ -257,7 +258,7 @@ impl WinTuneApp {
     }
 
     fn show_extension_details(&mut self, ctx: &egui::Context) {
-        let palette = get_palette(self.config.theme);
+        let palette = get_palette(self.ui_theme);
         let busy = self.is_busy();
 
         egui::CentralPanel::default()
@@ -292,7 +293,7 @@ impl WinTuneApp {
                 let problem = find_rule_problems(&self.config.extensions)
                     .into_iter()
                     .find(|(i, _)| *i == self.selected_ext_index)
-                    .map(|(_, msg)| msg);
+                    .map(|(_, p)| p.to_string());
 
                 let status = self
                     .rule_statuses
@@ -306,7 +307,7 @@ impl WinTuneApp {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     let ext_cfg = &mut self.config.extensions[self.selected_ext_index];
 
-                    card_frame(self.config.theme).show(ui, |ui| {
+                    card_frame(self.ui_theme).show(ui, |ui| {
                         ui.horizontal(|ui| {
                             if let Some(t) = current_tex {
                                 ui.image((t.id(), egui::vec2(52.0, 52.0)));
@@ -323,7 +324,7 @@ impl WinTuneApp {
                                     if has_backup {
                                         draw_badge(ui, "Snapshot Saved", palette.success);
                                     }
-                                    status_badge(ui, self.config.theme, status.as_ref());
+                                    status_badge(ui, self.ui_theme, status.as_ref());
                                 });
                                 ui.label(
                                     RichText::new(format!(
@@ -332,7 +333,7 @@ impl WinTuneApp {
                                     ))
                                     .color(palette.text_secondary),
                                 );
-                                status_details(ui, self.config.theme, status.as_ref());
+                                status_details(ui, self.ui_theme, status.as_ref());
                             });
 
                             ui.with_layout(
@@ -341,10 +342,7 @@ impl WinTuneApp {
                                     if ui
                                         .add_enabled(
                                             !busy && problem.is_none(),
-                                            accent_button(
-                                                "Apply This Extension",
-                                                self.config.theme,
-                                            ),
+                                            accent_button("Apply This Extension", self.ui_theme),
                                         )
                                         .clicked()
                                     {
@@ -362,14 +360,14 @@ impl WinTuneApp {
                     identity_card(
                         ui,
                         ext_cfg,
-                        self.config.theme,
+                        self.ui_theme,
                         problem.as_deref(),
                         &mut open_gallery_picker,
                     );
                     ui.add_space(10.0);
-                    behavior_card(ui, ext_cfg, self.config.theme);
+                    behavior_card(ui, ext_cfg, self.ui_theme);
                     ui.add_space(10.0);
-                    verbs_card(ui, ext_cfg, self.config.theme);
+                    verbs_card(ui, ext_cfg, self.ui_theme);
                 });
 
                 if open_gallery_picker {
@@ -580,7 +578,7 @@ pub(super) fn problems_of_enabled(rules: &[ExtensionConfig]) -> Vec<String> {
     let enabled: Vec<ExtensionConfig> = rules.iter().filter(|r| r.enabled).cloned().collect();
     find_rule_problems(&enabled)
         .into_iter()
-        .map(|(_, msg)| msg)
+        .map(|(_, p)| p.to_string())
         .collect()
 }
 

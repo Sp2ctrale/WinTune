@@ -4,7 +4,7 @@ use eframe::egui::{self, Margin, RichText, Stroke};
 
 impl WinTuneApp {
     pub(super) fn show_status_bar(&mut self, ctx: &egui::Context) {
-        let palette = get_palette(self.config.theme);
+        let palette = get_palette(self.ui_theme);
 
         egui::TopBottomPanel::bottom("fluent_status_bar")
             .frame(

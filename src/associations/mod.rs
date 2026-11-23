@@ -23,12 +23,12 @@ mod tests;
 
 pub use apply::{apply_extensions, notify_shell_associations, ApplyOptions};
 pub use rollback::rollback_extensions;
-pub use status::{rule_status, RuleStatus, StatusContext};
+pub use status::{rule_status, DriftField, DriftReason, RuleStatus, StatusContext};
 pub use store::{
     default_backup_store_path, default_reg_backup_dir, load_backup_store, save_backup_store,
 };
 pub use target::AssocTarget;
-pub use validate::{find_rule_problems, validate_extension};
+pub use validate::{find_rule_problems, validate_extension, RuleProblem};
 
 use std::path::PathBuf;
 

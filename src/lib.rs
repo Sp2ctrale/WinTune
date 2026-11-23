@@ -6,6 +6,7 @@ pub mod clock;
 pub mod detector;
 pub mod gallery;
 pub mod history;
+pub mod i18n;
 pub mod models;
 pub mod persist;
 pub mod regsnap;

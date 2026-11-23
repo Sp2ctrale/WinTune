@@ -4,7 +4,7 @@
 
 use super::Tr;
 use crate::associations::{DriftField, DriftReason, RuleProblem};
-use crate::tweaks::CustomReason;
+use crate::tweaks::{CustomReason, TweakGroup};
 
 pub fn rule_problem(tr: Tr, p: &RuleProblem) -> String {
     match p {
@@ -63,4 +63,16 @@ pub fn custom_reason(tr: Tr, c: &CustomReason) -> String {
         CustomReason::UnexpectedType { name } => tr.t_args("custom.unexpected_type", &[name]),
         CustomReason::Unreadable(e) => tr.t_args("custom.unreadable", &[e]),
     }
+}
+
+pub fn tweak_title(tr: Tr, id: &str) -> String {
+    tr.t(&format!("tweak.{id}.title"))
+}
+
+pub fn tweak_description(tr: Tr, id: &str) -> String {
+    tr.t(&format!("tweak.{id}.description"))
+}
+
+pub fn group_title(tr: Tr, g: TweakGroup) -> String {
+    tr.t(&format!("group.{}", g.id()))
 }

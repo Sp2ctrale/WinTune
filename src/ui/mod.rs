@@ -31,6 +31,7 @@ use crate::detector::{
     has_wsl_distribution, is_windows_11_build, resolve_vscode_executable, windows_build,
 };
 use crate::gallery::{IconCategory, IconGallery};
+use crate::i18n::Tr;
 use crate::models::{app_data_dir, AppConfig, BackupStore};
 use crate::theme::apply_fluent_theme;
 use crate::tweaks::{
@@ -155,6 +156,7 @@ pub struct WinTuneApp {
     tweak_desired: HashMap<&'static str, bool>,
     /// Filter typed in the tweaks tab (title / description).
     tweak_search: String,
+    tr: Tr,
     /// Ctrl+F was pressed: focus the current tab's search box.
     focus_search: bool,
     /// Recent operations, newest first.
@@ -231,6 +233,7 @@ impl WinTuneApp {
             tweak_statuses: HashMap::new(),
             tweak_desired: HashMap::new(),
             tweak_search: String::new(),
+            tr: Tr::english(),
             focus_search: false,
             history: Vec::new(),
             show_history: false,

@@ -276,3 +276,37 @@ fn every_key_used_in_the_code_exists_in_english() {
         "keys used but missing in English: {missing:#?}"
     );
 }
+
+#[test]
+fn every_tweak_and_group_has_texts_in_every_shipped_language() {
+    for (code, _) in Tr::languages() {
+        let tr = Tr::new(code);
+        for t in crate::tweaks::catalog() {
+            assert_ne!(
+                messages::tweak_title(tr, t.id),
+                format!("tweak.{}.title", t.id),
+                "{code}"
+            );
+            assert_ne!(
+                messages::tweak_description(tr, t.id),
+                format!("tweak.{}.description", t.id),
+                "{code}"
+            );
+        }
+        for g in crate::tweaks::TweakGroup::ALL {
+            assert_ne!(
+                messages::group_title(tr, g),
+                format!("group.{}", g.id()),
+                "{code}"
+            );
+        }
+    }
+}
+
+#[test]
+fn english_tweak_texts_are_unchanged() {
+    assert_eq!(
+        messages::tweak_title(Tr::english(), "show_extensions"),
+        "Show file extensions"
+    );
+}

@@ -29,12 +29,13 @@ impl TweakGroup {
         TweakGroup::Privacy,
     ];
 
-    pub fn title(self) -> &'static str {
+    /// Stable id, used for the `group.<id>` translation key.
+    pub fn id(self) -> &'static str {
         match self {
-            TweakGroup::FileExplorer => "File Explorer",
-            TweakGroup::Taskbar => "Taskbar",
-            TweakGroup::Start => "Start menu",
-            TweakGroup::Privacy => "Privacy",
+            TweakGroup::FileExplorer => "file_explorer",
+            TweakGroup::Taskbar => "taskbar",
+            TweakGroup::Start => "start",
+            TweakGroup::Privacy => "privacy",
         }
     }
 }
@@ -87,8 +88,6 @@ impl TweakAction {
 #[derive(Debug, Clone, Copy)]
 pub struct Tweak {
     pub id: &'static str,
-    pub title: &'static str,
-    pub description: &'static str,
     pub group: TweakGroup,
     pub os: OsRequirement,
     pub refresh: Refresh,
@@ -105,48 +104,58 @@ const CLASSIC_MENU_CLSID: &str = "Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-
 static CATALOG: &[Tweak] = &[
     Tweak {
         id: "show_extensions",
-        title: "Show file extensions",
-        description: "Always show extensions such as .txt or .exe in file names.",
         group: TweakGroup::FileExplorer,
         os: OsRequirement::Any,
         refresh: Refresh::NewWindows,
         unofficial: false,
-        action: TweakAction::Dword { path: ADVANCED, name: "HideFileExt", on: 0, off: 1 },
+        action: TweakAction::Dword {
+            path: ADVANCED,
+            name: "HideFileExt",
+            on: 0,
+            off: 1,
+        },
     },
     Tweak {
         id: "show_hidden",
-        title: "Show hidden files",
-        description: "Show files and folders marked as hidden.",
         group: TweakGroup::FileExplorer,
         os: OsRequirement::Any,
         refresh: Refresh::NewWindows,
         unofficial: false,
-        action: TweakAction::Dword { path: ADVANCED, name: "Hidden", on: 1, off: 2 },
+        action: TweakAction::Dword {
+            path: ADVANCED,
+            name: "Hidden",
+            on: 1,
+            off: 2,
+        },
     },
     Tweak {
         id: "show_protected_os_files",
-        title: "Show protected system files",
-        description: "Show operating system files that Explorer normally hides. Deleting them can break Windows.",
         group: TweakGroup::FileExplorer,
         os: OsRequirement::Any,
         refresh: Refresh::NewWindows,
         unofficial: false,
-        action: TweakAction::Dword { path: ADVANCED, name: "ShowSuperHidden", on: 1, off: 0 },
+        action: TweakAction::Dword {
+            path: ADVANCED,
+            name: "ShowSuperHidden",
+            on: 1,
+            off: 0,
+        },
     },
     Tweak {
         id: "open_this_pc",
-        title: "Open Explorer to This PC",
-        description: "New Explorer windows open on This PC instead of Home / Quick access.",
         group: TweakGroup::FileExplorer,
         os: OsRequirement::Any,
         refresh: Refresh::NewWindows,
         unofficial: false,
-        action: TweakAction::Dword { path: ADVANCED, name: "LaunchTo", on: 1, off: 2 },
+        action: TweakAction::Dword {
+            path: ADVANCED,
+            name: "LaunchTo",
+            on: 1,
+            off: 2,
+        },
     },
     Tweak {
         id: "full_path_title",
-        title: "Show full path in the title bar",
-        description: "Show the folder's full path in the Explorer title bar.",
         group: TweakGroup::FileExplorer,
         os: OsRequirement::Any,
         refresh: Refresh::ExplorerRestart,
@@ -160,8 +169,6 @@ static CATALOG: &[Tweak] = &[
     },
     Tweak {
         id: "compact_mode",
-        title: "Compact view",
-        description: "Reduce the space between items in Explorer lists.",
         group: TweakGroup::FileExplorer,
         os: OsRequirement::Windows11,
         refresh: Refresh::NewWindows,
@@ -175,8 +182,6 @@ static CATALOG: &[Tweak] = &[
     },
     Tweak {
         id: "item_checkboxes",
-        title: "Item check boxes",
-        description: "Show a check box on each item to select several files with the mouse.",
         group: TweakGroup::FileExplorer,
         os: OsRequirement::Any,
         refresh: Refresh::NewWindows,
@@ -190,8 +195,6 @@ static CATALOG: &[Tweak] = &[
     },
     Tweak {
         id: "hide_recent_files",
-        title: "Hide recent files in Quick access",
-        description: "Stop listing recently used files on Home / Quick access.",
         group: TweakGroup::FileExplorer,
         os: OsRequirement::Any,
         refresh: Refresh::NewWindows,
@@ -205,8 +208,6 @@ static CATALOG: &[Tweak] = &[
     },
     Tweak {
         id: "hide_frequent_folders",
-        title: "Hide frequent folders in Quick access",
-        description: "Stop listing frequently used folders on Home / Quick access.",
         group: TweakGroup::FileExplorer,
         os: OsRequirement::Any,
         refresh: Refresh::NewWindows,
@@ -220,8 +221,6 @@ static CATALOG: &[Tweak] = &[
     },
     Tweak {
         id: "classic_context_menu",
-        title: "Classic right-click menu",
-        description: "Show the full Windows 10-style context menu directly, without \"Show more options\".",
         group: TweakGroup::FileExplorer,
         os: OsRequirement::Windows11,
         refresh: Refresh::ExplorerRestart,
@@ -233,28 +232,32 @@ static CATALOG: &[Tweak] = &[
     },
     Tweak {
         id: "taskbar_left",
-        title: "Align taskbar to the left",
-        description: "Put the Start button and app icons on the left, like Windows 10.",
         group: TweakGroup::Taskbar,
         os: OsRequirement::Windows11,
         refresh: Refresh::Live,
         unofficial: false,
-        action: TweakAction::Dword { path: ADVANCED, name: "TaskbarAl", on: 0, off: 1 },
+        action: TweakAction::Dword {
+            path: ADVANCED,
+            name: "TaskbarAl",
+            on: 0,
+            off: 1,
+        },
     },
     Tweak {
         id: "hide_task_view",
-        title: "Hide the Task View button",
-        description: "Remove the Task View button from the taskbar.",
         group: TweakGroup::Taskbar,
         os: OsRequirement::Any,
         refresh: Refresh::Live,
         unofficial: false,
-        action: TweakAction::Dword { path: ADVANCED, name: "ShowTaskViewButton", on: 0, off: 1 },
+        action: TweakAction::Dword {
+            path: ADVANCED,
+            name: "ShowTaskViewButton",
+            on: 0,
+            off: 1,
+        },
     },
     Tweak {
         id: "hide_search",
-        title: "Hide the taskbar search",
-        description: "Remove the search box or icon from the taskbar. Turning it off shows the search icon.",
         group: TweakGroup::Taskbar,
         os: OsRequirement::Any,
         refresh: Refresh::Live,
@@ -268,8 +271,6 @@ static CATALOG: &[Tweak] = &[
     },
     Tweak {
         id: "start_recommendations",
-        title: "Hide recommendations in Start",
-        description: "Turn off recommendations for tips, shortcuts and new apps in Start.",
         group: TweakGroup::Start,
         os: OsRequirement::Windows11,
         refresh: Refresh::Live,
@@ -283,8 +284,6 @@ static CATALOG: &[Tweak] = &[
     },
     Tweak {
         id: "start_more_pins",
-        title: "More pins in Start",
-        description: "Use the Start layout that shows more pinned apps and fewer recommendations.",
         group: TweakGroup::Start,
         os: OsRequirement::Windows11,
         refresh: Refresh::Live,
@@ -298,8 +297,6 @@ static CATALOG: &[Tweak] = &[
     },
     Tweak {
         id: "start_hide_recent_apps",
-        title: "Hide recently added apps",
-        description: "Don't list newly installed apps in Start.",
         group: TweakGroup::Start,
         os: OsRequirement::Windows11,
         refresh: Refresh::Live,
@@ -313,8 +310,6 @@ static CATALOG: &[Tweak] = &[
     },
     Tweak {
         id: "start_show_all_pins",
-        title: "Show all pins by default",
-        description: "Expand the pinned section of Start so every pin is visible.",
         group: TweakGroup::Start,
         os: OsRequirement::Windows11,
         refresh: Refresh::Live,
@@ -328,8 +323,6 @@ static CATALOG: &[Tweak] = &[
     },
     Tweak {
         id: "no_app_launch_tracking",
-        title: "Don't track app launches",
-        description: "Stop Windows from tracking app launches to improve Start and search results (this also empties \"Most used\").",
         group: TweakGroup::Privacy,
         os: OsRequirement::Any,
         refresh: Refresh::Live,
@@ -343,8 +336,6 @@ static CATALOG: &[Tweak] = &[
     },
     Tweak {
         id: "no_recent_documents",
-        title: "Don't show recent files",
-        description: "Hide recommended files in Start, recent files in Explorer and recent items in Jump Lists.",
         group: TweakGroup::Privacy,
         os: OsRequirement::Any,
         refresh: Refresh::Live,
@@ -649,9 +640,7 @@ pub fn apply_tweaks(
             continue;
         };
         if tweak.os == OsRequirement::Windows11 && !opts.is_windows_11 {
-            report
-                .errors
-                .push(format!("{}: \"{}\" needs Windows 11", id, tweak.title));
+            report.errors.push(format!("{}: needs Windows 11", id));
             continue;
         }
         let current = match snapshot_tweak(target, tweak) {

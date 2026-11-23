@@ -295,35 +295,74 @@ fn real_windows_fonts_load_when_present() {
     });
 }
 
-#[test]
-fn glyphs_are_distinct_private_use_code_points() {
+/// Exhaustive on purpose: adding an `Icon` variant fails to compile here until
+/// it is also listed, and the length check below then forces `Icon::ALL` too.
+fn icon_ordinal(i: Icon) -> usize {
     use Icon::*;
-    let all = [
-        Home,
-        Associations,
-        Explorer,
-        Start,
-        ContextMenu,
-        Icons,
-        History,
-        Settings,
-        Search,
-        Add,
-        Delete,
-        Restore,
-        Warning,
-        Info,
-        Error,
-        Success,
-        ChevronRight,
-        ChevronDown,
-        More,
-        Folder,
-    ];
-    for i in all {
-        let c = icons::glyph(i) as u32;
-        assert!((0xE000..=0xF8FF).contains(&c), "{i:?} is {c:X}");
+    match i {
+        Home => 0,
+        Associations => 1,
+        Explorer => 2,
+        Start => 3,
+        ContextMenu => 4,
+        Icons => 5,
+        History => 6,
+        Settings => 7,
+        Search => 8,
+        Add => 9,
+        Delete => 10,
+        Restore => 11,
+        Warning => 12,
+        Info => 13,
+        Error => 14,
+        Success => 15,
+        ChevronRight => 16,
+        ChevronDown => 17,
+        More => 18,
+        Folder => 19,
     }
-    assert_eq!(icons::glyph(Home), '\u{E80F}');
-    assert_eq!(icons::glyph(Folder), '\u{E8B7}');
+}
+
+#[test]
+fn icon_all_lists_every_variant_once() {
+    assert_eq!(Icon::ALL.len(), 20);
+    for (n, i) in Icon::ALL.iter().enumerate() {
+        assert_eq!(icon_ordinal(*i), n);
+    }
+}
+
+#[test]
+fn glyphs_are_private_use_and_unique_except_explorer_folder() {
+    let mut seen = std::collections::HashMap::new();
+    for i in Icon::ALL {
+        let c = icons::glyph(i);
+        assert!(('\u{E000}'..='\u{F8FF}').contains(&c), "{i:?} is {c:?}");
+        if let Some(prev) = seen.insert(c, i) {
+            let pair = [prev, i];
+            assert!(
+                pair.contains(&Icon::Explorer) && pair.contains(&Icon::Folder),
+                "{prev:?} and {i:?} share {c:?}"
+            );
+        }
+    }
+    assert_eq!(icons::glyph(Icon::Home), '\u{E80F}');
+    assert_eq!(icons::glyph(Icon::Folder), '\u{E8B7}');
+}
+
+#[test]
+fn every_glyph_exists_in_both_icon_fonts() {
+    use ab_glyph::Font;
+    let windir = std::env::var_os("WINDIR").unwrap_or_else(|| r"C:\Windows".into());
+    let dir = Path::new(&windir).join("Fonts");
+    for file in ["SegoeIcons.ttf", "segmdl2.ttf"] {
+        let Ok(bytes) = std::fs::read(dir.join(file)) else {
+            eprintln!("skipping: {file} is absent");
+            continue;
+        };
+        let font = ab_glyph::FontRef::try_from_slice(&bytes).unwrap();
+        for i in Icon::ALL {
+            let c = icons::glyph(i);
+            assert_ne!(font.glyph_id(c).0, 0, "{i:?} ({c:?}) is missing in {file}");
+        }
+    }
 }

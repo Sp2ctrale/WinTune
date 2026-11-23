@@ -30,13 +30,39 @@ pub enum Icon {
     Folder,
 }
 
+impl Icon {
+    /// Every icon, for tests and galleries.
+    pub const ALL: [Icon; 20] = [
+        Icon::Home,
+        Icon::Associations,
+        Icon::Explorer,
+        Icon::Start,
+        Icon::ContextMenu,
+        Icon::Icons,
+        Icon::History,
+        Icon::Settings,
+        Icon::Search,
+        Icon::Add,
+        Icon::Delete,
+        Icon::Restore,
+        Icon::Warning,
+        Icon::Info,
+        Icon::Error,
+        Icon::Success,
+        Icon::ChevronRight,
+        Icon::ChevronDown,
+        Icon::More,
+        Icon::Folder,
+    ];
+}
+
 /// Code points shared by Segoe Fluent Icons and Segoe MDL2 Assets.
 pub fn glyph(icon: Icon) -> char {
     match icon {
         Icon::Home => '\u{E80F}',
         Icon::Associations => '\u{E8A5}', // Document
         Icon::Explorer => '\u{E8B7}',     // Folder
-        Icon::Start => '\u{E782}',        // Windows logo
+        Icon::Start => '\u{E7C4}',        // TaskView
         Icon::ContextMenu => '\u{E8A9}',  // ViewAll
         Icon::Icons => '\u{E8B9}',        // Picture
         Icon::History => '\u{E81C}',

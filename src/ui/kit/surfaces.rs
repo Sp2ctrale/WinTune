@@ -9,7 +9,7 @@ use super::{current_palette, radius, space, text_size, Icon};
 
 /// Runs `leading` on the left and `trailing` right-aligned on the same row,
 /// at least `height` tall. Returns the trailing result.
-fn split_row<R>(
+pub(super) fn split_row<R>(
     ui: &mut Ui,
     height: f32,
     trailing: impl FnOnce(&mut Ui) -> R,

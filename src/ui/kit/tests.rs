@@ -563,3 +563,203 @@ mod controls {
         }
     }
 }
+
+mod layout {
+    use super::super::test_input::{click_frames, frame_input};
+    use super::super::*;
+    use crate::theme::ThemeMode;
+    use egui::{CentralPanel, Context};
+    use std::cell::Cell;
+
+    fn ctx_for(theme: ThemeMode) -> Context {
+        let ctx = Context::default();
+        install_styles(&ctx);
+        set_theme_mode(&ctx, theme);
+        ctx
+    }
+
+    #[derive(Clone, Copy, PartialEq, Debug)]
+    enum Page {
+        Home,
+        Explorer,
+        Settings,
+        Later,
+    }
+
+    fn item(key: Page, label: &str, enabled: bool) -> NavItem<'_, Page> {
+        NavItem {
+            key,
+            icon: Icon::Home,
+            label,
+            badge: None,
+            enabled,
+        }
+    }
+
+    /// Draws the nav with `footer_item` as the only footer entry and returns
+    /// the (selection, changed) pair after a click on that footer entry.
+    fn click_footer(footer_item: NavItem<'_, Page>) -> (Page, bool) {
+        let ctx = ctx_for(ThemeMode::Light);
+        let selected = Cell::new(Page::Home);
+        let changed = Cell::new(false);
+        let groups = vec![
+            NavGroup {
+                title: None,
+                items: vec![item(Page::Home, "Home", true)],
+            },
+            NavGroup {
+                title: Some("Customize"),
+                items: vec![item(Page::Explorer, "Explorer", true)],
+            },
+        ];
+        let footer = [footer_item];
+        let draw = |c: &Context| {
+            let mut s = selected.get();
+            if nav_sidebar(c, &mut s, &groups, &footer) {
+                changed.set(true);
+            }
+            selected.set(s);
+            CentralPanel::default().show(c, |_| {});
+        };
+        // Footer entries sit at the bottom of the 600 px high panel.
+        click_frames(&ctx, egui::pos2(130.0, 570.0), draw);
+        (selected.get(), changed.get())
+    }
+
+    #[test]
+    fn clicking_a_nav_item_selects_it() {
+        let (selected, changed) = click_footer(item(Page::Settings, "Settings", true));
+        assert_eq!(selected, Page::Settings);
+        assert!(changed);
+    }
+
+    #[test]
+    fn a_disabled_nav_item_cannot_be_selected() {
+        let (selected, changed) = click_footer(item(Page::Later, "Later", false));
+        assert_eq!(selected, Page::Home);
+        assert!(!changed);
+    }
+
+    #[test]
+    fn info_toasts_expire_and_error_toasts_stay() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let mut toasts = Toasts::default();
+        toasts.push(ToastKind::Info, "Saved");
+        toasts.push(ToastKind::Error, "Failed");
+        let at = |t: f64| egui::RawInput {
+            time: Some(t),
+            ..frame_input(vec![])
+        };
+        let _ = ctx.run(at(0.0), |c| toasts.show(c));
+        assert_eq!(toasts.len(), 2);
+        let _ = ctx.run(at(TOAST_SECONDS + 0.1), |c| toasts.show(c));
+        assert_eq!(toasts.len(), 1);
+        assert!(!toasts.is_empty());
+    }
+
+    #[test]
+    fn at_most_three_toasts_are_shown() {
+        let ctx = ctx_for(ThemeMode::Dark);
+        let mut toasts = Toasts::default();
+        for i in 0..5 {
+            toasts.push(ToastKind::Success, format!("Toast {i}"));
+        }
+        let _ = ctx.run(frame_input(vec![]), |c| toasts.show(c));
+        assert_eq!(toasts.len(), 5);
+        // Five queued toasts take no more room than three.
+        let height = |ctx: &Context| {
+            ctx.memory(|m| m.area_rect(egui::Id::new("wintune_toasts")))
+                .unwrap()
+                .height()
+        };
+        let five = height(&ctx);
+        let mut three = Toasts::default();
+        for i in 0..3 {
+            three.push(ToastKind::Success, format!("Toast {i}"));
+        }
+        let ctx3 = ctx_for(ThemeMode::Dark);
+        let _ = ctx3.run(frame_input(vec![]), |c| three.show(c));
+        assert!((five - height(&ctx3)).abs() < 1.0);
+    }
+
+    #[test]
+    fn a_busy_action_bar_hides_its_actions() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let ran = Cell::new(false);
+        let _ = ctx.run(frame_input(vec![]), |c| {
+            action_bar(
+                c,
+                "Working",
+                ActionBarState::Busy {
+                    label: "Applying",
+                    fraction: 0.4,
+                },
+                |_| ran.set(true),
+            );
+        });
+        assert!(!ran.get());
+        let _ = ctx.run(frame_input(vec![]), |c| {
+            action_bar(c, "Ready", ActionBarState::Idle, |_| ran.set(true));
+        });
+        assert!(ran.get());
+    }
+
+    #[test]
+    fn layout_components_render_without_fonts_in_both_themes() {
+        for theme in [ThemeMode::Light, ThemeMode::Dark] {
+            let ctx = ctx_for(theme);
+            let mut toasts = Toasts::default();
+            toasts.push(ToastKind::Success, "Done");
+            toasts.push(ToastKind::Info, "Note");
+            toasts.push(ToastKind::Error, "Broke");
+            for busy in [false, true] {
+                let _ = ctx.run(frame_input(vec![]), |c| {
+                    let mut sel = Page::Home;
+                    let groups = [NavGroup {
+                        title: Some("Group"),
+                        items: vec![
+                            NavItem {
+                                badge: Some(3),
+                                ..item(Page::Home, "Home", true)
+                            },
+                            item(Page::Later, "Later", false),
+                        ],
+                    }];
+                    nav_sidebar(
+                        c,
+                        &mut sel,
+                        &groups,
+                        &[item(Page::Settings, "Settings", true)],
+                    );
+                    let state = if busy {
+                        ActionBarState::Busy {
+                            label: "Applying",
+                            fraction: 0.5,
+                        }
+                    } else {
+                        ActionBarState::Idle
+                    };
+                    action_bar(c, "Status", state, |ui| {
+                        ui.label("a");
+                    });
+                    CentralPanel::default().show(c, |ui| {
+                        page_header(
+                            ui,
+                            &["Customize", "Explorer"],
+                            "Explorer",
+                            Some("Sub"),
+                            |ui| {
+                                ui.label("x");
+                            },
+                        );
+                        page_header(ui, &[], "Plain", None, |_| {});
+                    });
+                    toasts.show(c);
+                    dialog(c, "d", "Confirm", 360.0, |ui| {
+                        ui.label("Sure?");
+                    });
+                });
+            }
+        }
+    }
+}

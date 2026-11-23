@@ -1,4 +1,4 @@
-use eframe::egui::{self, Color32, Context, Frame, Margin, Rounding, Stroke, Style, Visuals};
+use eframe::egui::{self, Color32, Frame, Margin, Rounding, Stroke};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -58,60 +58,6 @@ pub fn get_palette(mode: ThemeMode) -> FluentColors {
             warning: Color32::from_rgb(217, 119, 6),
         },
     }
-}
-
-pub fn apply_fluent_theme(ctx: &Context, mode: ThemeMode) {
-    let p = get_palette(mode);
-    let mut style: Style = (*ctx.style()).clone();
-
-    style.spacing.item_spacing = egui::vec2(10.0, 8.0);
-    style.spacing.button_padding = egui::vec2(12.0, 6.0);
-    style.spacing.window_margin = Margin::same(14.0);
-
-    let mut visuals = match mode {
-        // Same as `get_palette`: `System` is never passed once resolved.
-        ThemeMode::Dark | ThemeMode::System => Visuals::dark(),
-        ThemeMode::Light => Visuals::light(),
-    };
-
-    visuals.panel_fill = p.bg_base;
-    visuals.window_fill = p.bg_card;
-    visuals.extreme_bg_color = p.bg_input;
-    visuals.faint_bg_color = p.bg_card;
-    visuals.override_text_color = Some(p.text_primary);
-
-    let rounding = Rounding::same(6.0);
-    visuals.window_rounding = Rounding::same(10.0);
-
-    visuals.widgets.noninteractive.bg_fill = p.bg_card;
-    visuals.widgets.noninteractive.weak_bg_fill = p.bg_card;
-    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, p.border);
-    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, p.text_primary);
-    visuals.widgets.noninteractive.rounding = rounding;
-
-    visuals.widgets.inactive.bg_fill = p.bg_input;
-    visuals.widgets.inactive.weak_bg_fill = p.bg_card;
-    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, p.border);
-    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, p.text_primary);
-    visuals.widgets.inactive.rounding = rounding;
-
-    visuals.widgets.hovered.bg_fill = p.bg_hover;
-    visuals.widgets.hovered.weak_bg_fill = p.bg_hover;
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, p.accent);
-    visuals.widgets.hovered.fg_stroke = Stroke::new(1.5_f32, p.text_primary);
-    visuals.widgets.hovered.rounding = rounding;
-
-    visuals.widgets.active.bg_fill = p.accent;
-    visuals.widgets.active.weak_bg_fill = p.accent;
-    visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, p.accent_hover);
-    visuals.widgets.active.fg_stroke = Stroke::new(1.5_f32, Color32::WHITE);
-    visuals.widgets.active.rounding = rounding;
-
-    visuals.selection.bg_fill = p.accent.gamma_multiply(0.35);
-    visuals.selection.stroke = Stroke::new(1.0_f32, p.accent);
-
-    style.visuals = visuals;
-    ctx.set_style(style);
 }
 
 pub fn card_frame(mode: ThemeMode) -> Frame {

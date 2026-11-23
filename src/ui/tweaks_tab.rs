@@ -287,7 +287,7 @@ impl WinTuneApp {
     }
 
     pub(super) fn show_tweaks_tab(&mut self, ctx: &egui::Context) {
-        let palette = get_palette(self.config.theme);
+        let palette = get_palette(self.ui_theme);
         let busy = self.is_busy();
         let pending = self
             .pending_tweak_changes_in(Self::tweak_groups_of(self.active_tab))
@@ -304,7 +304,7 @@ impl WinTuneApp {
                     .inner_margin(Margin::symmetric(16.0, 12.0)),
             )
             .show(ctx, |ui| {
-                card_frame(self.config.theme).show(ui, |ui| {
+                card_frame(self.ui_theme).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
                             ui.heading(tab.title());
@@ -320,7 +320,7 @@ impl WinTuneApp {
                             let apply_reason = self.tweak_apply_disabled_reason();
                             let apply = ui.add_enabled(
                                 apply_reason.is_none(),
-                                accent_button(format!("Apply ({})", pending), self.config.theme),
+                                accent_button(format!("Apply ({})", pending), self.ui_theme),
                             );
                             let apply = match &apply_reason {
                                 Some(r) => apply.on_disabled_hover_text(r),
@@ -384,7 +384,7 @@ impl WinTuneApp {
                             continue;
                         }
                         shown += tweaks.len();
-                        card_frame(self.config.theme).show(ui, |ui| {
+                        card_frame(self.ui_theme).show(ui, |ui| {
                             ui.set_min_width(ui.available_width());
                             ui.label(RichText::new(title).size(15.0).strong());
                             for tweak in tweaks {
@@ -408,7 +408,7 @@ impl WinTuneApp {
     }
 
     fn tweak_row(&mut self, ui: &mut egui::Ui, tweak: &'static Tweak, locked: bool) {
-        let palette = get_palette(self.config.theme);
+        let palette = get_palette(self.ui_theme);
         let available = self.tweak_available(tweak);
         let current_on = self.tweak_is_on(tweak.id);
         let mut wanted = self

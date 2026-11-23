@@ -34,7 +34,7 @@ impl WinTuneApp {
         if !self.show_history {
             return;
         }
-        let palette = get_palette(self.config.theme);
+        let palette = get_palette(self.ui_theme);
 
         egui::TopBottomPanel::bottom("history_panel")
             .resizable(true)

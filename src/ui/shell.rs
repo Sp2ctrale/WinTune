@@ -1,6 +1,5 @@
 //! The shell around the pages: grouped navigation, page switching with its
-//! safety guards, and the Home / Settings placeholders (Tasks 5 and 6 replace
-//! them).
+//! safety guards, and the Settings placeholder (Task 6 replaces it).
 
 use super::{kit, ActiveTab, WinTuneApp, APP_VERSION};
 use eframe::egui::{self, Frame, Margin};
@@ -114,13 +113,6 @@ impl WinTuneApp {
             .show(ctx, body);
     }
 
-    pub(super) fn show_home_placeholder(&mut self, ctx: &egui::Context) {
-        let text = self.tr.t("home.placeholder");
-        Self::page_panel(ctx, |ui| {
-            kit::empty_state(ui, kit::Icon::Home, &text, None);
-        });
-    }
-
     pub(super) fn show_settings_placeholder(&mut self, ctx: &egui::Context) {
         let text = self.tr.t("settings.placeholder");
         Self::page_panel(ctx, |ui| {
@@ -188,10 +180,13 @@ mod tests {
         let mut app = fx.app(&ctx);
         let out = frame(&mut app, &ctx, RawInput::default());
         // Top to bottom on screen (the pinned footer is painted first).
-        let mut shown: Vec<(f32, String)> = drawn_texts(&out)
-            .into_iter()
-            .filter(|t| NAV_LABELS.contains(&t.as_str()))
-            .map(|t| (text_center(&out, &t).unwrap().y, t))
+        // Home's own tiles repeat some labels; the sidebar is leftmost.
+        let mut shown: Vec<(f32, String)> = NAV_LABELS
+            .iter()
+            .filter_map(|label| {
+                let at = text_center(&out, label)?;
+                Some((at.y, label.to_string()))
+            })
             .collect();
         shown.sort_by(|a, b| a.0.total_cmp(&b.0));
         let shown: Vec<String> = shown.into_iter().map(|(_, t)| t).collect();

@@ -378,8 +378,35 @@
   <data name="history.empty" xml:space="preserve">
     <value>Aucune opération enregistrée.</value>
   </data>
-  <data name="home.placeholder" xml:space="preserve">
-    <value>L'accueil arrive bientôt.</value>
+  <data name="home.title" xml:space="preserve">
+    <value>Accueil</value>
+  </data>
+  <data name="home.subtitle" xml:space="preserve">
+    <value>Tout ce que WinTune a modifié peut être annulé</value>
+  </data>
+  <data name="home.drift" xml:space="preserve">
+    <value>{0} paramètre(s) modifié(s) par Windows ou une autre application</value>
+  </data>
+  <data name="home.review" xml:space="preserve">
+    <value>Examiner</value>
+  </data>
+  <data name="home.rules_status" xml:space="preserve">
+    <value>{0} actives · {1} modifiée(s)</value>
+  </data>
+  <data name="home.tweaks_status" xml:space="preserve">
+    <value>{0} sur {1} activés</value>
+  </data>
+  <data name="home.custom_suffix" xml:space="preserve">
+    <value> · {0} personnalisé(s)</value>
+  </data>
+  <data name="home.recent" xml:space="preserve">
+    <value>Récent</value>
+  </data>
+  <data name="home.no_recent" xml:space="preserve">
+    <value>Aucune opération pour l'instant.</value>
+  </data>
+  <data name="home.view_all" xml:space="preserve">
+    <value>Tout afficher</value>
   </data>
   <data name="settings.placeholder" xml:space="preserve">
     <value>Les paramètres arrivent bientôt.</value>

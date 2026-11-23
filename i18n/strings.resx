@@ -379,8 +379,35 @@
   <data name="history.empty" xml:space="preserve">
     <value>No operation recorded yet.</value>
   </data>
-  <data name="home.placeholder" xml:space="preserve">
-    <value>The home page is coming soon.</value>
+  <data name="home.title" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="home.subtitle" xml:space="preserve">
+    <value>Everything WinTune changed can be undone</value>
+  </data>
+  <data name="home.drift" xml:space="preserve">
+    <value>{0} setting(s) were changed by Windows or another app</value>
+  </data>
+  <data name="home.review" xml:space="preserve">
+    <value>Review</value>
+  </data>
+  <data name="home.rules_status" xml:space="preserve">
+    <value>{0} active · {1} changed</value>
+  </data>
+  <data name="home.tweaks_status" xml:space="preserve">
+    <value>{0} of {1} on</value>
+  </data>
+  <data name="home.custom_suffix" xml:space="preserve">
+    <value> · {0} custom</value>
+  </data>
+  <data name="home.recent" xml:space="preserve">
+    <value>Recent</value>
+  </data>
+  <data name="home.no_recent" xml:space="preserve">
+    <value>No operation yet.</value>
+  </data>
+  <data name="home.view_all" xml:space="preserve">
+    <value>View all</value>
   </data>
   <data name="settings.placeholder" xml:space="preserve">
     <value>Settings are coming soon.</value>

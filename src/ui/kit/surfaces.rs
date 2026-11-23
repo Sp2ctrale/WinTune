@@ -189,6 +189,13 @@ pub fn tile(
             fill,
             Stroke::new(1.0_f32, p.border),
         );
+        if enabled && response.has_focus() {
+            painter.rect_stroke(
+                rect.expand(1.0),
+                Rounding::same(radius::CARD),
+                Stroke::new(2.0_f32, p.accent),
+            );
+        }
         let mut x = rect.left() + space::L;
         if icons_available(ui.ctx()) {
             let galley = painter.layout_no_wrap(

@@ -1067,6 +1067,33 @@ mod shell_kit {
     }
 
     #[test]
+    fn a_focused_tile_paints_a_focus_ring() {
+        fn ring(shape: &Shape) -> bool {
+            match shape {
+                Shape::Rect(r) => r.stroke.width == 2.0,
+                Shape::Vec(v) => v.iter().any(ring),
+                _ => false,
+            }
+        }
+        let ctx = ctx_for(ThemeMode::Light);
+        let draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                tile(ui, Icon::Explorer, "Explorer", "3 tweaks", true, None);
+            });
+        };
+        let has_ring = |out: &egui::FullOutput| out.shapes.iter().any(|c| ring(&c.shape));
+        let _ = ctx.run(frame_input(vec![]), draw);
+        let before = ctx.run(frame_input(vec![]), draw);
+        assert!(!has_ring(&before), "no ring while unfocused");
+        let _ = ctx.run(key(Key::Tab, Modifiers::NONE), draw);
+        let after = ctx.run(frame_input(vec![]), draw);
+        assert!(
+            has_ring(&after),
+            "Tab focuses the tile and it paints a ring"
+        );
+    }
+
+    #[test]
     fn a_disabled_tile_does_not_click() {
         assert!(!tile_clicked(false));
     }

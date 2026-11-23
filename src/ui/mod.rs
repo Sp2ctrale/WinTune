@@ -10,6 +10,7 @@ mod autosave;
 mod confirm;
 mod gallery_tab;
 mod history_panel;
+mod home;
 mod jobs;
 pub mod kit;
 mod polish;
@@ -303,7 +304,7 @@ impl WinTuneApp {
         self.show_autosave_banner(ctx);
 
         match self.active_tab {
-            ActiveTab::Home | ActiveTab::ContextMenu => self.show_home_placeholder(ctx),
+            ActiveTab::Home | ActiveTab::ContextMenu => self.show_home(ctx),
             ActiveTab::History => self.show_history_page(ctx),
             ActiveTab::Settings => self.show_settings_placeholder(ctx),
             ActiveTab::Associations => self.show_associations_tab(ctx),

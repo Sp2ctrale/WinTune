@@ -2,14 +2,20 @@
 //! dark egui styles built from them. Every screen draws with these values,
 //! never with hand-picked colors.
 
+mod controls;
 pub mod fonts;
 pub mod icons;
 mod style;
+mod surfaces;
+#[cfg(test)]
+mod test_input;
 mod tokens;
 
+pub use controls::{disclosure, pill, segmented, toggle, toggle_enabled, PillKind};
 pub use fonts::FontReport;
 pub use icons::Icon;
 pub use style::{current_palette, install_styles, resolved, set_theme_mode};
+pub use surfaces::{banner, card, empty_state, section, BannerKind, SettingRow};
 pub use tokens::{palette, radius, space, text_size, Palette};
 
 #[cfg(test)]

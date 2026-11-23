@@ -366,3 +366,157 @@ fn every_glyph_exists_in_both_icon_fonts() {
         }
     }
 }
+
+// ---- controls and surfaces ----
+
+mod controls {
+    use super::super::test_input::{click_frames, frame_input};
+    use super::super::*;
+    use crate::theme::ThemeMode;
+    use egui::{CentralPanel, Context, Rect};
+    use std::cell::{Cell, RefCell};
+
+    fn ctx_for(theme: ThemeMode) -> Context {
+        let ctx = Context::default();
+        install_styles(&ctx);
+        set_theme_mode(&ctx, theme);
+        ctx
+    }
+
+    /// Lay out once and return the rect `draw` recorded.
+    fn layout(ctx: &Context, rect: &Cell<Rect>, mut draw: impl FnMut(&Context)) -> egui::Pos2 {
+        let _ = ctx.run(frame_input(vec![]), |c| draw(c));
+        rect.get().center()
+    }
+
+    #[test]
+    fn clicking_a_toggle_flips_it() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let on = Cell::new(false);
+        let rect = Cell::new(Rect::NOTHING);
+        let mut draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                let mut v = on.get();
+                rect.set(toggle(ui, &mut v).rect);
+                on.set(v);
+            });
+        };
+        let at = layout(&ctx, &rect, &mut draw);
+        click_frames(&ctx, at, &mut draw);
+        assert!(on.get());
+    }
+
+    #[test]
+    fn a_disabled_toggle_never_flips() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let on = Cell::new(false);
+        let rect = Cell::new(Rect::NOTHING);
+        let mut draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                let mut v = on.get();
+                let r = toggle_enabled(ui, &mut v, Some("reason"));
+                rect.set(r.rect);
+                assert!(!r.changed());
+                on.set(v);
+            });
+        };
+        let at = layout(&ctx, &rect, &mut draw);
+        click_frames(&ctx, at, &mut draw);
+        assert!(!on.get());
+    }
+
+    #[test]
+    fn segmented_selects_the_clicked_option() {
+        #[derive(Clone, Copy, PartialEq, Debug)]
+        enum V {
+            A,
+            B,
+        }
+        let ctx = ctx_for(ThemeMode::Dark);
+        let value = Cell::new(V::A);
+        let changed = Cell::new(false);
+        let rect = Cell::new(Rect::NOTHING);
+        let mut draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                let mut v = value.get();
+                let r = segmented(ui, &mut v, &[(V::A, "Alpha"), (V::B, "Beta")]);
+                rect.set(r.rect);
+                changed.set(changed.get() || r.changed());
+                value.set(v);
+            });
+        };
+        let _ = layout(&ctx, &rect, &mut draw);
+        // The second option is in the right half of the control.
+        let r = rect.get();
+        let at = egui::pos2(r.right() - 8.0, r.center().y);
+        click_frames(&ctx, at, &mut draw);
+        assert_eq!(value.get(), V::B);
+        assert!(changed.get());
+    }
+
+    #[test]
+    fn banner_reports_its_action_click() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let clicks = Cell::new(0);
+        let at = RefCell::new(None);
+        let mut draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                if banner(ui, BannerKind::Warning, "Careful", Some("Fix it")) {
+                    clicks.set(clicks.get() + 1);
+                }
+                // Probe the action button: the right edge of the banner row.
+                *at.borrow_mut() = Some(egui::pos2(
+                    ui.max_rect().right() - 24.0,
+                    ui.min_rect().top() + 20.0,
+                ));
+            });
+        };
+        let _ = ctx.run(frame_input(vec![]), |c| draw(c));
+        let pos = at.borrow().unwrap();
+        click_frames(&ctx, pos, &mut draw);
+        assert_eq!(clicks.get(), 1);
+    }
+
+    #[test]
+    fn every_control_renders_in_both_themes_without_fonts() {
+        for mode in [ThemeMode::Light, ThemeMode::Dark] {
+            let ctx = ctx_for(mode);
+            let _ = ctx.run(frame_input(vec![]), |c| {
+                CentralPanel::default().show(c, |ui| {
+                    let mut on = true;
+                    toggle(ui, &mut on);
+                    toggle_enabled(ui, &mut on, Some("why"));
+                    for kind in [
+                        PillKind::Success,
+                        PillKind::Warning,
+                        PillKind::Accent,
+                        PillKind::Neutral,
+                        PillKind::Danger,
+                    ] {
+                        pill(ui, "Applied", kind);
+                    }
+                    let mut v = 1;
+                    segmented(ui, &mut v, &[(1, "One"), (2, "Two")]);
+                    let opened = disclosure(ui, "d", "More", true, |ui| ui.label("body"));
+                    assert!(opened.is_some());
+                    assert!(disclosure(ui, "d2", "Less", false, |ui| ui.label("x")).is_none());
+                    card(ui, |ui| ui.label("card"));
+                    section(ui, "Section", |ui| {
+                        SettingRow {
+                            icon: Some(Icon::Home),
+                            title: "Title",
+                            description: Some("Description"),
+                        }
+                        .show(ui, |ui| toggle(ui, &mut on));
+                    });
+                    for kind in [BannerKind::Info, BannerKind::Warning, BannerKind::Error] {
+                        banner(ui, kind, "Message", Some("Act"));
+                        banner(ui, kind, "No action", None);
+                    }
+                    empty_state(ui, Icon::Search, "Nothing here", Some("Add"));
+                    empty_state(ui, Icon::Search, "Nothing here", None);
+                });
+            });
+        }
+    }
+}

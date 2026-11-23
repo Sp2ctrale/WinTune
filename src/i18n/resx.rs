@@ -64,7 +64,7 @@ pub fn parse_resx(xml: &str) -> Result<BTreeMap<String, String>, String> {
             }
             Event::Text(t) if in_value && depth_ignored == 0 => {
                 let s = t.decode().map_err(|e| format!("bad text: {e}"))?;
-                value.push_str(&s);
+                value.push_str(&s.replace("\r\n", "\n").replace('\r', "\n"));
             }
             Event::GeneralRef(r) if in_value && depth_ignored == 0 => {
                 if let Some(c) = r

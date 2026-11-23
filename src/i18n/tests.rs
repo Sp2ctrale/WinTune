@@ -13,6 +13,12 @@ line 2</value></data></root>"#;
 }
 
 #[test]
+fn crlf_in_resx_values_is_normalised_to_lf() {
+    let xml = "<root><data name=\"a\"><value>line 1\r\nline 2\rline 3</value></data></root>";
+    assert_eq!(parse_resx(xml).unwrap()["a"], "line 1\nline 2\nline 3");
+}
+
+#[test]
 fn malformed_resx_is_an_error_not_a_panic() {
     assert!(parse_resx("<root><data name=\"a\"><value>x</data>").is_err());
 }
@@ -89,9 +95,14 @@ fn shipped_translations_have_no_orphan_keys() {
 #[test]
 fn shipped_translations_are_complete() {
     let en = keys_of("en").expect("English catalog");
-    let fr = keys_of("fr").expect("French catalog");
-    let missing: Vec<_> = en.keys().filter(|k| !fr.contains_key(*k)).collect();
-    assert!(missing.is_empty(), "keys missing in fr: {missing:?}");
+    for (code, _) in Tr::languages() {
+        if code == "en" {
+            continue;
+        }
+        let own = keys_of(code).unwrap_or_else(|| panic!("{code} catalog"));
+        let missing: Vec<_> = en.keys().filter(|k| !own.contains_key(*k)).collect();
+        assert!(missing.is_empty(), "keys missing in {code}: {missing:?}");
+    }
 }
 
 #[test]
@@ -118,10 +129,11 @@ fn every_engine_message_translates_in_every_shipped_language() {
 
     let s = |x: &str| x.to_string();
     // (message builder, sample arguments it must contain)
-    type Case = (Box<dyn Fn(Tr) -> String>, Vec<&'static str>);
+    type Case = (Box<dyn Fn(Tr) -> String>, Vec<&'static str>, String);
     let mut cases: Vec<Case> = Vec::new();
     let mut problem = |p: RuleProblem, args: Vec<&'static str>| {
-        cases.push((Box::new(move |tr| rule_problem(tr, &p)), args));
+        let shown = p.to_string();
+        cases.push((Box::new(move |tr| rule_problem(tr, &p)), args, shown));
     };
     problem(
         RuleProblem::InvalidExtension { ext: s("EXT1") },
@@ -151,7 +163,8 @@ fn every_engine_message_translates_in_every_shipped_language() {
         vec!["PID3"],
     );
     let mut drift = |r: DriftReason, args: Vec<&'static str>| {
-        cases.push((Box::new(move |tr| drift_reason(tr, &r)), args));
+        let shown = r.to_string();
+        cases.push((Box::new(move |tr| drift_reason(tr, &r)), args, shown));
     };
     drift(
         DriftReason::DefaultChanged {
@@ -204,7 +217,8 @@ fn every_engine_message_translates_in_every_shipped_language() {
         vec!["USER8", "EXT8", "PID8"],
     );
     let mut custom = |c: CustomReason, args: Vec<&'static str>| {
-        cases.push((Box::new(move |tr| custom_reason(tr, &c)), args));
+        let shown = c.to_string();
+        cases.push((Box::new(move |tr| custom_reason(tr, &c)), args, shown));
     };
     custom(
         CustomReason::UnexpectedValue {
@@ -221,9 +235,12 @@ fn every_engine_message_translates_in_every_shipped_language() {
 
     for (code, _) in Tr::languages() {
         let tr = Tr::new(code);
-        for (build, args) in &cases {
+        for (build, args, shown) in &cases {
             let text = build(tr);
             assert!(!text.is_empty(), "{code}: empty message");
+            if code == "en" {
+                assert_eq!(&text, shown, "English .resx must equal Display");
+            }
             assert!(
                 !text.contains('{'),
                 "{code}: unfilled placeholder in {text:?}"

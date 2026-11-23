@@ -21,6 +21,8 @@ pub struct NavItem<'a, K> {
     pub label: &'a str,
     pub badge: Option<usize>,
     pub enabled: bool,
+    /// Shown on hover while the item is disabled; `None` shows nothing.
+    pub disabled_hint: Option<&'a str>,
 }
 
 pub struct NavGroup<'a, K> {
@@ -40,8 +42,10 @@ fn nav_item<K: PartialEq + Copy>(ui: &mut Ui, selected: &mut K, item: &NavItem<'
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), ITEM_HEIGHT), sense);
     let response = if item.enabled {
         response.on_hover_cursor(CursorIcon::PointingHand)
+    } else if let Some(hint) = item.disabled_hint {
+        response.on_hover_text(hint)
     } else {
-        response.on_hover_text("Coming soon")
+        response
     };
     response.widget_info(|| {
         WidgetInfo::selected(

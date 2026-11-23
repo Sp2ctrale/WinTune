@@ -95,24 +95,22 @@ impl WinTuneApp {
                     ui.separator();
                     ui.add_space(6.0);
 
+                    ui.label(
+                        RichText::new("Theme")
+                            .size(12.0)
+                            .color(palette.text_secondary),
+                    );
                     ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new("Theme")
-                                .size(12.0)
-                                .color(palette.text_secondary),
-                        );
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let current = self.config.theme;
-                            for (mode, label) in [
-                                (ThemeMode::Dark, "Dark"),
-                                (ThemeMode::Light, "Light"),
-                                (ThemeMode::System, "System"),
-                            ] {
-                                if ui.selectable_label(current == mode, label).clicked() {
-                                    self.set_theme(ctx, mode);
-                                }
+                        let current = self.config.theme;
+                        for (mode, label) in [
+                            (ThemeMode::System, "System"),
+                            (ThemeMode::Light, "Light"),
+                            (ThemeMode::Dark, "Dark"),
+                        ] {
+                            if ui.selectable_label(current == mode, label).clicked() {
+                                self.set_theme(ctx, mode);
                             }
-                        });
+                        }
                     });
                 });
             });
@@ -121,6 +119,7 @@ impl WinTuneApp {
     fn set_theme(&mut self, ctx: &egui::Context, mode: ThemeMode) {
         self.config.theme = mode;
         super::kit::set_theme_mode(ctx, mode);
+        self.ui_theme = super::kit::resolved(mode, ctx);
         self.save_config();
     }
 

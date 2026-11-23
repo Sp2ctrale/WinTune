@@ -112,6 +112,20 @@ fn accent_is_windows_blue_in_light() {
 }
 
 #[test]
+fn strong_text_uses_the_primary_text_color() {
+    let ctx = egui::Context::default();
+    install_styles(&ctx);
+    for theme in [Theme::Light, Theme::Dark] {
+        let style = ctx.style_of(theme);
+        assert_eq!(
+            style.visuals.strong_text_color(),
+            palette(theme).text,
+            "{theme:?}"
+        );
+    }
+}
+
+#[test]
 fn installed_styles_use_the_tokens() {
     let ctx = egui::Context::default();
     install_styles(&ctx);
@@ -593,6 +607,7 @@ mod layout {
             label,
             badge: None,
             enabled,
+            disabled_hint: None,
         }
     }
 

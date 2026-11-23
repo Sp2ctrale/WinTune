@@ -82,21 +82,21 @@ save writes a temp file, then renames it over the old one.
 - **`Tr`** is a small copyable handle on one language. `tr.t(key)` looks the
   key up in the language, then in English, then returns the key itself, so
   a missing translation never panics or shows a blank. `tr.t_args(key, &[..])`
-  fills `{0}`, `{1}` placeholders (`{{` and `}}` are literal braces).
+  fills `{0}`, `{1}` placeholders (`{{` and `}}` are literal braces in `t_args` only, not in `t`).
   `Tr::languages()` lists the shipped codes with each language's own name
   (the `language.name` key).
 - **Engines return codes, not text.** `RuleProblem`, `DriftReason` and
   `CustomReason` are enums. `i18n/messages.rs` turns them into text in the
   chosen language, and also holds the tweak titles, descriptions and group
-  names (looked up by tweak id).
-- **Tests** (`src/i18n/tests.rs`) keep the catalogs honest: French is
-  complete, no language has keys English lacks, placeholders match English,
+  titles (looked up by `TweakGroup` id).
+- **Tests** (`src/i18n/tests.rs`) keep the catalogs honest: every shipped
+  language is complete (a missing key would silently fall back to English), no language has keys English lacks, placeholders match English,
   every engine message and tweak text exists in every shipped language, and
   every key used in the code exists in English.
 
 ## UI kit (`src/ui/kit/`)
 
-The kit is the only place that decides how things look. **Screens never set
+The kit is the only place that decides how things look. **New screens never set
 colors, sizes or fonts**: they call kit controls and read tokens.
 
 - **Tokens** (`tokens.rs`): the `Palette` for light and dark (opaque colors,

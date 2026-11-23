@@ -141,7 +141,9 @@ fn visuals(theme: Theme, p: &Palette) -> Visuals {
     w.active.bg_fill = control_pressed;
     w.active.weak_bg_fill = control_pressed;
     w.active.bg_stroke = hairline;
-    w.active.fg_stroke = Stroke::new(1.0_f32, p.text_secondary);
+    // egui draws strong text with this color, so it stays the primary text
+    // color; the pressed state is carried by the fill alone.
+    w.active.fg_stroke = Stroke::new(1.0_f32, p.text);
 
     w.open.bg_fill = control_hover;
     w.open.weak_bg_fill = control_hover;

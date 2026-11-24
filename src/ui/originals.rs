@@ -24,15 +24,10 @@ impl OriginalsModule {
 
     /// The module of tweak `id`: the tweaks tab that shows it, or `Other`.
     pub(super) fn of_tweak(id: &str) -> Self {
-        let Some(tweak) = find_tweak(id) else {
-            return Self::Other;
-        };
-        if WinTuneApp::tweak_groups_of(ActiveTab::Tweaks).contains(&tweak.group) {
-            Self::Explorer
-        } else if WinTuneApp::tweak_groups_of(ActiveTab::StartPrivacy).contains(&tweak.group) {
-            Self::Start
-        } else {
-            Self::Other
+        match WinTuneApp::tab_of_tweak(id) {
+            Some(ActiveTab::Tweaks) => Self::Explorer,
+            Some(ActiveTab::StartPrivacy) => Self::Start,
+            _ => Self::Other,
         }
     }
 
@@ -134,11 +129,7 @@ impl WinTuneApp {
     pub(super) fn show_originals(&mut self, ui: &mut egui::Ui) {
         let tr = self.tr;
         let p = kit::current_palette(ui.ctx());
-        ui.label(
-            RichText::new(tr.t("originals.title"))
-                .font(kit::fonts::semibold(ui.ctx(), text_size::SECTION))
-                .color(p.text),
-        );
+        kit::section_title(ui, &tr.t("originals.title"));
         ui.label(
             RichText::new(tr.t("originals.subtitle"))
                 .size(text_size::SECONDARY)
@@ -184,7 +175,13 @@ impl WinTuneApp {
                     let rows = self.originals_of(module);
                     if !rows.is_empty() {
                         shown += 1;
-                        let reason = tweak_reason.as_deref();
+                        // The engine rejects an id it no longer knows.
+                        let unknown = tr.t("originals.unknown_tweak");
+                        let reason = match (&tweak_reason, module) {
+                            (Some(busy), _) => Some(busy.as_str()),
+                            (None, OriginalsModule::Other) => Some(unknown.as_str()),
+                            (None, _) => None,
+                        };
                         originals_section(ui, tr, module, rows, reason, &mut request);
                     }
                 }
@@ -300,11 +297,17 @@ mod tests {
         frame(app, ctx, tall(vec![]))
     }
 
-    /// Where `text` is drawn inside the saved originals (below their
-    /// heading), if it is.
+    /// Right edge of the sidebar, whose entries share the modules' names.
+    const SIDEBAR_RIGHT: f32 = 220.0;
+
+    /// Where `text` is drawn inside the saved originals (between their
+    /// heading and the Operations heading, right of the sidebar), if it is.
     fn in_originals(app: &WinTuneApp, out: &FullOutput, text: &str) -> Option<Pos2> {
         let heading = text_center(out, &app.tr.t("originals.title"))?;
-        centers(out, text).into_iter().find(|c| c.y > heading.y)
+        let end = text_center(out, &app.tr.t("history.operations"))?;
+        centers(out, text)
+            .into_iter()
+            .find(|c| c.x > SIDEBAR_RIGHT && c.y > heading.y && c.y < end.y)
     }
 
     /// Center of the button labelled `label` on the line of `row` (a row
@@ -607,7 +610,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_tweak_id_is_listed_under_other() {
+    fn an_unknown_tweak_id_is_listed_under_other_and_cannot_be_restored() {
         let fx = TempIcons::new(&["foo"]);
         let ctx = egui::Context::default();
         let mut app = fx.app_with_rules(&ctx, &[".foo"]);
@@ -634,16 +637,21 @@ mod tests {
             super::OriginalsModule::Other
         );
 
-        let label = restore_label(&app);
-        let at = button_on_row(&mut app, &ctx, "gone_tweak", &label);
-        click_at(&mut app, &ctx, at);
-        assert_eq!(
-            pending(&app),
-            Some(ConfirmAction::RestoreTweaks(vec!["gone_tweak".to_string()]))
-        );
-        // The dialog names it by its raw id.
-        let message = app.pending_confirm.as_ref().unwrap().message.clone();
-        assert!(message.contains("gone_tweak"), "{message}");
+        // The engine rejects an unknown id, so both buttons are disabled
+        // with a reason and nothing is asked.
+        let reason = app.tr.t("originals.unknown_tweak");
+        for (row, label) in [
+            ("gone_tweak".to_string(), restore_label(&app)),
+            (other, restore_all(&app, 1)),
+        ] {
+            let at = button_on_row(&mut app, &ctx, &row, &label);
+            assert!(
+                hover_texts(&mut app, &ctx, at).contains(&reason),
+                "no reason over {label:?} of {row:?}"
+            );
+            click_at(&mut app, &ctx, at);
+            assert!(app.pending_confirm.is_none(), "{label:?} of {row:?} asked");
+        }
     }
 
     #[test]

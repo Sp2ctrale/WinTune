@@ -47,7 +47,8 @@ pub fn card<R>(ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> R {
         .inner
 }
 
-fn section_title(ui: &mut Ui, title: &str) {
+/// A semibold section title, as `section` draws it.
+pub fn section_title(ui: &mut Ui, title: &str) {
     let p = current_palette(ui.ctx());
     ui.label(
         RichText::new(title)

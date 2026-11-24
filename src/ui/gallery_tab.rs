@@ -63,7 +63,7 @@ impl WinTuneApp {
                     egui::TextEdit::singleline(&mut self.gallery_search_query)
                         .id(super::polish::search_box_id(ActiveTab::Gallery).expect("search box"))
                         .hint_text(tr.t("icons.search"))
-                        .desired_width(240.0),
+                        .desired_width(kit::SEARCH_WIDTH),
                 );
                 self.focus_search_if_requested(&search);
                 kit::segmented(ui, &mut self.gallery_category, &options);

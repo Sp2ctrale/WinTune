@@ -16,9 +16,6 @@ use crate::tweaks::{
 };
 use eframe::egui::{self, RichText};
 
-/// Width of the search box.
-const SEARCH_WIDTH: f32 = 280.0;
-
 /// When a tweak's change becomes visible, as a row's small secondary line.
 pub(super) fn refresh_label(tr: Tr, r: Refresh) -> String {
     match r {
@@ -137,6 +134,15 @@ impl WinTuneApp {
         }
     }
 
+    /// The tweaks tab that shows tweak `id`, or `None` for an id the
+    /// catalog does not know.
+    pub(super) fn tab_of_tweak(id: &str) -> Option<ActiveTab> {
+        let tweak = crate::tweaks::find_tweak(id)?;
+        [ActiveTab::Tweaks, ActiveTab::StartPrivacy]
+            .into_iter()
+            .find(|tab| Self::tweak_groups_of(*tab).contains(&tweak.group))
+    }
+
     /// Pending changes of the tweaks in `groups` only (one tab).
     pub(super) fn pending_tweak_changes_in(&self, groups: &[TweakGroup]) -> Vec<(String, bool)> {
         self.pending_tweak_changes()
@@ -169,11 +175,10 @@ impl WinTuneApp {
         let tab = match self.active_tab {
             tab @ (ActiveTab::Tweaks | ActiveTab::StartPrivacy) => tab,
             _ => {
-                let start = Self::tweak_groups_of(ActiveTab::StartPrivacy);
                 let all_start = !ids.is_empty()
-                    && ids.iter().all(|id| {
-                        crate::tweaks::find_tweak(id).is_some_and(|t| start.contains(&t.group))
-                    });
+                    && ids
+                        .iter()
+                        .all(|id| Self::tab_of_tweak(id) == Some(ActiveTab::StartPrivacy));
                 if all_start {
                     ActiveTab::StartPrivacy
                 } else {
@@ -441,7 +446,7 @@ impl WinTuneApp {
                 egui::TextEdit::singleline(&mut self.tweak_search)
                     .id(super::polish::search_box_id(ActiveTab::Tweaks).expect("search box"))
                     .hint_text(tr.t("tweaks.search"))
-                    .desired_width(SEARCH_WIDTH),
+                    .desired_width(kit::SEARCH_WIDTH),
             );
             self.focus_search_if_requested(&search);
             if !self.tweak_search.is_empty() && ui.button(tr.t("tweaks.clear")).clicked() {

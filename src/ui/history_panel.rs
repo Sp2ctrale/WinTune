@@ -7,8 +7,11 @@ use crate::history::{append_entry, read_recent, HistoryEntry};
 use crate::i18n::messages;
 use eframe::egui::{self, RichText};
 
-/// Entries kept in memory and shown.
+/// Entries kept in memory.
 pub(super) const HISTORY_LIMIT: usize = 200;
+
+/// Operations drawn before "Show all".
+const RECENT_SHOWN: usize = 20;
 
 /// Module filter of the operations list.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -49,14 +52,14 @@ impl WinTuneApp {
         self.history.truncate(HISTORY_LIMIT);
     }
 
-    /// The History page: the operations list, then the saved originals.
+    /// The History page: the saved originals, then the operations list.
     pub(super) fn show_history_page(&mut self, ctx: &egui::Context) {
         let title = self.tr.t("nav.history");
         Self::page_panel(ctx, |ui| {
             kit::page_header(ui, &[], &title, None, |_| {});
             egui::ScrollArea::vertical().show(ui, |ui| {
-                self.show_operations(ui);
                 self.show_originals(ui);
+                self.show_operations(ui);
             });
         });
     }
@@ -84,13 +87,31 @@ impl WinTuneApp {
                 kit::empty_state(ui, kit::Icon::History, &tr.t("history.empty"), None);
                 return;
             }
+            let before = self.history_filter;
             kit::segmented(ui, &mut self.history_filter, &options);
+            if self.history_filter != before {
+                self.history_show_all = false;
+            }
             ui.add_space(kit::space::S);
             let filter = self.history_filter;
+            let matching = self
+                .history
+                .iter()
+                .filter(|e| filter.matches(&e.module))
+                .count();
+            let limit = if self.history_show_all {
+                usize::MAX
+            } else {
+                RECENT_SHOWN
+            };
+            let len = self.history.len();
             let mut shown = 0;
             for (i, entry) in self.history.iter().enumerate() {
                 if !filter.matches(&entry.module) {
                     continue;
+                }
+                if shown == limit {
+                    break;
                 }
                 shown += 1;
                 let summary = if entry.is_success() {
@@ -108,9 +129,19 @@ impl WinTuneApp {
                     messages::history_action(tr, &entry.action),
                     summary
                 );
-                let salt = format!("history_{i}_{}", entry.time);
+                // Counted from the oldest entry, so recording a new one does
+                // not move an opened row's id.
+                let salt = format!(
+                    "history_{}_{}_{}_{}",
+                    len - i,
+                    entry.time,
+                    entry.module,
+                    entry.action
+                );
                 kit::disclosure(ui, &salt, &title, false, |ui| {
-                    ui.label(tr.t_args("history.succeeded", &[&entry.succeeded.join(", ")]));
+                    if !entry.succeeded.is_empty() {
+                        ui.label(tr.t_args("history.succeeded", &[&entry.succeeded.join(", ")]));
+                    }
                     for e in &entry.errors {
                         ui.label(RichText::new(e).color(p.danger));
                     }
@@ -127,6 +158,11 @@ impl WinTuneApp {
             }
             if shown == 0 {
                 ui.label(RichText::new(tr.t("history.no_match")).color(p.text_secondary));
+            } else if matching > shown {
+                let label = tr.t_args("history.show_all", &[&matching]);
+                if ui.add(kit::secondary_button(&label)).clicked() {
+                    self.history_show_all = true;
+                }
             }
         });
     }
@@ -329,5 +365,142 @@ mod tests {
             "{texts:?}"
         );
         assert!(texts.contains(&"Done: a".to_string()), "{texts:?}");
+    }
+
+    /// A page tall enough to show every row without scrolling.
+    fn tall(events: Vec<egui::Event>) -> RawInput {
+        RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1180.0, 4000.0),
+            )),
+            events,
+            ..Default::default()
+        }
+    }
+
+    fn click_at(app: &mut WinTuneApp, ctx: &egui::Context, pos: egui::Pos2) {
+        use egui::{Event, Modifiers, PointerButton};
+        let button = |pressed| Event::PointerButton {
+            pos,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::default(),
+        };
+        for events in [
+            vec![Event::PointerMoved(pos)],
+            vec![button(true)],
+            vec![button(false)],
+        ] {
+            frame(app, ctx, tall(events));
+        }
+    }
+
+    fn settled(app: &mut WinTuneApp, ctx: &egui::Context) -> egui::FullOutput {
+        frame(app, ctx, tall(vec![]));
+        frame(app, ctx, tall(vec![]))
+    }
+
+    fn operation_titles(out: &egui::FullOutput) -> usize {
+        drawn_texts(out)
+            .iter()
+            .filter(|t| t.ends_with(" · Apply · 1 ok"))
+            .count()
+    }
+
+    #[test]
+    fn saved_originals_are_drawn_above_operations() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = history_app(&fx, &ctx, vec![entry("File associations", "Apply")]);
+
+        let out = settled(&mut app, &ctx);
+        let originals = text_center(&out, &app.tr.t("originals.title")).expect("originals");
+        let operations = text_center(&out, &app.tr.t("history.operations")).expect("operations");
+        assert!(originals.y < operations.y, "{originals:?} {operations:?}");
+    }
+
+    #[test]
+    fn only_the_20_most_recent_entries_show_until_show_all() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let entries = (0..25)
+            .map(|_| entry("File associations", "Apply"))
+            .collect();
+        let mut app = history_app(&fx, &ctx, entries);
+
+        let out = settled(&mut app, &ctx);
+        assert_eq!(operation_titles(&out), 20);
+        let label = app.tr.t_args("history.show_all", &[&25]);
+        let at = text_center(&out, &label).unwrap_or_else(|| panic!("{label:?} not drawn"));
+        click_at(&mut app, &ctx, at);
+
+        let out = settled(&mut app, &ctx);
+        assert_eq!(operation_titles(&out), 25);
+        assert!(text_center(&out, &label).is_none(), "button stays");
+
+        // Changing the filter (a click on its chip, right of the sidebar)
+        // folds the list back to 20.
+        fn chip(shape: &egui::epaint::Shape, found: &mut Vec<egui::Pos2>) {
+            match shape {
+                egui::epaint::Shape::Text(t) if t.galley.text() == "File associations" => {
+                    found.push(t.pos + t.galley.rect.center().to_vec2());
+                }
+                egui::epaint::Shape::Vec(shapes) => shapes.iter().for_each(|s| chip(s, found)),
+                _ => {}
+            }
+        }
+        let mut found = Vec::new();
+        out.shapes.iter().for_each(|c| chip(&c.shape, &mut found));
+        let at = *found.iter().find(|c| c.x > 220.0).expect("filter chip");
+        click_at(&mut app, &ctx, at);
+        let out = settled(&mut app, &ctx);
+        assert_eq!(app.history_filter, HistoryFilter::Associations);
+        assert!(!app.history_show_all);
+        assert_eq!(operation_titles(&out), 20);
+    }
+
+    #[test]
+    fn an_opened_entry_stays_open_when_a_new_one_is_recorded() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut e = entry("File associations", "Apply");
+        e.errors = vec![".b: failed".into()];
+        let title = format!("{} · File associations · Apply · 1 ok, 1 error(s)", e.time);
+        let mut app = history_app(&fx, &ctx, vec![e]);
+
+        let out = settled(&mut app, &ctx);
+        let at = text_center(&out, &title).expect("title");
+        click_at(&mut app, &ctx, at);
+        let texts = drawn_texts(&settled(&mut app, &ctx));
+        assert!(texts.contains(&".b: failed".to_string()), "{texts:?}");
+
+        let report = OperationReport {
+            succeeded: vec!["x".into()],
+            ..Default::default()
+        };
+        app.record_history("Explorer & Taskbar", "Apply", &report);
+        let texts = drawn_texts(&settled(&mut app, &ctx));
+        assert!(texts.contains(&".b: failed".to_string()), "{texts:?}");
+    }
+
+    #[test]
+    fn an_entry_with_no_success_has_no_done_line() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let report = OperationReport {
+            errors: vec![".b: failed".into()],
+            ..Default::default()
+        };
+        let e = HistoryEntry::from_report("File associations", "Apply", &report);
+        let title = format!("{} · File associations · Apply · 0 ok, 1 error(s)", e.time);
+        let mut app = history_app(&fx, &ctx, vec![e]);
+
+        let out = settled(&mut app, &ctx);
+        let at = text_center(&out, &title).unwrap_or_else(|| panic!("{title:?} not drawn"));
+        click_at(&mut app, &ctx, at);
+        let texts = drawn_texts(&settled(&mut app, &ctx));
+        assert!(texts.contains(&".b: failed".to_string()), "{texts:?}");
+        assert!(!texts.iter().any(|t| t.starts_with("Done:")), "{texts:?}");
     }
 }

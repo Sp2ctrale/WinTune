@@ -253,7 +253,7 @@
     <value>Supprimer la règle de {0} de la liste ?</value>
   </data>
   <data name="confirm.remove_rule.note" xml:space="preserve">
-    <value>Cela ne modifie que la liste de WinTune : une association déjà appliquée reste dans le registre jusqu'à sa restauration depuis l'onglet Restauration.</value>
+    <value>Cela ne modifie que la liste de WinTune : une association déjà appliquée reste dans le registre jusqu'à sa restauration depuis l'Historique.</value>
   </data>
   <data name="confirm.rollback.title" xml:space="preserve">
     <value>Restaurer l'état d'origine</value>
@@ -420,6 +420,9 @@
   <data name="history.succeeded" xml:space="preserve">
     <value>Effectué : {0}</value>
   </data>
+  <data name="history.show_all" xml:space="preserve">
+    <value>Tout afficher ({0})</value>
+  </data>
   <data name="history.no_match" xml:space="preserve">
     <value>Aucune opération pour ce module.</value>
   </data>
@@ -446,6 +449,9 @@
   </data>
   <data name="originals.other" xml:space="preserve">
     <value>Autres</value>
+  </data>
+  <data name="originals.unknown_tweak" xml:space="preserve">
+    <value>WinTune ne connaît plus ce réglage et ne peut donc pas le restaurer.</value>
   </data>
   <data name="originals.unreadable" xml:space="preserve">
     <value>{0} est illisible, ses restaurations sont donc bloquées : {1}</value>

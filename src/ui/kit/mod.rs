@@ -27,9 +27,10 @@ pub use icons::Icon;
 pub use nav::{nav_sidebar, page_header, Brand, NavGroup, NavItem};
 pub use style::{current_palette, install_styles, resolved, set_theme_mode};
 pub use surfaces::{
-    banner, card, empty_state, section, section_with_action, tile, BannerKind, SettingRow,
+    banner, card, empty_state, section, section_title, section_with_action, tile, BannerKind,
+    SettingRow,
 };
-pub use tokens::{palette, radius, space, text_size, Palette};
+pub use tokens::{palette, radius, space, text_size, Palette, SEARCH_WIDTH};
 
 #[cfg(test)]
 mod tests;

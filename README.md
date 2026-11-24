@@ -197,10 +197,10 @@ runs, the other buttons that change the registry or the pack are disabled.
 If you close the window mid-operation, WinTune waits for the operation to
 finish before closing.
 
-The editor path, theme and language live in the **Settings** page. Changes
-there, and to the rules, are saved automatically about a second after the
-last edit and always before the window closes; if a save fails, a banner
-with a **Retry** button appears.
+The editor path, icon folder, theme and language live in the **Settings**
+page. Changes there, and to the rules, are saved automatically about a
+second after the last edit and always before the window closes; if a save
+fails, a banner with a **Retry** button appears.
 
 **Ctrl+F** focuses the search box of the current tab, and **Esc** cancels a
 confirmation dialog. No keyboard shortcut changes the registry: those actions

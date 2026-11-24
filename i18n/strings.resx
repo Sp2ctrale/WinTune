@@ -254,7 +254,7 @@
     <value>Remove the rule for {0} from the list?</value>
   </data>
   <data name="confirm.remove_rule.note" xml:space="preserve">
-    <value>This only edits WinTune's list: an association already applied stays in the registry until you restore it from the Rollback tab.</value>
+    <value>This only edits WinTune's list: an association already applied stays in the registry until you restore it from History.</value>
   </data>
   <data name="confirm.rollback.title" xml:space="preserve">
     <value>Restore original state</value>
@@ -421,6 +421,9 @@
   <data name="history.succeeded" xml:space="preserve">
     <value>Done: {0}</value>
   </data>
+  <data name="history.show_all" xml:space="preserve">
+    <value>Show all ({0})</value>
+  </data>
   <data name="history.no_match" xml:space="preserve">
     <value>No operation for this module.</value>
   </data>
@@ -447,6 +450,9 @@
   </data>
   <data name="originals.other" xml:space="preserve">
     <value>Other</value>
+  </data>
+  <data name="originals.unknown_tweak" xml:space="preserve">
+    <value>WinTune no longer knows this setting, so it can't restore it.</value>
   </data>
   <data name="originals.unreadable" xml:space="preserve">
     <value>{0} can't be read, so its restores are blocked: {1}</value>

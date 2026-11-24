@@ -208,6 +208,9 @@ pub struct WinTuneApp {
     history: Vec<crate::history::HistoryEntry>,
     /// Module filter of the History page.
     history_filter: history_panel::HistoryFilter,
+    /// "Show all" was clicked: the Operations list is not cut to the 20
+    /// most recent entries. Reset when the filter changes.
+    history_show_all: bool,
     /// Set when config.json exists but is unreadable: saving is refused so
     /// the user's rules are never replaced by the defaults.
     config_error: Option<String>,
@@ -289,6 +292,7 @@ impl WinTuneApp {
             focus_search: false,
             history: Vec::new(),
             history_filter: history_panel::HistoryFilter::All,
+            history_show_all: false,
             config_error: None,
             autosave,
         }

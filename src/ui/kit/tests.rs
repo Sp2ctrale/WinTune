@@ -600,12 +600,6 @@ mod layout {
         Later,
     }
 
-    const BRAND: Brand<'static> = Brand {
-        logo: None,
-        name: "WinTune",
-        caption: "Customize Windows",
-    };
-
     fn item(key: Page, label: &str, enabled: bool) -> NavItem<'_, Page> {
         NavItem {
             key,
@@ -636,7 +630,7 @@ mod layout {
         let footer = [footer_item];
         let draw = |c: &Context| {
             let mut s = selected.get();
-            if nav_sidebar(c, &BRAND, &mut s, &groups, &footer) {
+            if nav_sidebar(c, &mut s, &groups, &footer) {
                 changed.set(true);
             }
             selected.set(s);
@@ -749,7 +743,6 @@ mod layout {
                     }];
                     nav_sidebar(
                         c,
-                        &BRAND,
                         &mut sel,
                         &groups,
                         &[item(Page::Settings, "Settings", true)],
@@ -1103,11 +1096,6 @@ mod shell_kit {
             }
         }
         let ctx = ctx_for(ThemeMode::Light);
-        let brand = Brand {
-            logo: None,
-            name: "WinTune",
-            caption: "x",
-        };
         let draw = |c: &Context| {
             let mut sel = 0_u8;
             let items = vec![NavItem {
@@ -1119,7 +1107,7 @@ mod shell_kit {
                 disabled_hint: None,
             }];
             let groups = [NavGroup { title: None, items }];
-            nav_sidebar(c, &brand, &mut sel, &groups, &[]);
+            nav_sidebar(c, &mut sel, &groups, &[]);
         };
         let has_ring = |out: &egui::FullOutput| out.shapes.iter().any(|c| ring(&c.shape));
         let _ = ctx.run(frame_input(vec![]), draw);
@@ -1138,35 +1126,5 @@ mod shell_kit {
     #[test]
     fn an_enabled_tile_clicks() {
         assert!(tile_clicked(true));
-    }
-
-    fn texts(shape: &Shape, out: &mut Vec<String>) {
-        match shape {
-            Shape::Text(t) => out.push(t.galley.text().to_owned()),
-            Shape::Vec(v) => v.iter().for_each(|s| texts(s, out)),
-            _ => {}
-        }
-    }
-
-    #[test]
-    fn the_nav_draws_the_brand_name() {
-        #[derive(Clone, Copy, PartialEq)]
-        struct Key0;
-        let ctx = ctx_for(ThemeMode::Light);
-        let brand = Brand {
-            logo: None,
-            name: "WinTune",
-            caption: "Customize Windows",
-        };
-        let out = ctx.run(frame_input(vec![]), |c| {
-            let mut sel = Key0;
-            nav_sidebar(c, &brand, &mut sel, &[], &[]);
-        });
-        let mut found = Vec::new();
-        for clipped in &out.shapes {
-            texts(&clipped.shape, &mut found);
-        }
-        assert!(found.iter().any(|t| t == "WinTune"), "texts: {found:?}");
-        assert!(found.iter().any(|t| t == "Customize Windows"));
     }
 }

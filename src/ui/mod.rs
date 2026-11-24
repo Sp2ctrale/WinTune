@@ -41,7 +41,7 @@ use crate::tweaks::{
     current_user_label, default_tweak_store_path, notify_explorer_settings, TweakBackupStore,
     TweakStatus, TweakTarget,
 };
-use eframe::egui::{self, ColorImage, TextureHandle, TextureOptions};
+use eframe::egui;
 use jobs::RunningJob;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -170,7 +170,6 @@ pub struct WinTuneApp {
     backup_store_error: Option<String>,
     wsl_detected: bool,
     new_ext_input: String,
-    logo_texture: Option<TextureHandle>,
     /// At most one long operation at a time.
     job: Option<RunningJob>,
     /// The user asked to close while a job was running: close when it ends.
@@ -262,7 +261,6 @@ impl WinTuneApp {
             backup_store_error: None,
             wsl_detected,
             new_ext_input: String::new(),
-            logo_texture: Self::load_app_logo(ctx),
             job: None,
             close_when_idle: false,
             pending_confirm: None,
@@ -427,15 +425,6 @@ impl WinTuneApp {
             kit::ToastKind::Error
         };
         self.notify_details(toast, msg, details.join("\n"));
-    }
-
-    fn load_app_logo(ctx: &egui::Context) -> Option<TextureHandle> {
-        let png_bytes = include_bytes!("../../assets/WinTune.png");
-        let img = image::load_from_memory(png_bytes).ok()?;
-        let rgba = img.thumbnail(64, 64).to_rgba8();
-        let (w, h) = rgba.dimensions();
-        let color_img = ColorImage::from_rgba_unmultiplied([w as usize, h as usize], rgba.as_raw());
-        Some(ctx.load_texture("wintune_logo", color_img, TextureOptions::LINEAR))
     }
 
     /// The config, plus an error when the file exists but cannot be used.

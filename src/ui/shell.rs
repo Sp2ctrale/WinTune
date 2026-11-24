@@ -1,7 +1,7 @@
 //! The shell around the pages: grouped navigation, page switching with its
 //! safety guards.
 
-use super::{kit, ActiveTab, WinTuneApp, APP_VERSION};
+use super::{kit, ActiveTab, WinTuneApp};
 use eframe::egui::{self, Frame, Margin};
 
 impl WinTuneApp {
@@ -97,15 +97,8 @@ impl WinTuneApp {
             },
         ];
         let footer = [item(ActiveTab::Settings, kit::Icon::Settings, &settings)];
-        let caption = format!("v{}", APP_VERSION);
-        let brand = kit::Brand {
-            logo: self.logo_texture.as_ref().map(|t| t.id()),
-            name: "WinTune",
-            caption: &caption,
-        };
-
         let mut selected = self.active_tab;
-        if kit::nav_sidebar(ctx, &brand, &mut selected, &groups, &footer) {
+        if kit::nav_sidebar(ctx, &mut selected, &groups, &footer) {
             self.open_page(selected);
         }
     }

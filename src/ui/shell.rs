@@ -521,8 +521,81 @@ mod tests {
             }
         }
         app.pending_confirm = None;
+        // A busy page is disabled, so let the job finish before clicking.
         release_tx.send(()).unwrap();
         run_until_idle(&mut app, &ctx);
+
+        // The associations page and the icon picker, in a tall window so the
+        // detail's Advanced options fit.
+        use crate::associations::{DriftReason, RuleStatus};
+        app.config.extensions = vec![rule(".a"), rule(".b"), rule(".x y")];
+        app.rule_statuses.clear();
+        app.rule_statuses.insert(
+            ".a".into(),
+            RuleStatus::Drifted(vec![DriftReason::ProgIdMissing {
+                prog_id: "CustomAFile".into(),
+            }]),
+        );
+        app.rule_statuses.insert(".b".into(), RuleStatus::Applied);
+        app.selected_ext_index = 0;
+        app.active_tab = ActiveTab::Associations;
+        let tall = |events: Vec<Event>| RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1180.0, 2400.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        let mut texts = Vec::new();
+        for _ in 0..3 {
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+        }
+        // Open Advanced options by clicking its header.
+        let advanced = app.tr.t("assoc.advanced");
+        // The page's entry animation moves the header, so settle first.
+        for _ in 0..4 {
+            let mut settle = tall(vec![]);
+            settle.time = Some(ctx.input(|i| i.time) + 1.0);
+            frame(&mut app, &ctx, settle);
+        }
+        let out = frame(&mut app, &ctx, tall(vec![]));
+        let pos = text_center(&out, &advanced).expect("Advanced options header not drawn");
+        let button = |pressed| Event::PointerButton {
+            pos,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        for events in [
+            vec![Event::PointerMoved(pos)],
+            vec![button(true)],
+            vec![button(false)],
+        ] {
+            frame(&mut app, &ctx, tall(events));
+        }
+        // Let the opening animation finish.
+        let mut later = tall(vec![]);
+        later.time = Some(ctx.input(|i| i.time) + 1.0);
+        frame(&mut app, &ctx, later);
+        for _ in 0..3 {
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+        }
+        app.open_icon_picker(".a");
+        for _ in 0..3 {
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+        }
+        // The page, its opened Advanced options and the picker were drawn.
+        for key in ["assoc.preserve", "assoc.field.description", "picker.title"] {
+            let drawn = app.tr.t(key);
+            assert!(texts.contains(&drawn), "{key} ({drawn:?}) not drawn");
+        }
+        for (key, value) in &english_only {
+            assert!(
+                !texts.iter().any(|t| t == *value),
+                "associations page or icon picker draws English-only text {value:?} (key {key})"
+            );
+        }
     }
 
     fn key_press(key: egui::Key) -> Event {

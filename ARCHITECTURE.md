@@ -131,7 +131,17 @@ colors, sizes or fonts**: they call kit controls and read tokens.
   (navigation sidebar, page header), `feedback.rs` (action bar, toasts,
   dialog).
 
-The existing screens still use the helpers in `src/theme.rs`. They are
+The File associations screen is built on the kit. It has a rule list on
+the left (search, add, state dots) and the selected rule's detail on the
+right, with the less common settings under Advanced options. Choosing an
+icon opens the icon picker (`icon_picker.rs`), a dialog over a shared icon
+grid. The user no longer goes to the Icons page to assign an icon.
+
+One action bar is drawn per frame. A page with `ActiveTab::owns_action_bar`
+set draws its own bar (`page_action_bar` in `shell.rs`), and the shell draws
+none for it. Toasts sit above that bar.
+
+The other screens still use the helpers in `src/theme.rs`. They are
 rewritten onto the kit in later PRs, and `theme.rs` goes away with them.
 
 ## Adding a customization module

@@ -16,9 +16,6 @@ use crate::tweaks::{
 };
 use eframe::egui::{self, RichText};
 
-/// Width of the search box.
-const SEARCH_WIDTH: f32 = 280.0;
-
 /// When a tweak's change becomes visible, as a row's small secondary line.
 pub(super) fn refresh_label(tr: Tr, r: Refresh) -> String {
     match r {
@@ -137,6 +134,15 @@ impl WinTuneApp {
         }
     }
 
+    /// The tweaks tab that shows tweak `id`, or `None` for an id the
+    /// catalog does not know.
+    pub(super) fn tab_of_tweak(id: &str) -> Option<ActiveTab> {
+        let tweak = crate::tweaks::find_tweak(id)?;
+        [ActiveTab::Tweaks, ActiveTab::StartPrivacy]
+            .into_iter()
+            .find(|tab| Self::tweak_groups_of(*tab).contains(&tweak.group))
+    }
+
     /// Pending changes of the tweaks in `groups` only (one tab).
     pub(super) fn pending_tweak_changes_in(&self, groups: &[TweakGroup]) -> Vec<(String, bool)> {
         self.pending_tweak_changes()
@@ -163,8 +169,28 @@ impl WinTuneApp {
         }
     }
 
+    /// History / status name of a tweak restore: the open tweaks tab's, or,
+    /// from another page (History), the tab of the restored tweaks.
+    fn restore_module_of(&self, ids: &[String]) -> &'static str {
+        let tab = match self.active_tab {
+            tab @ (ActiveTab::Tweaks | ActiveTab::StartPrivacy) => tab,
+            _ => {
+                let all_start = !ids.is_empty()
+                    && ids
+                        .iter()
+                        .all(|id| Self::tab_of_tweak(id) == Some(ActiveTab::StartPrivacy));
+                if all_start {
+                    ActiveTab::StartPrivacy
+                } else {
+                    ActiveTab::Tweaks
+                }
+            }
+        };
+        Self::tweaks_module_of(tab)
+    }
+
     /// Ids of this user's recorded originals that belong to `groups`.
-    fn user_backups_in(&self, groups: &[TweakGroup]) -> Vec<String> {
+    pub(super) fn user_backups_in(&self, groups: &[TweakGroup]) -> Vec<String> {
         self.tweak_store
             .backups_of(&self.env.user_label)
             .map(|b| {
@@ -246,9 +272,13 @@ impl WinTuneApp {
             return;
         }
         let tr = self.tr;
+        // A tweak the catalog no longer knows is named by its raw id.
         let titles: Vec<String> = ids
             .iter()
-            .filter_map(|id| crate::tweaks::find_tweak(id).map(|t| messages::tweak_title(tr, t.id)))
+            .map(|id| match crate::tweaks::find_tweak(id) {
+                Some(t) => messages::tweak_title(tr, t.id),
+                None => id.clone(),
+            })
             .collect();
         self.pending_confirm = Some(Confirm {
             title: tr.t("confirm.restore_tweaks.title"),
@@ -275,7 +305,7 @@ impl WinTuneApp {
         let mut store = self.tweak_store.clone();
         let (user, is_windows_11, store_path, reg_backup_dir) = self.tweak_options();
         let repaint_ctx = ctx.clone();
-        let module = Self::tweaks_module_of(self.active_tab);
+        let module = self.restore_module_of(&ids);
         let job = BackgroundJob::spawn(
             "Restoring original settings",
             move || repaint_ctx.request_repaint(),
@@ -416,7 +446,7 @@ impl WinTuneApp {
                 egui::TextEdit::singleline(&mut self.tweak_search)
                     .id(super::polish::search_box_id(ActiveTab::Tweaks).expect("search box"))
                     .hint_text(tr.t("tweaks.search"))
-                    .desired_width(SEARCH_WIDTH),
+                    .desired_width(kit::SEARCH_WIDTH),
             );
             self.focus_search_if_requested(&search);
             if !self.tweak_search.is_empty() && ui.button(tr.t("tweaks.clear")).clicked() {

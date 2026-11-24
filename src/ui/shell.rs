@@ -80,8 +80,9 @@ impl WinTuneApp {
             // Shown in the navigation but not built yet: never openable.
             return;
         }
-        if page == ActiveTab::Rollback && !self.is_busy() {
+        if page == ActiveTab::History && !self.is_busy() {
             self.reload_backup_store();
+            self.reload_tweak_store();
         }
         if page == ActiveTab::Associations && self.active_tab != page {
             self.request_status_refresh();
@@ -115,7 +116,6 @@ impl WinTuneApp {
         let context_menu = tr.t("nav.context_menu");
         let icons = tr.t("nav.icons");
         let history = tr.t("nav.history");
-        let rollback = tr.t("nav.rollback");
         let settings = tr.t("nav.settings");
         let customize = tr.t("nav.group.customize");
         let tools = tr.t("nav.group.tools");
@@ -161,7 +161,6 @@ impl WinTuneApp {
                 items: vec![
                     item(ActiveTab::Gallery, kit::Icon::Icons, &icons),
                     item(ActiveTab::History, kit::Icon::History, &history),
-                    item(ActiveTab::Rollback, kit::Icon::Restore, &rollback),
                 ],
             },
         ];
@@ -243,7 +242,7 @@ mod tests {
     use crate::tasks::BackgroundJob;
     use egui::{Event, PointerButton, RawInput};
 
-    const NAV_LABELS: [&str; 9] = [
+    const NAV_LABELS: [&str; 8] = [
         "Home",
         "File associations",
         "Explorer & Taskbar",
@@ -251,7 +250,6 @@ mod tests {
         "Context menu",
         "Icons",
         "History",
-        "Rollback",
         "Settings",
     ];
 
@@ -287,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn the_nav_lists_pages_in_spec_order() {
+    fn the_nav_has_no_rollback_entry_and_follows_the_spec_order() {
         let fx = TempIcons::new(&[]);
         let ctx = egui::Context::default();
         let mut app = fx.app(&ctx);
@@ -304,6 +302,20 @@ mod tests {
         shown.sort_by(|a, b| a.0.total_cmp(&b.0));
         let shown: Vec<String> = shown.into_iter().map(|(_, t)| t).collect();
         assert_eq!(shown, NAV_LABELS);
+        assert!(
+            text_center(&out, "Rollback").is_none(),
+            "the nav still has a Rollback entry"
+        );
+        // The group titles keep the spec's grouping around those pages.
+        let customize = text_center(&out, &app.tr.t("nav.group.customize")).expect("Customize");
+        let tools = text_center(&out, &app.tr.t("nav.group.tools")).expect("Tools");
+        let y_of = |label: &str| shown_y(&out, label);
+        assert!(customize.y < y_of("File associations") && y_of("Context menu") < tools.y);
+        assert!(tools.y < y_of("Icons") && y_of("History") < y_of("Settings"));
+    }
+
+    fn shown_y(out: &egui::FullOutput, label: &str) -> f32 {
+        text_center(out, label).expect(label).y
     }
 
     #[test]
@@ -344,7 +356,7 @@ mod tests {
         // Control: idle, opening the pages reloads the stores.
         app.backup_store_error = Some("sentinel".into());
         app.tweak_store_error = Some("sentinel".into());
-        app.open_page(ActiveTab::Rollback);
+        app.open_page(ActiveTab::History);
         app.open_page(ActiveTab::Tweaks);
         assert_eq!(app.backup_store_error, None);
         assert_eq!(app.tweak_store_error, None);
@@ -365,7 +377,7 @@ mod tests {
         app.backup_store_error = Some("sentinel".into());
         app.tweak_store_error = Some("sentinel".into());
 
-        app.open_page(ActiveTab::Rollback);
+        app.open_page(ActiveTab::History);
         app.open_page(ActiveTab::Tweaks);
         assert_eq!(app.backup_store_error.as_deref(), Some("sentinel"));
         assert_eq!(app.tweak_store_error.as_deref(), Some("sentinel"));
@@ -660,6 +672,7 @@ mod tests {
             })
         };
         let mut texts = Vec::new();
+        let applied_tweaks = pending_tweaks.clone();
         for (tab, tweak) in pending_tweaks {
             app.active_tab = tab;
             for _ in 0..3 {
@@ -718,6 +731,137 @@ mod tests {
             assert!(
                 !texts.iter().any(|t| t == *value),
                 "a tweak page draws English-only text {value:?} (key {key})"
+            );
+        }
+
+        // The Icons page, with icons and with a search that matches nothing.
+        app.env.is_windows_11 = true;
+        app.active_tab = ActiveTab::Gallery;
+        let mut texts = Vec::new();
+        for _ in 0..3 {
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+        }
+        app.gallery_search_query = "zzz".into();
+        for _ in 0..3 {
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+        }
+        app.gallery_search_query.clear();
+        for drawn in [
+            app.tr.t("icons.build"),
+            app.tr.t_args("icons.no_match", &[&"zzz"]),
+        ] {
+            assert!(texts.contains(&drawn), "{drawn:?} not drawn on Icons");
+        }
+        for (key, value) in &english_only {
+            assert!(
+                !texts.iter().any(|t| t == *value),
+                "the Icons page draws English-only text {value:?} (key {key})"
+            );
+        }
+
+        // The History page: saved originals in every group, one opened
+        // operation with an error and a `.reg` path, then a broken store.
+        app.config.extensions = vec![rule(".a"), rule(".b")];
+        let rules = app.config.extensions.clone();
+        app.start_apply(&ctx, rules);
+        run_until_idle(&mut app, &ctx);
+        assert!(app.backup_store.find(".a").is_some(), "no rule snapshot");
+        let mut entry = crate::history::HistoryEntry::from_report(
+            "File associations",
+            "Apply",
+            &crate::associations::OperationReport {
+                succeeded: vec![".a".into()],
+                errors: vec![".b: failed".into()],
+                ..Default::default()
+            },
+        );
+        entry.reg_backup = Some("C:\\backups\\x.reg".into());
+        let entry_time = entry.time.clone();
+        app.history = vec![entry];
+        app.open_page(ActiveTab::History);
+        // `open_page` reloaded the stores from disk, so put the unknown
+        // tweak back in memory.
+        app.tweak_store
+            .users
+            .entry("TEST\\user".to_string())
+            .or_default()
+            .insert(
+                "gone_tweak".to_string(),
+                crate::tweaks::TweakBackup {
+                    timestamp: "2026-01-02 03:04:05".into(),
+                    snapshot: crate::tweaks::TweakSnapshot::Value(Default::default()),
+                },
+            );
+        for _ in 0..4 {
+            let mut settle = tall(vec![]);
+            settle.time = Some(ctx.input(|i| i.time) + 1.0);
+            frame(&mut app, &ctx, settle);
+        }
+        let out = frame(&mut app, &ctx, tall(vec![]));
+        let title = drawn_texts(&out)
+            .into_iter()
+            .find(|t| t.starts_with(&entry_time))
+            .expect("operation row not drawn");
+        let pos = text_center(&out, &title).expect("operation title");
+        let button = |pressed| Event::PointerButton {
+            pos,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        for events in [
+            vec![Event::PointerMoved(pos)],
+            vec![button(true)],
+            vec![button(false)],
+        ] {
+            frame(&mut app, &ctx, tall(events));
+        }
+        let mut texts = Vec::new();
+        for _ in 0..3 {
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+        }
+        let all_groups = texts.clone();
+        // One store unreadable: the banner replaces its groups.
+        std::fs::write(fx.dir.join("tweaks-backups.json"), "{ broken").unwrap();
+        app.reload_tweak_store();
+        let error = app.tweak_store_error.clone().expect("store error");
+        for _ in 0..3 {
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+        }
+        for drawn in [
+            app.tr.t("history.operations"),
+            app.tr.t("originals.title"),
+            app.tr.t_args("originals.restore_all", &[&1]),
+            app.tr
+                .t_args("originals.unreadable", &[&"tweaks-backups.json", &error]),
+            app.tr.t("history.copy_reg"),
+            ".b: failed".to_string(),
+            "C:\\backups\\x.reg".to_string(),
+        ] {
+            assert!(texts.contains(&drawn), "{drawn:?} not drawn on History");
+        }
+        // The module names are also the filter chips, so prove each group
+        // by one of its own rows.
+        let mut rows = vec![
+            ".a".to_string(),
+            "gone_tweak".to_string(),
+            app.tr.t("originals.other"),
+        ];
+        rows.extend(
+            applied_tweaks
+                .iter()
+                .map(|(_, id)| crate::i18n::messages::tweak_title(app.tr, id)),
+        );
+        for drawn in rows {
+            assert!(
+                all_groups.contains(&drawn),
+                "{drawn:?} (saved original) not drawn"
+            );
+        }
+        for (key, value) in &english_only {
+            assert!(
+                !texts.iter().any(|t| t == *value),
+                "the History page draws English-only text {value:?} (key {key})"
             );
         }
     }

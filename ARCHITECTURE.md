@@ -148,7 +148,25 @@ none for it. Three pages do: File associations, Explorer & Taskbar and
 Start & Privacy. A tweak page's bar counts only its own pending changes, and
 Discard and Apply touch only its own groups. Toasts sit above that bar.
 
-The other screens still use the helpers in `src/theme.rs`. They are
+The Icons page (`gallery_tab.rs`) is a browse-only kit page: a search box,
+category chips and a grid of tiles. Tiles do not react. The icon folder is
+shown read-only, with a link to Settings, where it is edited.
+
+The History page has two sections, in this order. **Saved originals**
+(`originals.rs`) lists the snapshots in `backups.json` and
+`tweaks-backups.json`, grouped by module (a snapshot of a tweak that no
+longer exists goes under "Other", with its raw id; it is listed but cannot be
+restored, because the engine rejects an unknown id). Each item, and each
+group, has a restore button that asks first and then runs one existing job
+(`start_rollback` or `start_restore_tweaks`). Each group has its own
+"Restore all", but there is no global restore-everything button. Opening
+History reloads both stores, unless a job runs. An unreadable store disables
+only its own groups. **Operations** (`history_panel.rs`) is the module filter
+and one expandable row per entry of `history.jsonl`: the 20 most recent
+matching entries, and a "Show all" button for the rest. There is no Rollback
+tab: History replaced it.
+
+The remaining screens still use the helpers in `src/theme.rs`. They are
 rewritten onto the kit in later PRs, and `theme.rs` goes away with them.
 
 ## Adding a customization module

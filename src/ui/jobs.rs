@@ -257,7 +257,6 @@ impl WinTuneApp {
             }
             Finished::Rollback(outcome) => {
                 self.backup_store = outcome.store;
-                self.rollback_selection.clear();
                 self.show_report(ReportKind::RestoredRules, &outcome.report);
                 self.record_history("File associations", "Rollback", &outcome.report);
                 self.request_status_refresh();

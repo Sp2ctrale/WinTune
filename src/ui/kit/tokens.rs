@@ -83,6 +83,9 @@ pub fn palette(theme: Theme) -> &'static Palette {
 }
 
 /// Spacing scale, in points.
+/// Width of a page's search box.
+pub const SEARCH_WIDTH: f32 = 280.0;
+
 pub mod space {
     pub const XS: f32 = 4.0;
     pub const S: f32 = 8.0;

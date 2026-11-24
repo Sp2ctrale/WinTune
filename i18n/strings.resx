@@ -254,7 +254,7 @@
     <value>Remove the rule for {0} from the list?</value>
   </data>
   <data name="confirm.remove_rule.note" xml:space="preserve">
-    <value>This only edits WinTune's list: an association already applied stays in the registry until you restore it from the Rollback tab.</value>
+    <value>This only edits WinTune's list: an association already applied stays in the registry until you restore it from History.</value>
   </data>
   <data name="confirm.rollback.title" xml:space="preserve">
     <value>Restore original state</value>
@@ -370,9 +370,6 @@
   <data name="nav.history" xml:space="preserve">
     <value>History</value>
   </data>
-  <data name="nav.rollback" xml:space="preserve">
-    <value>Rollback</value>
-  </data>
   <data name="nav.settings" xml:space="preserve">
     <value>Settings</value>
   </data>
@@ -414,6 +411,54 @@
   </data>
   <data name="history.empty" xml:space="preserve">
     <value>No operation recorded yet.</value>
+  </data>
+  <data name="history.operations" xml:space="preserve">
+    <value>Operations</value>
+  </data>
+  <data name="history.filter.all" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="history.succeeded" xml:space="preserve">
+    <value>Done: {0}</value>
+  </data>
+  <data name="history.show_all" xml:space="preserve">
+    <value>Show all ({0})</value>
+  </data>
+  <data name="history.no_match" xml:space="preserve">
+    <value>No operation for this module.</value>
+  </data>
+  <data name="originals.title" xml:space="preserve">
+    <value>Saved originals</value>
+  </data>
+  <data name="originals.subtitle" xml:space="preserve">
+    <value>What Windows had before WinTune changed it. Restoring puts it back.</value>
+  </data>
+  <data name="originals.restore_all" xml:space="preserve">
+    <value>Restore all ({0})</value>
+  </data>
+  <data name="originals.restore" xml:space="preserve">
+    <value>Restore original</value>
+  </data>
+  <data name="originals.assoc_desc" xml:space="preserve">
+    <value>Original: {0} · saved {1}</value>
+  </data>
+  <data name="originals.saved_on" xml:space="preserve">
+    <value>Saved {0}</value>
+  </data>
+  <data name="originals.none" xml:space="preserve">
+    <value>none</value>
+  </data>
+  <data name="originals.other" xml:space="preserve">
+    <value>Other</value>
+  </data>
+  <data name="originals.unknown_tweak" xml:space="preserve">
+    <value>WinTune no longer knows this setting, so it can't restore it.</value>
+  </data>
+  <data name="originals.unreadable" xml:space="preserve">
+    <value>{0} can't be read, so its restores are blocked: {1}</value>
+  </data>
+  <data name="originals.empty" xml:space="preserve">
+    <value>Nothing saved yet. WinTune saves the original the first time it changes something.</value>
   </data>
   <data name="home.title" xml:space="preserve">
     <value>Home</value>
@@ -813,9 +858,6 @@ Rollback puts the choice back, but Windows protects it with a hash: it may still
   <data name="tweaks.nothing_to_restore" xml:space="preserve">
     <value>Nothing to restore: WinTune hasn't changed these settings.</value>
   </data>
-  <data name="rollback.tick_one" xml:space="preserve">
-    <value>Tick at least one extension to restore.</value>
-  </data>
   <data name="tweaks.subtitle" xml:space="preserve">
     <value>Settings of {0}. The first change of each one saves the original, so it can be restored.</value>
   </data>
@@ -887,5 +929,35 @@ Rollback puts the choice back, but Windows protects it with a hash: it may still
   </data>
   <data name="refresh.explorer_restart_hint" xml:space="preserve">
     <value>Visible after restarting Explorer (Task Manager › Windows Explorer › Restart) or signing out.</value>
+  </data>
+  <data name="icons.subtitle" xml:space="preserve">
+    <value>Icons used by your file associations</value>
+  </data>
+  <data name="icons.build" xml:space="preserve">
+    <value>Build icon pack</value>
+  </data>
+  <data name="icons.import" xml:space="preserve">
+    <value>Import .ico</value>
+  </data>
+  <data name="icons.folder" xml:space="preserve">
+    <value>Folder: {0}</value>
+  </data>
+  <data name="icons.change_in_settings" xml:space="preserve">
+    <value>Change in Settings</value>
+  </data>
+  <data name="icons.search" xml:space="preserve">
+    <value>Search icons</value>
+  </data>
+  <data name="icons.empty" xml:space="preserve">
+    <value>No icons in {0}</value>
+  </data>
+  <data name="icons.no_match" xml:space="preserve">
+    <value>No icon matches "{0}".</value>
+  </data>
+  <data name="icons.folder_error" xml:space="preserve">
+    <value>Can't create the icon folder: {0}</value>
+  </data>
+  <data name="icons.imported" xml:space="preserve">
+    <value>Imported {0} of {1} .ico files.</value>
   </data>
 </root>

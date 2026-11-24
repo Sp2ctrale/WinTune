@@ -67,7 +67,7 @@
     <value>{0} a un type inattendu</value>
   </data>
   <data name="custom.unreadable" xml:space="preserve">
-    <value>illisible : {0}</value>
+    <value>Impossible de lire ce réglage : {0}</value>
   </data>
   <data name="group.file_explorer" xml:space="preserve">
     <value>Explorateur de fichiers</value>
@@ -793,5 +793,98 @@ La restauration remet ce choix, mais Windows le protège par un hachage : il peu
   </data>
   <data name="assoc.blocked.this_rule" xml:space="preserve">
     <value>Corrigez d'abord cette règle.</value>
+  </data>
+  <data name="tweaks.blocked" xml:space="preserve">
+    <value>Les modifications sont bloquées : {0}</value>
+  </data>
+  <data name="tweaks.pending_n" xml:space="preserve">
+    <value>{0} modification(s) en attente</value>
+  </data>
+  <data name="tweaks.apply" xml:space="preserve">
+    <value>Appliquer</value>
+  </data>
+  <data name="tweaks.discard" xml:space="preserve">
+    <value>Annuler les modifications</value>
+  </data>
+  <data name="tweaks.nothing_to_apply" xml:space="preserve">
+    <value>Rien à appliquer : activez ou désactivez d'abord un réglage.</value>
+  </data>
+  <data name="tweaks.nothing_to_restore" xml:space="preserve">
+    <value>Rien à restaurer : WinTune n'a modifié aucun de ces réglages.</value>
+  </data>
+  <data name="rollback.tick_one" xml:space="preserve">
+    <value>Cochez au moins une extension à restaurer.</value>
+  </data>
+  <data name="tweaks.subtitle" xml:space="preserve">
+    <value>Réglages de {0}. La première modification de chacun enregistre l'original, pour pouvoir le restaurer.</value>
+  </data>
+  <data name="tweaks.restore_all" xml:space="preserve">
+    <value>Restaurer tous les originaux ({0})</value>
+  </data>
+  <data name="tweaks.search" xml:space="preserve">
+    <value>Rechercher un réglage</value>
+  </data>
+  <data name="tweaks.clear" xml:space="preserve">
+    <value>Effacer</value>
+  </data>
+  <data name="tweaks.no_match" xml:space="preserve">
+    <value>Aucun réglage ne correspond à « {0} ».</value>
+  </data>
+  <data name="tweaks.store_unreadable" xml:space="preserve">
+    <value>Les originaux enregistrés sont illisibles, les modifications sont donc bloquées : {0}</value>
+  </data>
+  <data name="tweaks.restore_original" xml:space="preserve">
+    <value>Restaurer l'original</value>
+  </data>
+  <data name="tweaks.more" xml:space="preserve">
+    <value>Plus</value>
+  </data>
+  <data name="tweaks.more_for" xml:space="preserve">
+    <value>Plus : {0}</value>
+  </data>
+  <data name="tweaks.pill.custom" xml:space="preserve">
+    <value>Personnalisé</value>
+  </data>
+  <data name="tweaks.custom_hint" xml:space="preserve">
+    <value>Valeur que WinTune n'écrit pas ({0})</value>
+  </data>
+  <data name="tweaks.pill.win11" xml:space="preserve">
+    <value>Windows 11</value>
+  </data>
+  <data name="tweaks.win11_hint" xml:space="preserve">
+    <value>Windows 11 uniquement.</value>
+  </data>
+  <data name="tweaks.win11_only" xml:space="preserve">
+    <value>Non disponible sur cette version de Windows.</value>
+  </data>
+  <data name="tweaks.pill.unofficial" xml:space="preserve">
+    <value>Non officiel</value>
+  </data>
+  <data name="tweaks.unofficial_hint" xml:space="preserve">
+    <value>Repose sur un comportement non documenté de Windows, qu'une mise à jour peut changer.</value>
+  </data>
+  <data name="tweaks.pill.will_on" xml:space="preserve">
+    <value>Sera activé</value>
+  </data>
+  <data name="tweaks.pill.will_off" xml:space="preserve">
+    <value>Sera désactivé</value>
+  </data>
+  <data name="refresh.live" xml:space="preserve">
+    <value>Visible : tout de suite</value>
+  </data>
+  <data name="refresh.new_windows" xml:space="preserve">
+    <value>Visible : dans les nouvelles fenêtres</value>
+  </data>
+  <data name="refresh.explorer_restart" xml:space="preserve">
+    <value>Visible : après redémarrage de l'Explorateur</value>
+  </data>
+  <data name="refresh.live_hint" xml:space="preserve">
+    <value>Visible immédiatement.</value>
+  </data>
+  <data name="refresh.new_windows_hint" xml:space="preserve">
+    <value>Visible dans les nouvelles fenêtres de l'Explorateur, ou appuyez sur F5.</value>
+  </data>
+  <data name="refresh.explorer_restart_hint" xml:space="preserve">
+    <value>Visible après redémarrage de l'Explorateur (Gestionnaire des tâches › Explorateur Windows › Redémarrer) ou une déconnexion.</value>
   </data>
 </root>

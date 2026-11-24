@@ -468,6 +468,123 @@ mod controls {
         assert!(changed.get());
     }
 
+    /// Centre of the first drawn text equal to `text` in `out`.
+    fn text_center(out: &egui::FullOutput, text: &str) -> Option<egui::Pos2> {
+        fn find(shape: &egui::Shape, text: &str) -> Option<egui::Pos2> {
+            match shape {
+                egui::Shape::Text(t) if t.galley.text() == text => {
+                    Some(t.visual_bounding_rect().center())
+                }
+                egui::Shape::Vec(v) => v.iter().find_map(|s| find(s, text)),
+                _ => None,
+            }
+        }
+        out.shapes.iter().find_map(|s| find(&s.shape, text))
+    }
+
+    /// Click `…`, run a frame so the popup appears, then click the item
+    /// labelled `target`. Returns what the menu returned across all frames.
+    fn click_menu_item(items: &[MenuItem<'_>], target: &str) -> Vec<usize> {
+        let ctx = ctx_for(ThemeMode::Light);
+        let picked = RefCell::new(Vec::new());
+        let mut draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                if let Some(i) = overflow_menu(ui, "menu", "More actions", "More: row", items) {
+                    picked.borrow_mut().push(i);
+                }
+            });
+        };
+        let out = ctx.run(frame_input(vec![]), |c| draw(c));
+        let at = text_center(&out, "\u{2026}").expect("the … button is drawn");
+        click_frames(&ctx, at, &mut draw);
+        let out = ctx.run(frame_input(vec![]), |c| draw(c));
+        let at = text_center(&out, target).expect("the menu item is drawn");
+        click_frames(&ctx, at, &mut draw);
+        let _ = ctx.run(frame_input(vec![]), |c| draw(c));
+        picked.into_inner()
+    }
+
+    #[test]
+    fn the_overflow_menu_returns_the_clicked_item() {
+        let items = [
+            MenuItem {
+                label: "First",
+                enabled: true,
+                disabled_hint: None,
+            },
+            MenuItem {
+                label: "Second",
+                enabled: true,
+                disabled_hint: None,
+            },
+        ];
+        assert_eq!(click_menu_item(&items, "Second"), vec![1]);
+    }
+
+    #[test]
+    fn a_disabled_menu_item_never_returns() {
+        let items = [
+            MenuItem {
+                label: "First",
+                enabled: false,
+                disabled_hint: Some("not now"),
+            },
+            MenuItem {
+                label: "Second",
+                enabled: true,
+                disabled_hint: None,
+            },
+        ];
+        assert!(click_menu_item(&items, "First").is_empty());
+    }
+
+    #[test]
+    fn a_setting_rows_note_shows_its_own_hover_text() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                SettingRow {
+                    icon: None,
+                    title: "Title",
+                    description: Some("Description"),
+                    hover: None,
+                }
+                .show_with_note(ui, "Note", "Why the note", |ui| {
+                    let mut on = false;
+                    toggle(ui, &mut on);
+                });
+            });
+        };
+        let texts = |out: &egui::FullOutput| {
+            let mut found = Vec::new();
+            for t in ["Description", "Note", "Why the note"] {
+                if text_center(out, t).is_some() {
+                    found.push(t);
+                }
+            }
+            found
+        };
+        let out = ctx.run(frame_input(vec![]), draw);
+        assert_eq!(texts(&out), ["Description", "Note"]);
+        let note = text_center(&out, "Note").unwrap();
+        let description = text_center(&out, "Description").unwrap();
+        assert!(
+            note.y > description.y,
+            "the note sits under the description"
+        );
+
+        // Rest on the note long enough for the tooltip.
+        let mut out = out;
+        for i in 0..20 {
+            let mut input = frame_input(vec![egui::Event::PointerMoved(note)]);
+            if i >= 4 {
+                input.time = Some(ctx.input(|i| i.time) + 0.1);
+            }
+            out = ctx.run(input, draw);
+        }
+        assert_eq!(texts(&out), ["Description", "Note", "Why the note"]);
+    }
+
     #[test]
     fn banner_reports_its_action_click() {
         let ctx = ctx_for(ThemeMode::Light);

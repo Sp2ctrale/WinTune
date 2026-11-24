@@ -218,7 +218,13 @@ fn every_engine_message_translates_in_every_shipped_language() {
         vec!["USER8", "EXT8", "PID8"],
     );
     let mut custom = |c: CustomReason, args: Vec<&'static str>| {
-        let shown = c.to_string();
+        // The one exception: the engine's "unreadable: <os error>" is shown
+        // as a translated summary followed by the raw detail (UI redesign PR
+        // 4 ruling; the engine stays untouched).
+        let shown = match &c {
+            CustomReason::Unreadable(e) => format!("Can't read this setting: {e}"),
+            _ => c.to_string(),
+        };
         cases.push((Box::new(move |tr| custom_reason(tr, &c)), args, shown));
     };
     custom(

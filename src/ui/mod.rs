@@ -146,7 +146,10 @@ impl ActiveTab {
     /// Pages that draw their own action bar (with the job's progress while
     /// one runs). The shell draws the progress bar for the others.
     pub(super) fn owns_action_bar(self) -> bool {
-        matches!(self, ActiveTab::Associations)
+        matches!(
+            self,
+            ActiveTab::Associations | ActiveTab::Tweaks | ActiveTab::StartPrivacy
+        )
     }
 }
 

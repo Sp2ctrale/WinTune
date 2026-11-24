@@ -75,6 +75,27 @@ impl SettingRow<'_> {
     /// `trailing` is laid out right-to-left: the first widget it adds sits at
     /// the far right edge.
     pub fn show<R>(self, ui: &mut Ui, trailing: impl FnOnce(&mut Ui) -> R) -> R {
+        self.show_inner(ui, None, trailing)
+    }
+
+    /// `show`, plus one more line of small secondary text under the
+    /// description (`note`), with its own hover text (`note_hover`).
+    pub fn show_with_note<R>(
+        self,
+        ui: &mut Ui,
+        note: &str,
+        note_hover: &str,
+        trailing: impl FnOnce(&mut Ui) -> R,
+    ) -> R {
+        self.show_inner(ui, Some((note, note_hover)), trailing)
+    }
+
+    fn show_inner<R>(
+        self,
+        ui: &mut Ui,
+        note: Option<(&str, &str)>,
+        trailing: impl FnOnce(&mut Ui) -> R,
+    ) -> R {
         let p = current_palette(ui.ctx());
         let row = Rect::from_min_size(ui.cursor().min, vec2(ui.available_width(), 48.0));
         let result = split_row(ui, 48.0, trailing, |ui| {
@@ -95,6 +116,14 @@ impl SettingRow<'_> {
                             .size(text_size::SECONDARY)
                             .color(p.text_secondary),
                     );
+                }
+                if let Some((text, hover)) = note {
+                    ui.label(
+                        RichText::new(text)
+                            .size(text_size::SECONDARY)
+                            .color(p.text_secondary),
+                    )
+                    .on_hover_text(hover);
                 }
             });
         });

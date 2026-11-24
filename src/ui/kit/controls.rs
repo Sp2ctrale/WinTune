@@ -2,12 +2,27 @@
 //! the action button. They return `Response`s or values and never act.
 
 use egui::{
-    pos2, vec2, Align2, CursorIcon, FontId, Galley, Id, Rect, Response, Rounding, Sense, Shape,
-    Stroke, Ui, WidgetInfo, WidgetType,
+    pos2, vec2, Align2, CursorIcon, FontId, Galley, Id, Rect, Response, RichText, Rounding, Sense,
+    Shape, Stroke, Ui, WidgetInfo, WidgetType,
 };
 use std::sync::Arc;
 
-use super::{current_palette, radius, space, text_size};
+use super::{current_palette, radius, space, text_size, Palette};
+
+/// Height of the buttons of the page header and the action bar.
+pub const BUTTON_HEIGHT: f32 = 32.0;
+
+/// The page's main action: accent fill.
+pub fn primary_button(p: &Palette, text: &str) -> egui::Button<'static> {
+    egui::Button::new(RichText::new(text).size(text_size::BODY).color(p.on_accent))
+        .fill(p.accent)
+        .min_size(vec2(0.0, BUTTON_HEIGHT))
+}
+
+/// A page button that is not the main action.
+pub fn secondary_button(text: &str) -> egui::Button<'static> {
+    egui::Button::new(RichText::new(text).size(text_size::BODY)).min_size(vec2(0.0, BUTTON_HEIGHT))
+}
 
 /// Windows 11 style on/off switch, 40x20, accent when on.
 pub fn toggle(ui: &mut Ui, on: &mut bool) -> Response {
@@ -282,6 +297,99 @@ pub fn disclosure<R>(
     } else {
         None
     }
+}
+
+/// One entry of an `overflow_menu`.
+pub struct MenuItem<'a> {
+    pub label: &'a str,
+    pub enabled: bool,
+    /// Shown on hover when the item is disabled.
+    pub disabled_hint: Option<&'a str>,
+}
+
+/// Size of the `…` button of an `overflow_menu`.
+pub const OVERFLOW_BUTTON: egui::Vec2 = egui::vec2(28.0, 28.0);
+
+/// A small `…` button that opens a popup with one entry per item. `tooltip`
+/// is the visible hover text; `label` is the accessible name of the button
+/// (for example to say which row it belongs to). Returns the index of the
+/// enabled item the user clicked; a disabled item never returns.
+pub fn overflow_menu(
+    ui: &mut Ui,
+    id_salt: &str,
+    tooltip: &str,
+    label: &str,
+    items: &[MenuItem<'_>],
+) -> Option<usize> {
+    let p = current_palette(ui.ctx());
+    let popup_id = ui.make_persistent_id(("kit_overflow_menu", id_salt));
+    let (rect, response) = ui.allocate_exact_size(OVERFLOW_BUTTON, Sense::click());
+    let response = response
+        .on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text(tooltip);
+    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+    if response.clicked() {
+        ui.memory_mut(|m| m.toggle_popup(popup_id));
+    }
+    if ui.is_rect_visible(rect) {
+        let open = ui.memory(|m| m.is_popup_open(popup_id));
+        let painter = ui.painter();
+        if response.hovered() || open {
+            painter.rect_filled(rect, Rounding::same(radius::CONTROL), p.surface_hover);
+        }
+        if response.has_focus() {
+            painter.rect_stroke(
+                rect,
+                Rounding::same(radius::CONTROL),
+                Stroke::new(2.0_f32, p.accent),
+            );
+        }
+        match super::icons::icon_text(ui.ctx(), super::Icon::More, text_size::BODY) {
+            Some(icon) => {
+                let galley = egui::WidgetText::from(icon.color(p.text)).into_galley(
+                    ui,
+                    Some(egui::TextWrapMode::Extend),
+                    f32::INFINITY,
+                    egui::TextStyle::Button,
+                );
+                painter.galley(rect.center() - galley.size() / 2.0, galley, p.text);
+            }
+            None => {
+                painter.text(
+                    rect.center(),
+                    Align2::CENTER_CENTER,
+                    "\u{2026}",
+                    FontId::proportional(text_size::BODY),
+                    p.text,
+                );
+            }
+        }
+    }
+
+    let mut picked = None;
+    egui::popup_below_widget(
+        ui,
+        popup_id,
+        &response,
+        egui::PopupCloseBehavior::CloseOnClick,
+        |ui| {
+            ui.set_min_width(160.0);
+            for (i, item) in items.iter().enumerate() {
+                let text = egui::RichText::new(item.label).size(text_size::BODY);
+                let button = egui::Button::new(text).frame(false);
+                let mut r = ui.add_enabled(item.enabled, button);
+                if !item.enabled {
+                    if let Some(hint) = item.disabled_hint {
+                        r = r.on_disabled_hover_text(hint);
+                    }
+                }
+                if item.enabled && r.clicked() {
+                    picked = Some(i);
+                }
+            }
+        },
+    );
+    picked
 }
 
 /// Text button used by banners and empty states. `primary` draws it with the

@@ -1001,19 +1001,12 @@ mod tests {
         release_tx
     }
 
-    /// Draws one frame `seconds` after the previous one: toasts expire, and
-    /// the next click is not taken as the second half of a double-click.
+    /// Draws one frame `seconds` after the previous one, so the next click
+    /// is not taken as the second half of a double-click.
     fn wait(app: &mut WinTuneApp, ctx: &egui::Context, seconds: f64) {
         let mut input = page_input(vec![]);
         input.time = Some(ctx.input(|i| i.time) + seconds);
         frame(app, ctx, input);
-    }
-
-    /// Lets the toasts of a finished job expire: they sit over the bar.
-    fn expire_toasts(app: &mut WinTuneApp, ctx: &egui::Context) {
-        wait(app, ctx, 0.1);
-        wait(app, ctx, kit::TOAST_SECONDS + 1.0);
-        assert!(app.toasts.is_empty());
     }
 
     /// Moves onto `pos` and rests there long enough for a tooltip, and
@@ -1067,7 +1060,8 @@ mod tests {
         assert!(app.is_busy(), "the bar's Apply was not enabled");
         run_until_idle(&mut app, &ctx);
         assert!(fx.key_exists(&fx.classes(".foo")), "{}", app.last_notice());
-        expire_toasts(&mut app, &ctx);
+        // The apply toast is still up: it must not cover the bar.
+        assert!(!app.toasts.is_empty());
 
         app.selected_ext_index = 1;
         let reason = app.tr.t("assoc.blocked.this_rule");
@@ -1098,7 +1092,8 @@ mod tests {
         app.start_apply(&ctx, rules);
         run_until_idle(&mut app, &ctx);
         assert!(fx.key_exists(&fx.classes(".foo")), "{}", app.last_notice());
-        expire_toasts(&mut app, &ctx);
+        // The apply toast is still up: it must not cover the bar.
+        assert!(!app.toasts.is_empty());
 
         click_text(&mut app, &ctx, &restore);
         assert_eq!(

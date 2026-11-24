@@ -705,6 +705,54 @@ mod layout {
     }
 
     #[test]
+    fn toasts_sit_above_a_bottom_panel() {
+        const BAR_HEIGHT: f32 = 60.0;
+        let ctx = ctx_for(ThemeMode::Light);
+        let mut toasts = Toasts::default();
+        for i in 0..5 {
+            toasts.push(ToastKind::Error, format!("Toast {i}"));
+        }
+        let mut bar_top = f32::NAN;
+        let mut out = None;
+        // The first frames size the area; the last one is the settled layout.
+        for _ in 0..3 {
+            out = Some(ctx.run(frame_input(vec![]), |c| {
+                let bar = egui::TopBottomPanel::bottom("test_bar")
+                    .exact_height(BAR_HEIGHT)
+                    .show(c, |_| {});
+                bar_top = bar.response.rect.top();
+                toasts.show(c, "Clear all");
+            }));
+        }
+        fn text_bottom(shape: &egui::Shape, text: &str) -> Option<f32> {
+            match shape {
+                egui::Shape::Text(t) if t.galley.text() == text => {
+                    Some(t.pos.y + t.galley.rect.bottom())
+                }
+                egui::Shape::Vec(v) => v.iter().find_map(|s| text_bottom(s, text)),
+                _ => None,
+            }
+        }
+        let out = out.unwrap();
+        // The oldest shown toast is the lowest card; the overflow row is below it.
+        for text in ["Toast 2", "Toast 4", "Clear all"] {
+            let bottom = out
+                .shapes
+                .iter()
+                .find_map(|c| text_bottom(&c.shape, text))
+                .unwrap_or_else(|| panic!("{text:?} not drawn"));
+            assert!(
+                bottom <= bar_top,
+                "{text:?} ends at {bottom}, under the panel's top edge {bar_top}"
+            );
+        }
+        let area = ctx
+            .memory(|m| m.area_rect(egui::Id::new("wintune_toasts")))
+            .unwrap();
+        assert!(area.bottom() <= bar_top, "{area:?} overlaps the panel");
+    }
+
+    #[test]
     fn a_busy_action_bar_hides_its_actions() {
         let ctx = ctx_for(ThemeMode::Light);
         let ran = Cell::new(false);

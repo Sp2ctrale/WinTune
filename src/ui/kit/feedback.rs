@@ -169,9 +169,15 @@ impl Toasts {
         let p = current_palette(ctx);
         let mut dismissed = None;
         let mut cleared = false;
+        // Bottom-right of what the panels leave free (egui does not count the
+        // central panel), so the stack, overflow row included, sits above a
+        // page's action bar and below the caption strip. Call this after the
+        // panels of the frame.
+        let corner = ctx.available_rect().right_bottom() - vec2(space::L, space::L);
         Area::new(Id::new("wintune_toasts"))
             .order(Order::Foreground)
-            .anchor(Align2::RIGHT_BOTTOM, vec2(-space::L, -space::L))
+            .pivot(Align2::RIGHT_BOTTOM)
+            .fixed_pos(corner)
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing.y = space::S;
                 for toast in self.items[hidden..].iter().rev() {
@@ -194,7 +200,7 @@ impl Toasts {
                             .inner_margin(Margin::symmetric(space::M, space::S))
                             .show(ui, |ui| {
                                 ui.set_width(TOAST_WIDTH - 2.0 * space::M - 2.0);
-                                // A fixed row height: a centered layout in an anchored
+                                // A fixed row height: a centered layout in a pivoted
                                 // area would grow with the space it is offered.
                                 split_row(
                                     ui,

@@ -601,4 +601,65 @@
   <data name="picker.cancel" xml:space="preserve">
     <value>Cancel</value>
   </data>
+  <data name="assoc.search" xml:space="preserve">
+    <value>Search rules (Ctrl+F)</value>
+  </data>
+  <data name="assoc.add_hint" xml:space="preserve">
+    <value>New extension, e.g. .zig</value>
+  </data>
+  <data name="assoc.add" xml:space="preserve">
+    <value>+ Add</value>
+  </data>
+  <data name="assoc.empty" xml:space="preserve">
+    <value>No rules yet. Add an extension below.</value>
+  </data>
+  <data name="assoc.no_match" xml:space="preserve">
+    <value>No rule matches “{0}”.</value>
+  </data>
+  <data name="assoc.subtitle" xml:space="preserve">
+    <value>Choose how each file type opens and looks.</value>
+  </data>
+  <data name="assoc.apply_all" xml:space="preserve">
+    <value>Apply all enabled</value>
+  </data>
+  <data name="assoc.check_all" xml:space="preserve">
+    <value>Check all</value>
+  </data>
+  <data name="assoc.uncheck_all" xml:space="preserve">
+    <value>Uncheck all</value>
+  </data>
+  <data name="assoc.refresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="assoc.refresh_hint" xml:space="preserve">
+    <value>Re-read the registry to show which rules are applied or changed.</value>
+  </data>
+  <data name="assoc.exists" xml:space="preserve">
+    <value>{0} is already in the list.</value>
+  </data>
+  <data name="assoc.add_invalid" xml:space="preserve">
+    <value>Can't add {0}: {1}</value>
+  </data>
+  <data name="assoc.blocked.editor" xml:space="preserve">
+    <value>Set the default code editor first.</value>
+  </data>
+  <data name="assoc.blocked.problems" xml:space="preserve">
+    <value>Fix these rules first:
+{0}</value>
+  </data>
+  <data name="assoc.state.checking" xml:space="preserve">
+    <value>Checking status</value>
+  </data>
+  <data name="assoc.state.not_applied" xml:space="preserve">
+    <value>Not applied</value>
+  </data>
+  <data name="assoc.state.up_to_date" xml:space="preserve">
+    <value>Up to date</value>
+  </data>
+  <data name="assoc.state.changed" xml:space="preserve">
+    <value>Changed</value>
+  </data>
+  <data name="assoc.state.invalid" xml:space="preserve">
+    <value>Invalid</value>
+  </data>
 </root>

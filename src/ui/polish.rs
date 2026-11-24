@@ -39,19 +39,28 @@ impl WinTuneApp {
         }
     }
 
-    /// Why "Apply Checked Extensions" is disabled, or `None` if it is enabled.
+    /// Why "Apply all enabled" is disabled, or `None` if it is enabled.
     pub(super) fn apply_disabled_reason(&self) -> Option<String> {
         if let Some(job) = &self.job {
-            return Some(format!("Wait: {} is still running.", job.title()));
+            let name = self.tr.t(job.name_key());
+            return Some(self.tr.t_args("notice.still_running", &[&name]));
         }
         if let Some(e) = &self.backup_store_error {
-            return Some(format!("Registry changes are blocked: {}", e));
+            return Some(self.tr.t_args("notice.registry_blocked", &[e]));
         }
         if self.config.code_executable.trim().is_empty() {
-            return Some("Set the default code editor first.".to_string());
+            return Some(self.tr.t("assoc.blocked.editor"));
         }
         let blockers = self.apply_blockers();
-        (!blockers.is_empty()).then(|| format!("Fix these rules first:\n{}", blockers.join("\n")))
+        (!blockers.is_empty()).then(|| {
+            self.tr.t_args(
+                "assoc.blocked.problems",
+                &[&blockers.join(
+                    "
+",
+                )],
+            )
+        })
     }
 
     /// Common reasons first: a running job, then an unreadable store.
@@ -157,16 +166,22 @@ mod tests {
         assert_eq!(app.apply_disabled_reason(), None);
 
         app.config.code_executable.clear();
-        assert!(app.apply_disabled_reason().unwrap().contains("editor"));
+        assert_eq!(
+            app.apply_disabled_reason().unwrap(),
+            app.tr.t("assoc.blocked.editor")
+        );
 
         let mut app = fx.app_with_rules(&ctx, &[".foo", ".FOO"]);
-        assert!(app
-            .apply_disabled_reason()
-            .unwrap()
-            .contains("more than once"));
+        let reason = app.apply_disabled_reason().unwrap();
+        assert!(reason.contains("more than once"), "{reason}");
+        assert!(reason.starts_with(&app.tr.t_args("assoc.blocked.problems", &[&""])));
 
         app.backup_store_error = Some("backups.json is unreadable".into());
-        assert!(app.apply_disabled_reason().unwrap().contains("unreadable"));
+        assert_eq!(
+            app.apply_disabled_reason().unwrap(),
+            app.tr
+                .t_args("notice.registry_blocked", &[&"backups.json is unreadable"])
+        );
     }
 
     #[test]

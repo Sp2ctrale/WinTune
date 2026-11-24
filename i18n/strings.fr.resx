@@ -600,4 +600,65 @@
   <data name="picker.cancel" xml:space="preserve">
     <value>Annuler</value>
   </data>
+  <data name="assoc.search" xml:space="preserve">
+    <value>Rechercher une règle (Ctrl+F)</value>
+  </data>
+  <data name="assoc.add_hint" xml:space="preserve">
+    <value>Nouvelle extension, ex. .zig</value>
+  </data>
+  <data name="assoc.add" xml:space="preserve">
+    <value>+ Ajouter</value>
+  </data>
+  <data name="assoc.empty" xml:space="preserve">
+    <value>Aucune règle pour l'instant. Ajoutez une extension ci-dessous.</value>
+  </data>
+  <data name="assoc.no_match" xml:space="preserve">
+    <value>Aucune règle ne correspond à « {0} ».</value>
+  </data>
+  <data name="assoc.subtitle" xml:space="preserve">
+    <value>Choisissez comment chaque type de fichier s'ouvre et s'affiche.</value>
+  </data>
+  <data name="assoc.apply_all" xml:space="preserve">
+    <value>Appliquer les règles cochées</value>
+  </data>
+  <data name="assoc.check_all" xml:space="preserve">
+    <value>Tout cocher</value>
+  </data>
+  <data name="assoc.uncheck_all" xml:space="preserve">
+    <value>Tout décocher</value>
+  </data>
+  <data name="assoc.refresh" xml:space="preserve">
+    <value>Actualiser</value>
+  </data>
+  <data name="assoc.refresh_hint" xml:space="preserve">
+    <value>Relit le registre pour voir quelles règles sont appliquées ou modifiées.</value>
+  </data>
+  <data name="assoc.exists" xml:space="preserve">
+    <value>{0} est déjà dans la liste.</value>
+  </data>
+  <data name="assoc.add_invalid" xml:space="preserve">
+    <value>Impossible d'ajouter {0} : {1}</value>
+  </data>
+  <data name="assoc.blocked.editor" xml:space="preserve">
+    <value>Choisissez d'abord l'éditeur de code par défaut.</value>
+  </data>
+  <data name="assoc.blocked.problems" xml:space="preserve">
+    <value>Corrigez d'abord ces règles :
+{0}</value>
+  </data>
+  <data name="assoc.state.checking" xml:space="preserve">
+    <value>Vérification en cours</value>
+  </data>
+  <data name="assoc.state.not_applied" xml:space="preserve">
+    <value>Non appliquée</value>
+  </data>
+  <data name="assoc.state.up_to_date" xml:space="preserve">
+    <value>À jour</value>
+  </data>
+  <data name="assoc.state.changed" xml:space="preserve">
+    <value>Modifiée</value>
+  </data>
+  <data name="assoc.state.invalid" xml:space="preserve">
+    <value>Non valide</value>
+  </data>
 </root>

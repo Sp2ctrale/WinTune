@@ -1,57 +1,142 @@
 use super::rule_status::{status_badge, status_details};
-use super::{ActiveTab, WinTuneApp};
-use crate::associations::{find_rule_problems, validate_extension};
+use super::{kit, ActiveTab, WinTuneApp};
+use crate::associations::{find_rule_problems, validate_extension, RuleProblem, RuleStatus};
+use crate::i18n::messages;
 use crate::models::{CustomContextCommand, DoubleClickMode, ExtensionConfig};
 use crate::theme::{accent_button, card_frame, draw_badge, get_palette};
 use eframe::egui::{self, Margin, RichText};
+use kit::{space, text_size, PillKind};
+
+/// Height of a row of the rule list.
+const ROW_HEIGHT: f32 = 36.0;
+/// Height of the buttons of the page header.
+const BUTTON_HEIGHT: f32 = 32.0;
+
+/// What the rule list shows for a rule, from the registry check and the
+/// validation of the rule itself.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum RuleState {
+    /// The status has not been computed yet (or the rule was just renamed).
+    Checking,
+    NotApplied,
+    UpToDate,
+    Changed,
+    Invalid,
+}
+
+/// Color of the status dot (and of the detail's pill); `None` is a ring.
+pub(super) fn rule_state_pill(state: RuleState) -> Option<PillKind> {
+    match state {
+        RuleState::UpToDate => Some(PillKind::Success),
+        RuleState::Changed => Some(PillKind::Warning),
+        RuleState::Invalid => Some(PillKind::Danger),
+        RuleState::NotApplied | RuleState::Checking => None,
+    }
+}
 
 impl WinTuneApp {
     pub(super) fn show_associations_tab(&mut self, ctx: &egui::Context) {
-        self.show_editor_bar(ctx);
         self.show_extension_list(ctx);
         self.show_extension_details(ctx);
     }
 
-    fn show_editor_bar(&mut self, ctx: &egui::Context) {
-        let palette = get_palette(self.ui_theme);
-        let busy = self.is_busy();
+    /// `Invalid` wins; otherwise the status read for the rule's extension.
+    /// The list uses `rule_state_in` to validate once per frame; the rule
+    /// detail uses this one.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(super) fn rule_state(&self, index: usize) -> RuleState {
+        self.rule_state_in(index, &find_rule_problems(&self.config.extensions))
+    }
 
-        egui::TopBottomPanel::top("associations_top_bar")
-            .frame(
-                egui::Frame::none()
-                    .fill(palette.bg_base)
-                    .inner_margin(Margin::symmetric(16.0, 12.0)),
+    fn rule_state_in(&self, index: usize, problems: &[(usize, RuleProblem)]) -> RuleState {
+        if problems.iter().any(|(i, _)| *i == index) {
+            return RuleState::Invalid;
+        }
+        match self
+            .config
+            .extensions
+            .get(index)
+            .and_then(|r| self.rule_statuses.get(&r.extension))
+        {
+            None => RuleState::Checking,
+            Some(RuleStatus::NotApplied) => RuleState::NotApplied,
+            Some(RuleStatus::Applied) => RuleState::UpToDate,
+            Some(RuleStatus::Drifted(_)) => RuleState::Changed,
+        }
+    }
+
+    fn rule_state_label(&self, state: RuleState) -> String {
+        match state {
+            RuleState::Checking => self.tr.t("assoc.state.checking"),
+            RuleState::NotApplied => self.tr.t("assoc.state.not_applied"),
+            RuleState::UpToDate => self.tr.t("assoc.state.up_to_date"),
+            RuleState::Changed => self.tr.t("assoc.state.changed"),
+            RuleState::Invalid => self.tr.t("assoc.state.invalid"),
+        }
+    }
+
+    /// Breadcrumb, title and the page's bulk actions. Drawn at the top of
+    /// the detail column.
+    fn associations_header(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        let tr = self.tr;
+        let p = kit::current_palette(&ctx);
+        let busy = self.is_busy();
+        let disabled_reason = self.apply_disabled_reason();
+        let all_checked = self.config.extensions.iter().all(|r| r.enabled);
+        let name = tr.t("nav.associations");
+        let subtitle = tr.t("assoc.subtitle");
+        let toggle_label = if all_checked {
+            tr.t("assoc.uncheck_all")
+        } else {
+            tr.t("assoc.check_all")
+        };
+        let apply_label = tr.t("assoc.apply_all");
+        let refresh_label = tr.t("assoc.refresh");
+        let refresh_hint = tr.t("assoc.refresh_hint");
+
+        let mut apply = false;
+        let mut toggle = false;
+        let mut refresh = false;
+        kit::page_header(ui, &["WinTune", &name], &name, Some(&subtitle), |ui| {
+            let primary = egui::Button::new(
+                RichText::new(&apply_label)
+                    .size(text_size::BODY)
+                    .color(p.on_accent),
             )
-            .show(ctx, |ui| {
-                card_frame(self.ui_theme).show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        if ui
-                            .add_enabled(!busy, egui::Button::new("Refresh status"))
-                            .on_hover_text(
-                                "Re-read the registry to show which rules are applied or changed.",
-                            )
-                            .clicked()
-                        {
-                            self.request_status_refresh();
-                        }
-                        let disabled_reason = self.apply_disabled_reason();
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let resp = ui.add_enabled(
-                                disabled_reason.is_none(),
-                                accent_button("Apply Checked Extensions", self.ui_theme),
-                            );
-                            let resp = match &disabled_reason {
-                                Some(reason) => resp.on_disabled_hover_text(reason),
-                                None => resp,
-                            };
-                            if resp.clicked() {
-                                let rules = self.config.extensions.clone();
-                                self.start_apply(ctx, rules);
-                            }
-                        });
-                    });
-                });
-            });
+            .fill(p.accent)
+            .min_size(egui::vec2(0.0, BUTTON_HEIGHT));
+            let resp = ui.add_enabled(disabled_reason.is_none(), primary);
+            let resp = match &disabled_reason {
+                Some(reason) => resp.on_disabled_hover_text(reason),
+                None => resp,
+            };
+            apply = resp.clicked();
+
+            let secondary = |text: &str| {
+                egui::Button::new(RichText::new(text).size(text_size::BODY))
+                    .min_size(egui::vec2(0.0, BUTTON_HEIGHT))
+            };
+            toggle = ui.add(secondary(&toggle_label)).clicked();
+            refresh = ui
+                .add_enabled(!busy, secondary(&refresh_label))
+                .on_hover_text(&refresh_hint)
+                .on_disabled_hover_text(&refresh_hint)
+                .clicked();
+        });
+
+        if apply {
+            let rules = self.config.extensions.clone();
+            self.start_apply(&ctx, rules);
+        }
+        if toggle {
+            for rule in &mut self.config.extensions {
+                rule.enabled = !all_checked;
+            }
+        }
+        if refresh {
+            self.request_status_refresh();
+        }
     }
 
     fn add_extension_from_input(&mut self) {
@@ -68,10 +153,8 @@ impl WinTuneApp {
             .iter()
             .any(|e| e.extension.eq_ignore_ascii_case(&ext))
         {
-            self.notify(
-                super::kit::ToastKind::Info,
-                format!("{} is already in the list.", ext),
-            );
+            let text = self.tr.t_args("assoc.exists", &[&ext]);
+            self.notify(kit::ToastKind::Info, text);
             return;
         }
         let clean = ext.trim_start_matches('.').to_uppercase();
@@ -93,10 +176,9 @@ impl WinTuneApp {
             extra_verbs: Vec::new(),
         };
         if let Err(e) = validate_extension(&candidate) {
-            self.notify(
-                super::kit::ToastKind::Error,
-                format!("Cannot add {}: {}", ext, e),
-            );
+            let why = messages::rule_problem(self.tr, &e);
+            let text = self.tr.t_args("assoc.add_invalid", &[&ext, &why]);
+            self.notify(kit::ToastKind::Error, text);
             return;
         }
         self.config.extensions.push(candidate);
@@ -105,137 +187,155 @@ impl WinTuneApp {
     }
 
     fn show_extension_list(&mut self, ctx: &egui::Context) {
-        let palette = get_palette(self.ui_theme);
+        let p = kit::current_palette(ctx);
+        let tr = self.tr;
 
         egui::SidePanel::left("extensions_master_list")
             .resizable(true)
-            .default_width(330.0)
-            .frame(
-                egui::Frame::none()
-                    .fill(palette.bg_base)
-                    .inner_margin(Margin::symmetric(16.0, 4.0)),
-            )
+            .default_width(300.0)
+            .frame(egui::Frame::none().fill(p.page).inner_margin(Margin {
+                left: space::L,
+                right: space::L,
+                top: space::XL,
+                bottom: space::L,
+            }))
             .show(ctx, |ui| {
-                card_frame(self.ui_theme).show(ui, |ui| {
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                    // The add row sits at the bottom; the list takes the rest.
+                    let mut add = false;
                     ui.horizontal(|ui| {
+                        let width = (ui.available_width() - 80.0).max(60.0);
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.new_ext_input)
+                                .hint_text(tr.t("assoc.add_hint"))
+                                .desired_width(width),
+                        );
+                        add = ui.button(tr.t("assoc.add")).clicked();
+                    });
+                    if add {
+                        self.add_extension_from_input();
+                    }
+                    ui.add_space(space::S);
+
+                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                         let search = ui.add(
                             egui::TextEdit::singleline(&mut self.ext_search_query)
                                 .id(super::polish::search_box_id(ActiveTab::Associations)
                                     .expect("search box"))
-                                .hint_text("Search extension (.rs, python, react...)  Ctrl+F")
-                                .desired_width(ui.available_width()),
+                                .hint_text(tr.t("assoc.search"))
+                                .desired_width(f32::INFINITY),
                         );
                         self.focus_search_if_requested(&search);
-                    });
-
-                    ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        if ui.button("Check All").clicked() {
-                            for e in &mut self.config.extensions {
-                                e.enabled = true;
-                            }
-                        }
-                        if ui.button("Uncheck All").clicked() {
-                            for e in &mut self.config.extensions {
-                                e.enabled = false;
-                            }
-                        }
-                    });
-
-                    ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.new_ext_input)
-                                .hint_text(".zig, .astro...")
-                                .desired_width(150.0),
-                        );
-                        if ui.button("+ Add Extension").clicked() {
-                            self.add_extension_from_input();
-                        }
-                    });
-
-                    ui.separator();
-
-                    let q = self.ext_search_query.trim().to_lowercase();
-                    let filtered_indices: Vec<usize> = self
-                        .config
-                        .extensions
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, e)| {
-                            q.is_empty()
-                                || e.extension.to_lowercase().contains(&q)
-                                || e.description.to_lowercase().contains(&q)
-                                || e.icon_name.to_lowercase().contains(&q)
-                        })
-                        .map(|(i, _)| i)
-                        .collect();
-
-                    let problems: std::collections::HashMap<usize, String> =
-                        find_rule_problems(&self.config.extensions)
-                            .into_iter()
-                            .map(|(i, p)| (i, p.to_string()))
-                            .collect();
-
-                    if filtered_indices.is_empty() {
-                        let text = if self.config.extensions.is_empty() {
-                            "No rules yet: type an extension above and click \"+ Add Extension\"."
-                                .to_string()
-                        } else {
-                            format!("No rule matches \"{}\".", self.ext_search_query.trim())
-                        };
-                        ui.label(RichText::new(text).color(palette.text_secondary));
-                    }
-
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        for idx in filtered_indices {
-                            let is_selected = self.selected_ext_index == idx;
-                            let is_script =
-                                self.config.extensions[idx].mode == DoubleClickMode::ExecuteScript;
-                            let tex = self
-                                .gallery
-                                .texture(ctx, &self.config.extensions[idx].icon_name);
-
-                            ui.horizontal(|ui| {
-                                ui.checkbox(&mut self.config.extensions[idx].enabled, "");
-                                match tex {
-                                    Some(t) => {
-                                        ui.image((t.id(), egui::vec2(20.0, 20.0)));
-                                    }
-                                    None => {
-                                        // Keep rows aligned while the icon decodes.
-                                        ui.allocate_exact_size(
-                                            egui::vec2(20.0, 20.0),
-                                            egui::Sense::hover(),
-                                        );
-                                    }
-                                }
-                                let label_text = format!(
-                                    "{}  •  {}",
-                                    self.config.extensions[idx].extension,
-                                    self.config.extensions[idx].description
-                                );
-                                if ui.selectable_label(is_selected, label_text).clicked() {
-                                    self.selected_ext_index = idx;
-                                }
-                                if is_script {
-                                    draw_badge(ui, "Script", palette.warning);
-                                }
-                                status_badge(
-                                    ui,
-                                    self.ui_theme,
-                                    self.rule_statuses
-                                        .get(&self.config.extensions[idx].extension),
-                                );
-                                if let Some(problem) = problems.get(&idx) {
-                                    let color = ui.visuals().error_fg_color;
-                                    ui.label(RichText::new("Invalid").strong().color(color))
-                                        .on_hover_text(problem);
-                                }
-                            });
-                        }
+                        ui.add_space(space::S);
+                        self.rule_rows(ctx, ui);
                     });
                 });
+            });
+    }
+
+    /// The scrolling list of rules, or what to show instead of it.
+    fn rule_rows(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        let p = kit::current_palette(ctx);
+        let tr = self.tr;
+        let query = self.ext_search_query.trim().to_lowercase();
+        let visible: Vec<usize> = self
+            .config
+            .extensions
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| {
+                query.is_empty()
+                    || e.extension.to_lowercase().contains(&query)
+                    || e.description.to_lowercase().contains(&query)
+                    || e.icon_name.to_lowercase().contains(&query)
+            })
+            .map(|(i, _)| i)
+            .collect();
+
+        if self.config.extensions.is_empty() {
+            kit::empty_state(ui, kit::Icon::Associations, &tr.t("assoc.empty"), None);
+            return;
+        }
+        if visible.is_empty() {
+            let text = tr.t_args("assoc.no_match", &[&self.ext_search_query.trim()]);
+            ui.label(
+                RichText::new(text)
+                    .size(text_size::BODY)
+                    .color(p.text_secondary),
+            );
+            return;
+        }
+
+        let problems = find_rule_problems(&self.config.extensions);
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                for idx in visible {
+                    let state = self.rule_state_in(idx, &problems);
+                    let hover = match state {
+                        RuleState::Invalid => problems
+                            .iter()
+                            .find(|(i, _)| *i == idx)
+                            .map(|(_, problem)| messages::rule_problem(tr, problem))
+                            .unwrap_or_default(),
+                        _ => self.rule_state_label(state),
+                    };
+                    let tex = self
+                        .gallery
+                        .texture(ctx, &self.config.extensions[idx].icon_name);
+                    let selected = self.selected_ext_index == idx;
+
+                    let (rect, row) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width(), ROW_HEIGHT),
+                        egui::Sense::click(),
+                    );
+                    let fill = if selected {
+                        Some(p.accent.gamma_multiply(0.14))
+                    } else if row.hovered() {
+                        Some(p.surface_hover)
+                    } else {
+                        None
+                    };
+                    if let Some(fill) = fill {
+                        ui.painter().rect_filled(
+                            rect,
+                            egui::Rounding::same(kit::radius::CONTROL),
+                            fill,
+                        );
+                    }
+                    let mut content = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(rect.shrink2(egui::vec2(space::S, 0.0)))
+                            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                    );
+                    let rule = &mut self.config.extensions[idx];
+                    content.checkbox(&mut rule.enabled, "");
+                    match tex {
+                        Some(t) => {
+                            content.image((t.id(), egui::vec2(20.0, 20.0)));
+                        }
+                        None => {
+                            // Keep rows aligned while the icon decodes.
+                            content
+                                .allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::hover());
+                        }
+                    }
+                    content.add(
+                        egui::Label::new(
+                            RichText::new(&rule.extension)
+                                .size(text_size::BODY)
+                                .color(p.text),
+                        )
+                        .selectable(false),
+                    );
+                    content.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        kit::status_dot(ui, rule_state_pill(state), Some(&hover));
+                    });
+                    if row.clicked() {
+                        self.selected_ext_index = idx;
+                    }
+                }
             });
     }
 
@@ -243,132 +343,122 @@ impl WinTuneApp {
         let palette = get_palette(self.ui_theme);
         let busy = self.is_busy();
 
-        egui::CentralPanel::default()
-            .frame(
-                egui::Frame::none()
-                    .fill(palette.bg_base)
-                    .inner_margin(Margin::symmetric(12.0, 4.0)),
-            )
-            .show(ctx, |ui| {
-                if self.selected_ext_index >= self.config.extensions.len() {
-                    ui.add_space(24.0);
-                    ui.vertical_centered(|ui| {
-                        ui.label(
-                            RichText::new(
-                                "Select a rule on the left, or add one, to edit it here.",
-                            )
+        Self::page_panel(ctx, |ui| {
+            self.associations_header(ui);
+            if self.selected_ext_index >= self.config.extensions.len() {
+                ui.add_space(24.0);
+                ui.vertical_centered(|ui| {
+                    ui.label(
+                        RichText::new("Select a rule on the left, or add one, to edit it here.")
                             .color(palette.text_secondary),
-                        );
-                    });
-                    return;
-                }
+                    );
+                });
+                return;
+            }
 
-                let current_tex = self.gallery.texture(
-                    ctx,
-                    &self.config.extensions[self.selected_ext_index].icon_name,
-                );
-                let has_backup = self
-                    .backup_store
-                    .find(&self.config.extensions[self.selected_ext_index].extension)
-                    .is_some();
+            let current_tex = self.gallery.texture(
+                ctx,
+                &self.config.extensions[self.selected_ext_index].icon_name,
+            );
+            let has_backup = self
+                .backup_store
+                .find(&self.config.extensions[self.selected_ext_index].extension)
+                .is_some();
 
-                let problem = find_rule_problems(&self.config.extensions)
-                    .into_iter()
-                    .find(|(i, _)| *i == self.selected_ext_index)
-                    .map(|(_, p)| p.to_string());
+            let problem = find_rule_problems(&self.config.extensions)
+                .into_iter()
+                .find(|(i, _)| *i == self.selected_ext_index)
+                .map(|(_, p)| p.to_string());
 
-                let status = self
-                    .rule_statuses
-                    .get(&self.config.extensions[self.selected_ext_index].extension)
-                    .cloned();
+            let status = self
+                .rule_statuses
+                .get(&self.config.extensions[self.selected_ext_index].extension)
+                .cloned();
 
-                let mut delete_current = false;
-                let mut open_gallery_picker = false;
-                let mut apply_single = false;
+            let mut delete_current = false;
+            let mut open_gallery_picker = false;
+            let mut apply_single = false;
 
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    let ext_cfg = &mut self.config.extensions[self.selected_ext_index];
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                let ext_cfg = &mut self.config.extensions[self.selected_ext_index];
 
-                    card_frame(self.ui_theme).show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            if let Some(t) = current_tex {
-                                ui.image((t.id(), egui::vec2(52.0, 52.0)));
-                            }
-                            ui.vertical(|ui| {
-                                ui.horizontal(|ui| {
-                                    ui.heading(
-                                        RichText::new(format!(
-                                            "{} — {}",
-                                            ext_cfg.extension, ext_cfg.description
-                                        ))
-                                        .size(20.0),
-                                    );
-                                    if has_backup {
-                                        draw_badge(ui, "Snapshot Saved", palette.success);
-                                    }
-                                    status_badge(ui, self.ui_theme, status.as_ref());
-                                });
-                                ui.label(
+                card_frame(self.ui_theme).show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        if let Some(t) = current_tex {
+                            ui.image((t.id(), egui::vec2(52.0, 52.0)));
+                        }
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.heading(
                                     RichText::new(format!(
-                                        "ProgID: {}  |  Icon: {}.ico",
-                                        ext_cfg.prog_id, ext_cfg.icon_name
+                                        "{} — {}",
+                                        ext_cfg.extension, ext_cfg.description
                                     ))
-                                    .color(palette.text_secondary),
+                                    .size(20.0),
                                 );
-                                status_details(ui, self.ui_theme, status.as_ref());
+                                if has_backup {
+                                    draw_badge(ui, "Snapshot Saved", palette.success);
+                                }
+                                status_badge(ui, self.ui_theme, status.as_ref());
                             });
-
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if ui
-                                        .add_enabled(
-                                            !busy && problem.is_none(),
-                                            accent_button("Apply This Extension", self.ui_theme),
-                                        )
-                                        .clicked()
-                                    {
-                                        apply_single = true;
-                                    }
-                                    if ui.button("Remove").clicked() {
-                                        delete_current = true;
-                                    }
-                                },
+                            ui.label(
+                                RichText::new(format!(
+                                    "ProgID: {}  |  Icon: {}.ico",
+                                    ext_cfg.prog_id, ext_cfg.icon_name
+                                ))
+                                .color(palette.text_secondary),
                             );
+                            status_details(ui, self.ui_theme, status.as_ref());
+                        });
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui
+                                .add_enabled(
+                                    !busy && problem.is_none(),
+                                    accent_button("Apply This Extension", self.ui_theme),
+                                )
+                                .clicked()
+                            {
+                                apply_single = true;
+                            }
+                            if ui.button("Remove").clicked() {
+                                delete_current = true;
+                            }
                         });
                     });
-
-                    ui.add_space(10.0);
-                    identity_card(
-                        ui,
-                        ext_cfg,
-                        self.ui_theme,
-                        problem.as_deref(),
-                        &mut open_gallery_picker,
-                    );
-                    ui.add_space(10.0);
-                    behavior_card(ui, ext_cfg, self.ui_theme);
-                    ui.add_space(10.0);
-                    verbs_card(ui, ext_cfg, self.ui_theme);
                 });
 
-                if open_gallery_picker {
-                    let extension = self.config.extensions[self.selected_ext_index]
-                        .extension
-                        .clone();
-                    self.open_icon_picker(&extension);
-                }
-
-                if apply_single {
-                    let mut single = self.config.extensions[self.selected_ext_index].clone();
-                    single.enabled = true;
-                    self.start_apply(ctx, vec![single]);
-                }
-
-                if delete_current {
-                    self.request_remove_rule(self.selected_ext_index);
-                }
+                ui.add_space(10.0);
+                identity_card(
+                    ui,
+                    ext_cfg,
+                    self.ui_theme,
+                    problem.as_deref(),
+                    &mut open_gallery_picker,
+                );
+                ui.add_space(10.0);
+                behavior_card(ui, ext_cfg, self.ui_theme);
+                ui.add_space(10.0);
+                verbs_card(ui, ext_cfg, self.ui_theme);
             });
+
+            if open_gallery_picker {
+                let extension = self.config.extensions[self.selected_ext_index]
+                    .extension
+                    .clone();
+                self.open_icon_picker(&extension);
+            }
+
+            if apply_single {
+                let mut single = self.config.extensions[self.selected_ext_index].clone();
+                single.enabled = true;
+                self.start_apply(ctx, vec![single]);
+            }
+
+            if delete_current {
+                self.request_remove_rule(self.selected_ext_index);
+            }
+        });
     }
 }
 
@@ -558,18 +648,18 @@ fn verbs_card(ui: &mut egui::Ui, ext_cfg: &mut ExtensionConfig, theme: crate::th
 
 /// Problems of the enabled rules only: a disabled rule is never applied, so
 /// it must not block the others.
-pub(super) fn problems_of_enabled(rules: &[ExtensionConfig]) -> Vec<String> {
+pub(super) fn problems_of_enabled(tr: crate::i18n::Tr, rules: &[ExtensionConfig]) -> Vec<String> {
     let enabled: Vec<ExtensionConfig> = rules.iter().filter(|r| r.enabled).cloned().collect();
     find_rule_problems(&enabled)
         .into_iter()
-        .map(|(_, p)| p.to_string())
+        .map(|(_, p)| messages::rule_problem(tr, &p))
         .collect()
 }
 
 impl WinTuneApp {
-    /// Why "Apply Checked Extensions" is blocked: problems of enabled rules.
+    /// Why "Apply all enabled" is blocked: problems of enabled rules.
     pub(super) fn apply_blockers(&self) -> Vec<String> {
-        problems_of_enabled(&self.config.extensions)
+        problems_of_enabled(self.tr, &self.config.extensions)
     }
 }
 
@@ -577,6 +667,7 @@ impl WinTuneApp {
 mod tests {
     use super::super::test_support::*;
     use super::*;
+    use crate::ui::kit::PillKind;
 
     #[test]
     fn invalid_enabled_rule_blocks_apply_and_writes_nothing() {
@@ -635,12 +726,146 @@ mod tests {
         app.add_extension_from_input();
 
         assert_eq!(app.config.extensions.len(), 1);
+        let prefix = app.tr.t_args("assoc.add_invalid", &[&".my ext", &""]);
         assert!(
-            app.last_notice().contains("invalid"),
+            app.last_notice().starts_with(&prefix),
             "{}",
             app.last_notice()
         );
         assert_eq!(app.new_ext_input, "my ext", "input kept so it can be fixed");
+    }
+
+    #[test]
+    fn adding_a_duplicate_extension_says_so() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo"]);
+        app.new_ext_input = "FOO".to_string();
+
+        app.add_extension_from_input();
+
+        assert_eq!(app.config.extensions.len(), 1);
+        assert_eq!(app.last_notice(), app.tr.t_args("assoc.exists", &[&".foo"]));
+    }
+
+    fn page_input(events: Vec<egui::Event>) -> egui::RawInput {
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1180.0, 760.0),
+            )),
+            events,
+            ..Default::default()
+        }
+    }
+
+    fn click_text(app: &mut WinTuneApp, ctx: &egui::Context, text: &str) {
+        let out = frame(app, ctx, page_input(vec![]));
+        let pos = text_center(&out, text).unwrap_or_else(|| panic!("no text {text:?} drawn"));
+        let button = |pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        frame(app, ctx, page_input(vec![egui::Event::PointerMoved(pos)]));
+        frame(app, ctx, page_input(vec![button(true)]));
+        frame(app, ctx, page_input(vec![button(false)]));
+    }
+
+    #[test]
+    fn rule_state_maps_statuses_and_problems() {
+        use crate::associations::RuleStatus;
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".a", ".b", ".c", ".d", ".x y"]);
+        app.rule_statuses.clear();
+        app.rule_statuses.insert(".a".into(), RuleStatus::Applied);
+        app.rule_statuses
+            .insert(".b".into(), RuleStatus::Drifted(vec![]));
+        app.rule_statuses
+            .insert(".c".into(), RuleStatus::NotApplied);
+        app.rule_statuses.insert(".x y".into(), RuleStatus::Applied);
+
+        let states: Vec<RuleState> = (0..5).map(|i| app.rule_state(i)).collect();
+        assert_eq!(
+            states,
+            [
+                RuleState::UpToDate,
+                RuleState::Changed,
+                RuleState::NotApplied,
+                RuleState::Checking,
+                RuleState::Invalid
+            ]
+        );
+        assert_eq!(
+            rule_state_pill(RuleState::UpToDate),
+            Some(PillKind::Success)
+        );
+        assert_eq!(rule_state_pill(RuleState::Changed), Some(PillKind::Warning));
+        assert_eq!(rule_state_pill(RuleState::Invalid), Some(PillKind::Danger));
+        assert_eq!(rule_state_pill(RuleState::NotApplied), None);
+        assert_eq!(rule_state_pill(RuleState::Checking), None);
+    }
+
+    #[test]
+    fn check_all_then_uncheck_all() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".a", ".b", ".c"]);
+        app.active_tab = ActiveTab::Associations;
+        app.config.extensions[1].enabled = false;
+
+        let check = app.tr.t("assoc.check_all");
+        click_text(&mut app, &ctx, &check);
+        assert!(app.config.extensions.iter().all(|r| r.enabled));
+
+        let uncheck = app.tr.t("assoc.uncheck_all");
+        click_text(&mut app, &ctx, &uncheck);
+        assert!(app.config.extensions.iter().all(|r| !r.enabled));
+    }
+
+    #[test]
+    fn a_filtered_out_selection_stays_in_the_detail() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".a", ".b"]);
+        app.active_tab = ActiveTab::Associations;
+        app.selected_ext_index = 1;
+        app.ext_search_query = "a".to_string();
+
+        let out = frame(&mut app, &ctx, page_input(vec![]));
+
+        let texts = drawn_texts(&out);
+        assert!(
+            texts.iter().any(|t| t.starts_with(".b")),
+            "detail lost the selection: {texts:?}"
+        );
+    }
+
+    #[test]
+    fn the_list_shows_the_empty_state_without_rules() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[]);
+        app.active_tab = ActiveTab::Associations;
+
+        let out = frame(&mut app, &ctx, page_input(vec![]));
+
+        assert!(drawn_texts(&out).contains(&app.tr.t("assoc.empty")));
+    }
+
+    #[test]
+    fn a_search_without_match_says_so() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".a"]);
+        app.active_tab = ActiveTab::Associations;
+        app.ext_search_query = "zzz".to_string();
+
+        let out = frame(&mut app, &ctx, page_input(vec![]));
+
+        assert!(drawn_texts(&out).contains(&app.tr.t_args("assoc.no_match", &[&"zzz"])));
     }
 
     #[test]

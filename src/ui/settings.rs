@@ -294,7 +294,7 @@ mod tests {
         assert!(!texts.contains(&"Default Code Editor:".to_string()));
         assert!(!texts.contains(&"Auto-Detect".to_string()));
         assert!(!texts.contains(&"Browse...".to_string()));
-        assert!(texts.contains(&"Refresh status".to_string()), "{texts:?}");
+        assert!(texts.contains(&app.tr.t("assoc.refresh")), "{texts:?}");
     }
 
     #[test]

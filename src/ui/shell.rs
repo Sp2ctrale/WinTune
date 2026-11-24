@@ -1,10 +1,79 @@
 //! The shell around the pages: grouped navigation, page switching with its
 //! safety guards.
 
-use super::{kit, ActiveTab, WinTuneApp};
+use super::{kit, ActiveTab, WinTuneApp, APP_VERSION};
 use eframe::egui::{self, Frame, Margin};
 
+/// Gives the borderless window the Windows 11 rounded corners and drop
+/// shadow it lost with its title bar. Best effort: older Windows ignores
+/// the corner preference, and a failure only leaves square corners.
+pub(super) fn round_borderless_window(cc: &eframe::CreationContext<'_>) {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::Graphics::Dwm::{
+        DwmExtendFrameIntoClientArea, DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE,
+        DWMWCP_ROUND,
+    };
+    use windows_sys::Win32::UI::Controls::MARGINS;
+
+    let Ok(handle) = cc.window_handle() else {
+        return;
+    };
+    let RawWindowHandle::Win32(win32) = handle.as_raw() else {
+        return;
+    };
+    let hwnd = win32.hwnd.get() as HWND;
+    let corner = DWMWCP_ROUND;
+    // A 1 px frame margin is what makes DWM draw the shadow.
+    let margins = MARGINS {
+        cxLeftWidth: 1,
+        cxRightWidth: 1,
+        cyTopHeight: 1,
+        cyBottomHeight: 1,
+    };
+    // SAFETY: `hwnd` is this process's live window; both calls only read
+    // the pointed-to values for the duration of the call.
+    unsafe {
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE as u32,
+            &corner as *const _ as *const core::ffi::c_void,
+            std::mem::size_of_val(&corner) as u32,
+        );
+        DwmExtendFrameIntoClientArea(hwnd, &margins);
+    }
+}
+
 impl WinTuneApp {
+    /// Our own caption strip: the window has no Windows title bar.
+    pub(super) fn show_caption(&mut self, ctx: &egui::Context) {
+        let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+        let (minimize, maximize, restore, close) = (
+            self.tr.t("window.minimize"),
+            self.tr.t("window.maximize"),
+            self.tr.t("window.restore"),
+            self.tr.t("window.close"),
+        );
+        let labels = kit::CaptionLabels {
+            minimize: &minimize,
+            maximize: &maximize,
+            restore: &restore,
+            close: &close,
+        };
+        let command = match kit::caption_bar(ctx, maximized, &labels) {
+            Some(kit::CaptionAction::Minimize) => egui::ViewportCommand::Minimized(true),
+            Some(kit::CaptionAction::ToggleMaximize) => {
+                egui::ViewportCommand::Maximized(!maximized)
+            }
+            // Goes through the usual close request: a running job or an
+            // unsaved config is handled as for Alt+F4.
+            Some(kit::CaptionAction::Close) => egui::ViewportCommand::Close,
+            Some(kit::CaptionAction::StartDrag) => egui::ViewportCommand::StartDrag,
+            None => return,
+        };
+        ctx.send_viewport_cmd(command);
+    }
+
     /// Switches page. Stores are never reloaded under a running job.
     pub(super) fn open_page(&mut self, page: ActiveTab) {
         if page == ActiveTab::ContextMenu {
@@ -97,8 +166,15 @@ impl WinTuneApp {
             },
         ];
         let footer = [item(ActiveTab::Settings, kit::Icon::Settings, &settings)];
+        let caption = format!("v{}", APP_VERSION);
+        let brand = kit::Brand {
+            logo: self.logo_texture.as_ref().map(|t| t.id()),
+            name: "WinTune",
+            caption: &caption,
+        };
+
         let mut selected = self.active_tab;
-        if kit::nav_sidebar(ctx, &mut selected, &groups, &footer) {
+        if kit::nav_sidebar(ctx, &brand, &mut selected, &groups, &footer) {
             self.open_page(selected);
         }
     }
@@ -456,5 +532,34 @@ mod tests {
         assert!(app.pending_confirm.is_none());
         assert_eq!(rule_names(&app), [".a", ".b"]);
         assert_eq!(app.last_notice(), app.tr.t("notice.cancelled"));
+    }
+
+    #[test]
+    fn the_caption_close_button_sends_a_close_request() {
+        use egui::{Modifiers, Pos2, Rect, ViewportCommand};
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        let screen = Rect::from_min_size(Pos2::ZERO, egui::vec2(1180.0, 760.0));
+        let at = egui::pos2(1180.0 - 20.0, kit::CAPTION_HEIGHT / 2.0);
+        let input = |events| RawInput {
+            screen_rect: Some(screen),
+            events,
+            ..Default::default()
+        };
+        let button = |pressed| Event::PointerButton {
+            pos: at,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::default(),
+        };
+        frame(&mut app, &ctx, input(vec![Event::PointerMoved(at)]));
+        frame(&mut app, &ctx, input(vec![button(true)]));
+        let out = frame(&mut app, &ctx, input(vec![button(false)]));
+        assert!(
+            commands(&out).contains(&ViewportCommand::Close),
+            "commands: {:?}",
+            commands(&out)
+        );
     }
 }

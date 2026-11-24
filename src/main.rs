@@ -21,6 +21,8 @@ fn main() -> eframe::Result<()> {
             .with_title(format!("WinTune v{}", APP_VERSION))
             .with_inner_size([1180.0, 760.0])
             .with_min_inner_size([920.0, 580.0])
+            // The app draws its own caption strip (ui::kit::caption_bar).
+            .with_decorations(false)
             .with_icon(icon),
         ..Default::default()
     };

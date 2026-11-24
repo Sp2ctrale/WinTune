@@ -127,9 +127,44 @@ fn nav_item<K: PartialEq + Copy>(ui: &mut Ui, selected: &mut K, item: &NavItem<'
     changed
 }
 
+/// App identity drawn at the top of the sidebar.
+pub struct Brand<'a> {
+    pub logo: Option<egui::TextureId>,
+    pub name: &'a str,
+    pub caption: &'a str,
+}
+
+fn brand_header(ui: &mut Ui, brand: &Brand<'_>) {
+    let p = current_palette(ui.ctx());
+    ui.horizontal(|ui| {
+        ui.add_space(space::S);
+        if let Some(logo) = brand.logo {
+            ui.add(egui::Image::new(egui::load::SizedTexture::new(
+                logo,
+                vec2(28.0, 28.0),
+            )));
+        }
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            ui.label(
+                RichText::new(brand.name)
+                    .font(semibold(ui.ctx(), text_size::BODY))
+                    .color(p.text),
+            );
+            ui.label(
+                RichText::new(brand.caption)
+                    .size(text_size::SECONDARY)
+                    .color(p.text_secondary),
+            );
+        });
+    });
+    ui.add_space(space::M);
+}
+
 /// Left navigation. Returns true when the selection changed.
 pub fn nav_sidebar<K: PartialEq + Copy>(
     ctx: &egui::Context,
+    brand: &Brand<'_>,
     selected: &mut K,
     groups: &[NavGroup<'_, K>],
     footer: &[NavItem<'_, K>],
@@ -152,6 +187,7 @@ pub fn nav_sidebar<K: PartialEq + Copy>(
                     changed |= nav_item(ui, selected, item);
                 }
                 ui.with_layout(Layout::top_down(Align::Min), |ui| {
+                    brand_header(ui, brand);
                     for (i, group) in groups.iter().enumerate() {
                         if i > 0 {
                             ui.add_space(space::S);

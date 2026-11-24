@@ -2,6 +2,7 @@
 //! dark egui styles built from them. Every screen draws with these values,
 //! never with hand-picked colors.
 
+mod chrome;
 mod controls;
 mod feedback;
 pub mod fonts;
@@ -13,13 +14,14 @@ mod surfaces;
 mod test_input;
 mod tokens;
 
+pub use chrome::{caption_bar, resize_edge, CaptionAction, CaptionLabels, CAPTION_HEIGHT};
 pub use controls::{disclosure, pill, segmented, toggle, toggle_enabled, PillKind};
 pub use feedback::{
     action_bar, dialog, dialog_buttons, ActionBarState, ToastKind, Toasts, TOAST_SECONDS,
 };
 pub use fonts::FontReport;
 pub use icons::Icon;
-pub use nav::{nav_sidebar, page_header, NavGroup, NavItem};
+pub use nav::{nav_sidebar, page_header, Brand, NavGroup, NavItem};
 pub use style::{current_palette, install_styles, resolved, set_theme_mode};
 pub use surfaces::{banner, card, empty_state, section, tile, BannerKind, SettingRow};
 pub use tokens::{palette, radius, space, text_size, Palette};

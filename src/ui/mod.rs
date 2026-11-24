@@ -41,7 +41,7 @@ use crate::tweaks::{
     current_user_label, default_tweak_store_path, notify_explorer_settings, TweakBackupStore,
     TweakStatus, TweakTarget,
 };
-use eframe::egui;
+use eframe::egui::{self, ColorImage, TextureHandle, TextureOptions};
 use jobs::RunningJob;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -170,6 +170,7 @@ pub struct WinTuneApp {
     backup_store_error: Option<String>,
     wsl_detected: bool,
     new_ext_input: String,
+    logo_texture: Option<TextureHandle>,
     /// At most one long operation at a time.
     job: Option<RunningJob>,
     /// The user asked to close while a job was running: close when it ends.
@@ -214,6 +215,7 @@ impl WinTuneApp {
             }
         }
         let mut app = Self::with_config(&cc.egui_ctx, config, has_wsl_distribution(), env);
+        shell::round_borderless_window(cc);
         let windir = std::env::var_os("WINDIR").unwrap_or_else(|| r"C:\Windows".into());
         kit::fonts::install(&cc.egui_ctx, &std::path::Path::new(&windir).join("Fonts"));
         if let Some(e) = &config_error {
@@ -261,6 +263,7 @@ impl WinTuneApp {
             backup_store_error: None,
             wsl_detected,
             new_ext_input: String::new(),
+            logo_texture: Self::load_app_logo(ctx),
             job: None,
             close_when_idle: false,
             pending_confirm: None,
@@ -292,6 +295,7 @@ impl WinTuneApp {
         // Before the nav: the dialog claims the keyboard first (it is an Area,
         // so the panel layout does not depend on the order).
         self.show_confirm_dialog(ctx);
+        self.show_caption(ctx);
         self.show_nav(ctx);
         if let Some(job) = &self.job {
             let p = job.progress();
@@ -324,6 +328,10 @@ impl WinTuneApp {
         }
 
         self.toasts.show(ctx, &self.tr.t("toast.clear_all"));
+        // After every widget, so the resize cursor wins at the window edges.
+        if let Some(direction) = kit::resize_edge(ctx) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(direction));
+        }
         // Last, so an edit made by a widget this frame is noticed this frame.
         self.pump_autosave(ctx);
     }
@@ -425,6 +433,15 @@ impl WinTuneApp {
             kit::ToastKind::Error
         };
         self.notify_details(toast, msg, details.join("\n"));
+    }
+
+    fn load_app_logo(ctx: &egui::Context) -> Option<TextureHandle> {
+        let png_bytes = include_bytes!("../../assets/WinTune.png");
+        let img = image::load_from_memory(png_bytes).ok()?;
+        let rgba = img.thumbnail(64, 64).to_rgba8();
+        let (w, h) = rgba.dimensions();
+        let color_img = ColorImage::from_rgba_unmultiplied([w as usize, h as usize], rgba.as_raw());
+        Some(ctx.load_texture("wintune_logo", color_img, TextureOptions::LINEAR))
     }
 
     /// The config, plus an error when the file exists but cannot be used.

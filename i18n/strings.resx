@@ -556,4 +556,16 @@
   <data name="settings.config_unreadable" xml:space="preserve">
     <value>config.json can't be read: {0} Changes aren't saved until it is fixed.</value>
   </data>
+  <data name="window.minimize" xml:space="preserve">
+    <value>Minimize</value>
+  </data>
+  <data name="window.maximize" xml:space="preserve">
+    <value>Maximize</value>
+  </data>
+  <data name="window.restore" xml:space="preserve">
+    <value>Restore Down</value>
+  </data>
+  <data name="window.close" xml:space="preserve">
+    <value>Close</value>
+  </data>
 </root>

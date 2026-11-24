@@ -555,4 +555,16 @@
   <data name="settings.config_unreadable" xml:space="preserve">
     <value>config.json est illisible : {0} Les modifications ne sont pas enregistrées tant qu'il n'est pas réparé.</value>
   </data>
+  <data name="window.minimize" xml:space="preserve">
+    <value>Réduire</value>
+  </data>
+  <data name="window.maximize" xml:space="preserve">
+    <value>Agrandir</value>
+  </data>
+  <data name="window.restore" xml:space="preserve">
+    <value>Niveau inférieur</value>
+  </data>
+  <data name="window.close" xml:space="preserve">
+    <value>Fermer</value>
+  </data>
 </root>

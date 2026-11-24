@@ -2,10 +2,11 @@
 //! They return values or draw state they were given and never act.
 
 use egui::{
-    vec2, Align, Align2, Area, Color32, Frame, Id, LayerId, Layout, Margin, Order, RichText,
-    Rounding, Sense, Shadow, Stroke, Ui,
+    vec2, Align, Align2, Area, Color32, CursorIcon, Frame, Id, Key, LayerId, Layout, Margin,
+    Modifiers, Order, RichText, Rounding, Sense, Shadow, Stroke, Ui,
 };
 
+use super::controls::action_button_with_id;
 use super::fonts::semibold;
 use super::icons::icon_text;
 use super::surfaces::split_row;
@@ -15,6 +16,7 @@ use super::{current_palette, radius, space, text_size, Icon};
 pub const TOAST_SECONDS: f64 = 4.0;
 const MAX_TOASTS: usize = 3;
 const TOAST_WIDTH: f32 = 320.0;
+const CLEAR_ALL_ID: &str = "wintune_toasts_clear_all";
 
 pub enum ActionBarState<'a> {
     Idle,
@@ -80,7 +82,9 @@ struct Toast {
     id: u64,
     kind: ToastKind,
     text: String,
-    /// Input time of the first frame that saw it.
+    details: String,
+    /// Input time of the first frame that drew it. Toasts waiting in the
+    /// queue behind the visible ones have not started their clock.
     born: Option<f64>,
 }
 
@@ -89,14 +93,33 @@ struct Toast {
 pub struct Toasts {
     items: Vec<Toast>,
     next_id: u64,
+    /// Text of the most recently pushed toast, kept after it is gone.
+    latest: Option<String>,
 }
 
 impl Toasts {
     pub fn push(&mut self, kind: ToastKind, text: impl Into<String>) {
+        self.push_details(kind, text, String::new());
+    }
+
+    /// Like `push`, with a longer text shown on hover when not empty.
+    pub fn push_details(
+        &mut self,
+        kind: ToastKind,
+        text: impl Into<String>,
+        details: impl Into<String>,
+    ) {
+        let (text, details) = (text.into(), details.into());
+        self.latest = Some(if details.is_empty() {
+            text.clone()
+        } else {
+            format!("{text}\n{details}")
+        });
         self.items.push(Toast {
             id: self.next_id,
             kind,
-            text: text.into(),
+            text,
+            details,
             born: None,
         });
         self.next_id += 1;
@@ -110,23 +133,34 @@ impl Toasts {
         self.items.is_empty()
     }
 
-    /// Expires old toasts and draws the newest three, newest on top.
-    pub fn show(&mut self, ctx: &egui::Context) {
+    /// The most recently pushed toast: its text, then a newline and its
+    /// details when it has some. Still answers after it expired.
+    pub fn latest(&self) -> Option<String> {
+        self.latest.clone()
+    }
+
+    /// Expires old toasts and draws the newest three, newest on top. When
+    /// more are queued a last row counts the hidden ones and offers
+    /// `clear_all` to empty the queue.
+    pub fn show(&mut self, ctx: &egui::Context, clear_all: &str) {
         let now = ctx.input(|i| i.time);
-        for t in &mut self.items {
-            t.born.get_or_insert(now);
-        }
-        self.items
-            .retain(|t| t.kind == ToastKind::Error || now - t.born.unwrap_or(now) < TOAST_SECONDS);
+        // Only toasts that were drawn can expire.
+        self.items.retain(|t| {
+            t.kind == ToastKind::Error || t.born.is_none_or(|born| now - born < TOAST_SECONDS)
+        });
         if self.items.is_empty() {
             return;
+        }
+        let hidden = self.items.len().saturating_sub(MAX_TOASTS);
+        for t in &mut self.items[hidden..] {
+            t.born.get_or_insert(now);
         }
         // Wake up when the next timed toast is due.
         let next_due = self
             .items
             .iter()
             .filter(|t| t.kind != ToastKind::Error)
-            .map(|t| t.born.unwrap_or(now) + TOAST_SECONDS - now)
+            .filter_map(|t| t.born.map(|born| born + TOAST_SECONDS - now))
             .fold(f64::INFINITY, f64::min);
         if next_due.is_finite() {
             ctx.request_repaint_after(std::time::Duration::from_secs_f64(next_due.max(0.0) + 0.05));
@@ -134,19 +168,20 @@ impl Toasts {
 
         let p = current_palette(ctx);
         let mut dismissed = None;
+        let mut cleared = false;
         Area::new(Id::new("wintune_toasts"))
             .order(Order::Foreground)
             .anchor(Align2::RIGHT_BOTTOM, vec2(-space::L, -space::L))
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing.y = space::S;
-                for toast in self.items.iter().rev().take(MAX_TOASTS) {
+                for toast in self.items[hidden..].iter().rev() {
                     let (color, icon) = match toast.kind {
                         ToastKind::Success => (p.success, Icon::Success),
                         ToastKind::Info => (p.accent, Icon::Info),
                         ToastKind::Error => (p.danger, Icon::Error),
                     };
                     ui.push_id(("wintune_toast", toast.id), |ui| {
-                        Frame::none()
+                        let card = Frame::none()
                             .fill(p.surface)
                             .stroke(Stroke::new(1.0_f32, p.border))
                             .rounding(Rounding::same(radius::CARD))
@@ -159,21 +194,27 @@ impl Toasts {
                             .inner_margin(Margin::symmetric(space::M, space::S))
                             .show(ui, |ui| {
                                 ui.set_width(TOAST_WIDTH - 2.0 * space::M - 2.0);
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    if toast.kind == ToastKind::Error {
-                                        let close = ui.add(
-                                            egui::Label::new(
-                                                RichText::new("\u{00D7}")
-                                                    .size(text_size::SECTION)
-                                                    .color(p.text_secondary),
-                                            )
-                                            .sense(Sense::click()),
-                                        );
-                                        if close.clicked() {
-                                            dismissed = Some(toast.id);
+                                // A fixed row height: a centered layout in an anchored
+                                // area would grow with the space it is offered.
+                                split_row(
+                                    ui,
+                                    24.0,
+                                    |ui| {
+                                        if toast.kind == ToastKind::Error {
+                                            let close = ui.add(
+                                                egui::Label::new(
+                                                    RichText::new("\u{00D7}")
+                                                        .size(text_size::SECTION)
+                                                        .color(p.text_secondary),
+                                                )
+                                                .sense(Sense::click()),
+                                            );
+                                            if close.clicked() {
+                                                dismissed = Some(toast.id);
+                                            }
                                         }
-                                    }
-                                    ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                                    },
+                                    |ui| {
                                         if let Some(i) = icon_text(ctx, icon, 18.0) {
                                             ui.label(i.color(color));
                                             ui.add_space(space::S);
@@ -186,16 +227,95 @@ impl Toasts {
                                             )
                                             .wrap(),
                                         );
-                                    });
-                                });
+                                    },
+                                );
                             });
+                        if !toast.details.is_empty() {
+                            card.response.on_hover_text(&toast.details);
+                        }
                     });
                 }
+                if hidden > 0 {
+                    ui.allocate_ui_with_layout(
+                        vec2(TOAST_WIDTH, 20.0),
+                        Layout::right_to_left(Align::Center),
+                        |ui| {
+                            let label = ui.label(
+                                RichText::new(clear_all)
+                                    .size(text_size::SECONDARY)
+                                    .color(p.accent),
+                            );
+                            let link = ui
+                                .interact(label.rect, Id::new(CLEAR_ALL_ID), Sense::click())
+                                .on_hover_cursor(CursorIcon::PointingHand);
+                            if link.clicked() {
+                                cleared = true;
+                            }
+                            ui.label(
+                                RichText::new(format!("+{hidden}"))
+                                    .size(text_size::SECONDARY)
+                                    .color(p.text_secondary),
+                            );
+                        },
+                    );
+                }
             });
-        if let Some(id) = dismissed {
+        if cleared {
+            self.items.clear();
+        } else if let Some(id) = dismissed {
             self.items.retain(|t| t.id != id);
         }
     }
+}
+
+/// The two buttons of a confirmation dialog: confirm (primary) then cancel.
+/// Returns `Some(true)` for confirm and `Some(false)` for cancel. Focus
+/// starts on cancel and Tab / Shift+Tab only toggle between the two, so the
+/// page behind the dialog is unreachable. Escape is left to the caller.
+pub fn dialog_buttons(ui: &mut Ui, id: &str, confirm: &str, cancel: &str) -> Option<bool> {
+    let confirm_id = Id::new(("wintune_dialog_confirm", id));
+    let cancel_id = Id::new(("wintune_dialog_cancel", id));
+    let cancel_had = ui.memory(|m| m.has_focus(cancel_id));
+    // Tab is not a focus move for these buttons: egui leaves it to us. Arrows
+    // are locked too, or they would move focus to the page behind.
+    let lock = egui::EventFilter {
+        tab: true,
+        horizontal_arrows: true,
+        vertical_arrows: true,
+        escape: false,
+    };
+    ui.memory_mut(|m| {
+        m.set_focus_lock_filter(confirm_id, lock);
+        m.set_focus_lock_filter(cancel_id, lock);
+    });
+    let toggle = ui.ctx().input_mut(|i| {
+        let tab = i.consume_key(Modifiers::NONE, Key::Tab);
+        let back = i.consume_key(Modifiers::SHIFT, Key::Tab);
+        tab || back
+    });
+
+    let (confirm_r, cancel_r) = ui
+        .horizontal(|ui| {
+            let confirm_r = action_button_with_id(ui, confirm_id, confirm, true);
+            let cancel_r = action_button_with_id(ui, cancel_id, cancel, false);
+            (confirm_r, cancel_r)
+        })
+        .inner;
+    let result = if confirm_r.clicked() {
+        Some(true)
+    } else if cancel_r.clicked() {
+        Some(false)
+    } else {
+        None
+    };
+
+    if toggle && cancel_had {
+        // Two buttons: next and previous both mean "the other one".
+        confirm_r.request_focus();
+    } else if toggle || !ui.memory(|m| m.has_focus(confirm_id) || m.has_focus(cancel_id)) {
+        cancel_r.request_focus();
+    }
+    result
 }
 
 /// Centered modal over a dimmed layer that swallows clicks outside it.

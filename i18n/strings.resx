@@ -196,4 +196,376 @@
   <data name="tweak.no_recent_documents.description" xml:space="preserve">
     <value>Hide recommended files in Start, recent files in Explorer and recent items in Jump Lists.</value>
   </data>
+  <data name="autosave.failed" xml:space="preserve">
+    <value>Settings not saved: {0}</value>
+  </data>
+  <data name="autosave.retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="job.apply_rules" xml:space="preserve">
+    <value>Applying file associations…</value>
+  </data>
+  <data name="job.rollback" xml:space="preserve">
+    <value>Restoring extensions…</value>
+  </data>
+  <data name="job.build_pak" xml:space="preserve">
+    <value>Building gallery.pak…</value>
+  </data>
+  <data name="job.apply_tweaks" xml:space="preserve">
+    <value>Applying tweaks…</value>
+  </data>
+  <data name="job.restore_tweaks" xml:space="preserve">
+    <value>Restoring original settings…</value>
+  </data>
+  <data name="job.progress" xml:space="preserve">
+    <value>{0}/{1}</value>
+  </data>
+  <data name="job.name.apply_rules" xml:space="preserve">
+    <value>Applying file associations</value>
+  </data>
+  <data name="job.name.rollback" xml:space="preserve">
+    <value>Restoring extensions</value>
+  </data>
+  <data name="job.name.build_pak" xml:space="preserve">
+    <value>Building gallery.pak</value>
+  </data>
+  <data name="job.name.apply_tweaks" xml:space="preserve">
+    <value>Applying tweaks</value>
+  </data>
+  <data name="job.name.restore_tweaks" xml:space="preserve">
+    <value>Restoring original settings</value>
+  </data>
+  <data name="toast.clear_all" xml:space="preserve">
+    <value>Clear all</value>
+  </data>
+  <data name="dialog.cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="confirm.remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="confirm.restore" xml:space="preserve">
+    <value>Restore</value>
+  </data>
+  <data name="confirm.remove_rule.title" xml:space="preserve">
+    <value>Remove rule</value>
+  </data>
+  <data name="confirm.remove_rule.body" xml:space="preserve">
+    <value>Remove the rule for {0} from the list?</value>
+  </data>
+  <data name="confirm.remove_rule.note" xml:space="preserve">
+    <value>This only edits WinTune's list: an association already applied stays in the registry until you restore it from the Rollback tab.</value>
+  </data>
+  <data name="confirm.rollback.title" xml:space="preserve">
+    <value>Restore original state</value>
+  </data>
+  <data name="confirm.rollback.body" xml:space="preserve">
+    <value>Restore {0} extension(s) to their state before WinTune?</value>
+  </data>
+  <data name="confirm.rollback.note" xml:space="preserve">
+    <value>Their custom icons and commands will be removed and their snapshots deleted.</value>
+  </data>
+  <data name="confirm.restore_tweaks.title" xml:space="preserve">
+    <value>Restore original settings</value>
+  </data>
+  <data name="confirm.restore_tweaks.body" xml:space="preserve">
+    <value>Put {0} setting(s) back exactly as they were before WinTune changed them?</value>
+  </data>
+  <data name="report.applied_rules" xml:space="preserve">
+    <value>Applied {0} extension(s)</value>
+  </data>
+  <data name="report.restored_rules" xml:space="preserve">
+    <value>Restored {0} extension(s)</value>
+  </data>
+  <data name="report.applied_tweaks" xml:space="preserve">
+    <value>Applied {0} tweak(s)</value>
+  </data>
+  <data name="report.restored_tweaks" xml:space="preserve">
+    <value>Restored {0} tweak(s)</value>
+  </data>
+  <data name="report.errors" xml:space="preserve">
+    <value>, {0} error(s) (first: {1})</value>
+  </data>
+  <data name="report.warnings" xml:space="preserve">
+    <value>, {0} warning(s)</value>
+  </data>
+  <data name="report.reg_backup" xml:space="preserve">
+    <value>A .reg backup of the previous state was saved.</value>
+  </data>
+  <data name="report.detail_error" xml:space="preserve">
+    <value>Error: {0}</value>
+  </data>
+  <data name="report.detail_warning" xml:space="preserve">
+    <value>Warning: {0}</value>
+  </data>
+  <data name="report.detail_reg" xml:space="preserve">
+    <value>.reg backup: {0}</value>
+  </data>
+  <data name="notice.answer_dialog" xml:space="preserve">
+    <value>Answer the open dialog first.</value>
+  </data>
+  <data name="notice.still_running" xml:space="preserve">
+    <value>Please wait: {0} is still running.</value>
+  </data>
+  <data name="notice.registry_blocked" xml:space="preserve">
+    <value>Registry changes are blocked: {0}</value>
+  </data>
+  <data name="notice.rollback_blocked" xml:space="preserve">
+    <value>Rollback is blocked: {0}</value>
+  </data>
+  <data name="notice.fix_problems" xml:space="preserve">
+    <value>Nothing applied: fix {0} rule problem(s) first ({1}).</value>
+  </data>
+  <data name="notice.editor_missing" xml:space="preserve">
+    <value>Set the default code editor before applying associations.</value>
+  </data>
+  <data name="notice.packed" xml:space="preserve">
+    <value>Packed {0} icons: {1} MB -&gt; {2} MB</value>
+  </data>
+  <data name="notice.pack_failed" xml:space="preserve">
+    <value>Pack error: {0}</value>
+  </data>
+  <data name="notice.job_panicked" xml:space="preserve">
+    <value>{0} failed unexpectedly: {1}</value>
+  </data>
+  <data name="notice.history_not_saved" xml:space="preserve">
+    <value>History not saved: {0}</value>
+  </data>
+  <data name="notice.status_failed" xml:space="preserve">
+    <value>Could not read the rules' status: {0}</value>
+  </data>
+  <data name="notice.cancelled" xml:space="preserve">
+    <value>Cancelled.</value>
+  </data>
+  <data name="notice.rule_removed" xml:space="preserve">
+    <value>Removed the rule for {0}.</value>
+  </data>
+  <data name="notice.rule_gone" xml:space="preserve">
+    <value>{0} is no longer in the list.</value>
+  </data>
+  <data name="notice.close_after_job" xml:space="preserve">
+    <value>An operation is running: WinTune will close as soon as it finishes.</value>
+  </data>
+  <data name="notice.config_unreadable" xml:space="preserve">
+    <value>Using the default rules: {0} Saving is disabled until it is fixed.</value>
+  </data>
+  <data name="nav.home" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="nav.associations" xml:space="preserve">
+    <value>File associations</value>
+  </data>
+  <data name="nav.explorer" xml:space="preserve">
+    <value>Explorer &amp; Taskbar</value>
+  </data>
+  <data name="nav.start" xml:space="preserve">
+    <value>Start &amp; Privacy</value>
+  </data>
+  <data name="nav.context_menu" xml:space="preserve">
+    <value>Context menu</value>
+  </data>
+  <data name="nav.icons" xml:space="preserve">
+    <value>Icons</value>
+  </data>
+  <data name="nav.history" xml:space="preserve">
+    <value>History</value>
+  </data>
+  <data name="nav.rollback" xml:space="preserve">
+    <value>Rollback</value>
+  </data>
+  <data name="nav.settings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="nav.group.customize" xml:space="preserve">
+    <value>Customize</value>
+  </data>
+  <data name="nav.group.tools" xml:space="preserve">
+    <value>Tools</value>
+  </data>
+  <data name="nav.coming_soon" xml:space="preserve">
+    <value>Coming soon</value>
+  </data>
+  <data name="history.ok" xml:space="preserve">
+    <value>{0} ok</value>
+  </data>
+  <data name="history.ok_errors" xml:space="preserve">
+    <value>{0} ok, {1} error(s)</value>
+  </data>
+  <data name="history.copy_reg" xml:space="preserve">
+    <value>Copy .reg path</value>
+  </data>
+  <data name="history.module.associations" xml:space="preserve">
+    <value>File associations</value>
+  </data>
+  <data name="history.module.explorer" xml:space="preserve">
+    <value>Explorer &amp; Taskbar</value>
+  </data>
+  <data name="history.module.start" xml:space="preserve">
+    <value>Start &amp; Privacy</value>
+  </data>
+  <data name="history.action.apply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="history.action.rollback" xml:space="preserve">
+    <value>Rollback</value>
+  </data>
+  <data name="history.action.restore" xml:space="preserve">
+    <value>Restore</value>
+  </data>
+  <data name="history.empty" xml:space="preserve">
+    <value>No operation recorded yet.</value>
+  </data>
+  <data name="home.title" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="home.subtitle" xml:space="preserve">
+    <value>Everything WinTune changed can be undone</value>
+  </data>
+  <data name="home.drift" xml:space="preserve">
+    <value>{0} setting(s) were changed by Windows or another app</value>
+  </data>
+  <data name="home.review" xml:space="preserve">
+    <value>Review</value>
+  </data>
+  <data name="home.rules_status" xml:space="preserve">
+    <value>{0} active · {1} changed</value>
+  </data>
+  <data name="home.tweaks_status" xml:space="preserve">
+    <value>{0} of {1} on</value>
+  </data>
+  <data name="home.custom_suffix" xml:space="preserve">
+    <value> · {0} custom</value>
+  </data>
+  <data name="home.recent" xml:space="preserve">
+    <value>Recent</value>
+  </data>
+  <data name="home.no_recent" xml:space="preserve">
+    <value>No operation yet.</value>
+  </data>
+  <data name="home.view_all" xml:space="preserve">
+    <value>View all</value>
+  </data>
+  <data name="settings.appearance" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="settings.language.title" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="settings.language.desc" xml:space="preserve">
+    <value>The language of the whole interface.</value>
+  </data>
+  <data name="settings.theme.title" xml:space="preserve">
+    <value>Theme</value>
+  </data>
+  <data name="settings.theme.desc" xml:space="preserve">
+    <value>Follow Windows or force light or dark.</value>
+  </data>
+  <data name="settings.theme.system" xml:space="preserve">
+    <value>System</value>
+  </data>
+  <data name="settings.theme.light" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="settings.theme.dark" xml:space="preserve">
+    <value>Dark</value>
+  </data>
+  <data name="settings.associations" xml:space="preserve">
+    <value>Associations</value>
+  </data>
+  <data name="settings.editor.title" xml:space="preserve">
+    <value>Default code editor</value>
+  </data>
+  <data name="settings.editor.desc" xml:space="preserve">
+    <value>Opens the files you associate with it.</value>
+  </data>
+  <data name="settings.browse" xml:space="preserve">
+    <value>Browse</value>
+  </data>
+  <data name="settings.auto_detect" xml:space="preserve">
+    <value>Auto-detect</value>
+  </data>
+  <data name="settings.editor_found" xml:space="preserve">
+    <value>Editor found and set.</value>
+  </data>
+  <data name="settings.editor_not_found" xml:space="preserve">
+    <value>No editor found automatically.</value>
+  </data>
+  <data name="settings.icons" xml:space="preserve">
+    <value>Icons</value>
+  </data>
+  <data name="settings.icon_folder.title" xml:space="preserve">
+    <value>Icon folder</value>
+  </data>
+  <data name="settings.icon_folder.desc" xml:space="preserve">
+    <value>Where your .ico files are read from.</value>
+  </data>
+  <data name="settings.change" xml:space="preserve">
+    <value>Change</value>
+  </data>
+  <data name="settings.system" xml:space="preserve">
+    <value>System</value>
+  </data>
+  <data name="settings.wsl.title" xml:space="preserve">
+    <value>WSL</value>
+  </data>
+  <data name="settings.wsl.desc" xml:space="preserve">
+    <value>Decides how .sh files are opened.</value>
+  </data>
+  <data name="settings.wsl_on" xml:space="preserve">
+    <value>WSL 2 detected</value>
+  </data>
+  <data name="settings.wsl_off" xml:space="preserve">
+    <value>No WSL: .sh opens in the editor</value>
+  </data>
+  <data name="settings.refresh_explorer.title" xml:space="preserve">
+    <value>Explorer</value>
+  </data>
+  <data name="settings.refresh_explorer.desc" xml:space="preserve">
+    <value>Tells Explorer to reload icons and associations.</value>
+  </data>
+  <data name="settings.refresh_explorer" xml:space="preserve">
+    <value>Refresh Explorer</value>
+  </data>
+  <data name="settings.explorer_refreshed" xml:space="preserve">
+    <value>Explorer notified.</value>
+  </data>
+  <data name="settings.data" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="settings.data_folder.title" xml:space="preserve">
+    <value>Data folder</value>
+  </data>
+  <data name="settings.data_folder.desc" xml:space="preserve">
+    <value>Configuration, backups and history.</value>
+  </data>
+  <data name="settings.open_data_folder" xml:space="preserve">
+    <value>Open data folder</value>
+  </data>
+  <data name="settings.data_folder_failed" xml:space="preserve">
+    <value>Could not open the data folder.</value>
+  </data>
+  <data name="settings.about" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="settings.version" xml:space="preserve">
+    <value>WinTune version {0}</value>
+  </data>
+  <data name="settings.repo_link" xml:space="preserve">
+    <value>Project on GitHub</value>
+  </data>
+  <data name="settings.config_unreadable" xml:space="preserve">
+    <value>config.json can't be read: {0} Changes aren't saved until it is fixed.</value>
+  </data>
+  <data name="window.minimize" xml:space="preserve">
+    <value>Minimize</value>
+  </data>
+  <data name="window.maximize" xml:space="preserve">
+    <value>Maximize</value>
+  </data>
+  <data name="window.restore" xml:space="preserve">
+    <value>Restore Down</value>
+  </data>
+  <data name="window.close" xml:space="preserve">
+    <value>Close</value>
+  </data>
 </root>

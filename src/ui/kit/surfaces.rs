@@ -1,10 +1,13 @@
 //! Containers: card, section, setting row, banner and empty state.
 
-use egui::{vec2, Align, Frame, Layout, Margin, RichText, Rounding, Stroke, Ui};
+use egui::{
+    pos2, vec2, Align, CursorIcon, FontFamily, FontId, Frame, Layout, Margin, Response, RichText,
+    Rounding, Sense, Stroke, Ui, WidgetInfo, WidgetType,
+};
 
 use super::controls::action_button;
-use super::fonts::semibold;
-use super::icons::icon_text;
+use super::fonts::{semibold, ICONS};
+use super::icons::{glyph, icon_text, icons_available};
 use super::{current_palette, radius, space, text_size, Icon};
 
 /// Runs `leading` on the left and `trailing` right-aligned on the same row,
@@ -138,6 +141,92 @@ pub fn banner(ui: &mut Ui, kind: BannerKind, text: &str, action: Option<&str>) -
         });
     ui.add_space(space::S);
     clicked
+}
+
+const TILE_HEIGHT: f32 = 88.0;
+
+/// A clickable card (Home's module cards): icon, title and a status line.
+/// It only senses clicks while `enabled`; when disabled the text is dimmed
+/// and `disabled_hint` shows on hover.
+pub fn tile(
+    ui: &mut Ui,
+    icon: Icon,
+    title: &str,
+    status: &str,
+    enabled: bool,
+    disabled_hint: Option<&str>,
+) -> Response {
+    let p = current_palette(ui.ctx());
+    let sense = if enabled {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
+    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), TILE_HEIGHT), sense);
+    let response = if enabled {
+        response.on_hover_cursor(CursorIcon::PointingHand)
+    } else if let Some(hint) = disabled_hint {
+        response.on_hover_text(hint)
+    } else {
+        response
+    };
+    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, title));
+    if ui.is_rect_visible(rect) {
+        let fill = if enabled && response.hovered() {
+            p.surface_hover
+        } else {
+            p.surface
+        };
+        let (title_color, status_color) = if enabled {
+            (p.text, p.text_secondary)
+        } else {
+            (p.text_disabled, p.text_disabled)
+        };
+        let painter = ui.painter();
+        painter.rect(
+            rect,
+            Rounding::same(radius::CARD),
+            fill,
+            Stroke::new(1.0_f32, p.border),
+        );
+        if enabled && response.has_focus() {
+            painter.rect_stroke(
+                rect.expand(1.0),
+                Rounding::same(radius::CARD),
+                Stroke::new(2.0_f32, p.accent),
+            );
+        }
+        let mut x = rect.left() + space::L;
+        if icons_available(ui.ctx()) {
+            let galley = painter.layout_no_wrap(
+                glyph(icon).to_string(),
+                FontId::new(24.0, FontFamily::Name(ICONS.into())),
+                title_color,
+            );
+            painter.galley(
+                pos2(x, rect.center().y - galley.size().y / 2.0),
+                galley,
+                title_color,
+            );
+            x += 24.0 + space::M;
+        }
+        let title_galley = painter.layout_no_wrap(
+            title.to_owned(),
+            semibold(ui.ctx(), text_size::BODY),
+            title_color,
+        );
+        let status_galley = painter.layout_no_wrap(
+            status.to_owned(),
+            FontId::proportional(text_size::SECONDARY),
+            status_color,
+        );
+        let total = title_galley.size().y + 2.0 + status_galley.size().y;
+        let top = rect.center().y - total / 2.0;
+        let status_y = top + title_galley.size().y + 2.0;
+        painter.galley(pos2(x, top), title_galley, title_color);
+        painter.galley(pos2(x, status_y), status_galley, status_color);
+    }
+    response
 }
 
 /// Centered placeholder for an empty list. Returns true when the optional

@@ -2,7 +2,7 @@
 //! extensions). The request is stored on the app; nothing happens until the
 //! user accepts it in the dialog.
 
-use super::WinTuneApp;
+use super::{kit, WinTuneApp};
 use eframe::egui;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -32,13 +32,15 @@ impl WinTuneApp {
             return;
         };
         let extension = rule.extension.clone();
+        let tr = self.tr;
         self.pending_confirm = Some(Confirm {
-            title: "Remove rule".to_string(),
+            title: tr.t("confirm.remove_rule.title"),
             message: format!(
-                "Remove the rule for {} from the list?\n\nThis only edits WinTune's list: an association already applied stays in the registry until you restore it from the Rollback tab.",
-                extension
+                "{}\n\n{}",
+                tr.t_args("confirm.remove_rule.body", &[&extension]),
+                tr.t("confirm.remove_rule.note")
             ),
-            confirm_label: "Remove".to_string(),
+            confirm_label: tr.t("confirm.remove"),
             action: ConfirmAction::RemoveRule { index, extension },
         });
     }
@@ -50,14 +52,16 @@ impl WinTuneApp {
         }
         let mut extensions: Vec<String> = self.rollback_selection.iter().cloned().collect();
         extensions.sort();
+        let tr = self.tr;
         self.pending_confirm = Some(Confirm {
-            title: "Restore original state".to_string(),
+            title: tr.t("confirm.rollback.title"),
             message: format!(
-                "Restore {} extension(s) to their state before WinTune?\n\n{}\n\nTheir custom icons and commands will be removed and their snapshots deleted.",
-                extensions.len(),
-                extensions.join(", ")
+                "{}\n\n{}\n\n{}",
+                tr.t_args("confirm.rollback.body", &[&extensions.len()]),
+                extensions.join(", "),
+                tr.t("confirm.rollback.note")
             ),
-            confirm_label: "Restore".to_string(),
+            confirm_label: tr.t("confirm.restore"),
             action: ConfirmAction::Rollback(extensions),
         });
     }
@@ -67,7 +71,8 @@ impl WinTuneApp {
             return;
         };
         if !accepted {
-            self.set_status("Cancelled.");
+            let text = self.tr.t("notice.cancelled");
+            self.notify(kit::ToastKind::Info, text);
             return;
         }
         match confirm.action {
@@ -85,17 +90,20 @@ impl WinTuneApp {
             rules.iter().position(|r| r.extension == extension)
         };
         let Some(index) = index else {
-            self.set_status(format!("{} is no longer in the list.", extension));
+            let text = self.tr.t_args("notice.rule_gone", &[&extension]);
+            self.notify(kit::ToastKind::Info, text);
             return;
         };
         self.config.extensions.remove(index);
         if self.selected_ext_index >= self.config.extensions.len() {
             self.selected_ext_index = self.config.extensions.len().saturating_sub(1);
         }
-        self.set_status(format!("Removed the rule for {}.", extension));
+        let text = self.tr.t_args("notice.rule_removed", &[&extension]);
+        self.notify(kit::ToastKind::Success, text);
     }
 
-    /// Modal dialog: a translucent layer swallows clicks on the panels behind.
+    /// Modal kit dialog. Focus starts on Cancel, so Enter cancels; Escape
+    /// cancels too. Nothing runs until the user presses the confirm button.
     pub(super) fn show_confirm_dialog(&mut self, ctx: &egui::Context) {
         let Some(confirm) = &self.pending_confirm else {
             return;
@@ -105,40 +113,14 @@ impl WinTuneApp {
             confirm.message.clone(),
             confirm.confirm_label.clone(),
         );
-
-        let screen = ctx.screen_rect();
-        egui::Area::new(egui::Id::new("confirm_backdrop"))
-            .order(egui::Order::Middle)
-            .fixed_pos(screen.min)
-            .show(ctx, |ui| {
-                ui.painter()
-                    .rect_filled(screen, 0.0, egui::Color32::from_black_alpha(140));
-                ui.allocate_rect(screen, egui::Sense::click());
-            });
+        let cancel_label = self.tr.t("dialog.cancel");
 
         let mut decision: Option<bool> = None;
-        egui::Window::new(title)
-            .id(egui::Id::new("confirm_dialog"))
-            .order(egui::Order::Foreground)
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .default_width(420.0)
-            .show(ctx, |ui| {
-                ui.label(message);
-                ui.add_space(12.0);
-                ui.horizontal(|ui| {
-                    if ui
-                        .add(crate::theme::accent_button(confirm_label, self.ui_theme))
-                        .clicked()
-                    {
-                        decision = Some(true);
-                    }
-                    if ui.button("Cancel").clicked() {
-                        decision = Some(false);
-                    }
-                });
-            });
+        kit::dialog(ctx, "confirm", &title, 440.0, |ui| {
+            ui.label(message);
+            ui.add_space(kit::space::L);
+            decision = kit::dialog_buttons(ui, "confirm", &confirm_label, &cancel_label);
+        });
 
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             decision = Some(false);
@@ -222,7 +204,7 @@ mod tests {
         let rules = app.config.extensions.clone();
         app.start_apply(&ctx, rules);
         run_until_idle(&mut app, &ctx);
-        assert!(fx.key_exists(&fx.classes(".foo")), "{}", app.status_message);
+        assert!(fx.key_exists(&fx.classes(".foo")), "{}", app.last_notice());
         app.rollback_selection.insert(".foo".to_string());
 
         app.request_rollback();
@@ -231,11 +213,7 @@ mod tests {
         app.resolve_confirm(&ctx, true);
         run_until_idle(&mut app, &ctx);
 
-        assert!(
-            !fx.key_exists(&fx.classes(".foo")),
-            "{}",
-            app.status_message
-        );
+        assert!(!fx.key_exists(&fx.classes(".foo")), "{}", app.last_notice());
         assert!(app.backup_store.backups.is_empty());
     }
 
@@ -266,5 +244,32 @@ mod tests {
             app.pending_confirm.is_some(),
             "rendering must not resolve it"
         );
+    }
+
+    #[test]
+    fn the_confirm_dialog_starts_on_cancel_and_enter_cancels() {
+        use egui::{Event, Key, Modifiers};
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".a", ".b"]);
+        app.request_remove_rule(0);
+        frame(&mut app, &ctx, RawInput::default());
+        frame(&mut app, &ctx, RawInput::default());
+
+        let enter = |pressed| RawInput {
+            events: vec![Event::Key {
+                key: Key::Enter,
+                physical_key: None,
+                pressed,
+                repeat: false,
+                modifiers: Modifiers::NONE,
+            }],
+            ..Default::default()
+        };
+        frame(&mut app, &ctx, enter(true));
+        frame(&mut app, &ctx, enter(false));
+
+        assert!(app.pending_confirm.is_none());
+        assert_eq!(exts(&app), [".a", ".b"]);
     }
 }

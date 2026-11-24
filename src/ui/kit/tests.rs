@@ -600,6 +600,12 @@ mod layout {
         Later,
     }
 
+    const BRAND: Brand<'static> = Brand {
+        logo: None,
+        name: "WinTune",
+        caption: "Customize Windows",
+    };
+
     fn item(key: Page, label: &str, enabled: bool) -> NavItem<'_, Page> {
         NavItem {
             key,
@@ -630,7 +636,7 @@ mod layout {
         let footer = [footer_item];
         let draw = |c: &Context| {
             let mut s = selected.get();
-            if nav_sidebar(c, &mut s, &groups, &footer) {
+            if nav_sidebar(c, &BRAND, &mut s, &groups, &footer) {
                 changed.set(true);
             }
             selected.set(s);
@@ -665,9 +671,9 @@ mod layout {
             time: Some(t),
             ..frame_input(vec![])
         };
-        let _ = ctx.run(at(0.0), |c| toasts.show(c));
+        let _ = ctx.run(at(0.0), |c| toasts.show(c, "Clear all"));
         assert_eq!(toasts.len(), 2);
-        let _ = ctx.run(at(TOAST_SECONDS + 0.1), |c| toasts.show(c));
+        let _ = ctx.run(at(TOAST_SECONDS + 0.1), |c| toasts.show(c, "Clear all"));
         assert_eq!(toasts.len(), 1);
         assert!(!toasts.is_empty());
     }
@@ -679,9 +685,9 @@ mod layout {
         for i in 0..5 {
             toasts.push(ToastKind::Success, format!("Toast {i}"));
         }
-        let _ = ctx.run(frame_input(vec![]), |c| toasts.show(c));
+        let _ = ctx.run(frame_input(vec![]), |c| toasts.show(c, "Clear all"));
         assert_eq!(toasts.len(), 5);
-        // Five queued toasts take no more room than three.
+        // Five queued toasts take three rows plus one overflow row.
         let height = |ctx: &Context| {
             ctx.memory(|m| m.area_rect(egui::Id::new("wintune_toasts")))
                 .unwrap()
@@ -693,8 +699,9 @@ mod layout {
             three.push(ToastKind::Success, format!("Toast {i}"));
         }
         let ctx3 = ctx_for(ThemeMode::Dark);
-        let _ = ctx3.run(frame_input(vec![]), |c| three.show(c));
-        assert!((five - height(&ctx3)).abs() < 1.0);
+        let _ = ctx3.run(frame_input(vec![]), |c| three.show(c, "Clear all"));
+        let extra = five - height(&ctx3);
+        assert!(extra > 0.0 && extra < 40.0, "overflow row height {extra}");
     }
 
     #[test]
@@ -742,6 +749,7 @@ mod layout {
                     }];
                     nav_sidebar(
                         c,
+                        &BRAND,
                         &mut sel,
                         &groups,
                         &[item(Page::Settings, "Settings", true)],
@@ -769,7 +777,7 @@ mod layout {
                         );
                         page_header(ui, &[], "Plain", None, |_| {});
                     });
-                    toasts.show(c);
+                    toasts.show(c, "Clear all");
                     dialog(c, "d", "Confirm", 360.0, |ui| {
                         ui.label("Sure?");
                     });
@@ -869,14 +877,296 @@ mod layout {
         let mut toasts = Toasts::default();
         toasts.push(ToastKind::Error, "Failed");
         for _ in 0..2 {
-            let _ = ctx.run(frame_input(vec![]), |c| toasts.show(c));
+            let _ = ctx.run(frame_input(vec![]), |c| toasts.show(c, "Clear all"));
         }
         let rect = ctx
             .memory(|m| m.area_rect(egui::Id::new("wintune_toasts")))
             .unwrap();
         // The cross sits at the right edge, inside the card padding.
         let at = egui::pos2(rect.right() - 20.0, rect.center().y);
-        click_frames(&ctx, at, |c| toasts.show(c));
+        click_frames(&ctx, at, |c| toasts.show(c, "Clear all"));
         assert!(toasts.is_empty());
+    }
+}
+
+mod shell_kit {
+    use super::super::test_input::{click_frames, frame_input};
+    use super::super::*;
+    use crate::theme::ThemeMode;
+    use egui::{CentralPanel, Context, Event, Key, Modifiers, RawInput, Shape};
+    use std::cell::{Cell, RefCell};
+
+    fn ctx_for(theme: ThemeMode) -> Context {
+        let ctx = Context::default();
+        install_styles(&ctx);
+        set_theme_mode(&ctx, theme);
+        ctx
+    }
+
+    fn at(t: f64) -> RawInput {
+        RawInput {
+            time: Some(t),
+            ..frame_input(vec![])
+        }
+    }
+
+    #[test]
+    fn a_queued_toast_does_not_expire_before_it_is_drawn() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let mut toasts = Toasts::default();
+        for i in 0..5 {
+            toasts.push(ToastKind::Info, format!("Toast {i}"));
+        }
+        let _ = ctx.run(at(0.0), |c| toasts.show(c, "Clear all"));
+        let _ = ctx.run(at(10.0), |c| toasts.show(c, "Clear all"));
+        // Only the three drawn toasts expired; the hidden two start now.
+        assert_eq!(toasts.len(), 2);
+        let _ = ctx.run(at(20.0), |c| toasts.show(c, "Clear all"));
+        assert_eq!(toasts.len(), 0);
+    }
+
+    #[test]
+    fn hidden_error_toasts_can_be_cleared() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let mut toasts = Toasts::default();
+        for i in 0..5 {
+            toasts.push(ToastKind::Error, format!("Failure {i}"));
+        }
+        // The anchored area needs a few frames to settle on its place.
+        for _ in 0..4 {
+            let _ = ctx.run(frame_input(vec![]), |c| toasts.show(c, "Clear all"));
+        }
+        let link = ctx
+            .read_response(egui::Id::new("wintune_toasts_clear_all"))
+            .expect("the clear_all link is drawn when toasts are hidden");
+        click_frames(&ctx, link.rect.center(), |c| toasts.show(c, "Clear all"));
+        assert!(toasts.is_empty());
+    }
+
+    #[test]
+    fn toast_details_are_kept_by_latest() {
+        let mut toasts = Toasts::default();
+        assert_eq!(toasts.latest(), None);
+        toasts.push_details(ToastKind::Error, "Applied 1", "Error: x");
+        assert_eq!(toasts.latest().as_deref(), Some("Applied 1\nError: x"));
+        toasts.push(ToastKind::Info, "Plain");
+        assert_eq!(toasts.latest().as_deref(), Some("Plain"));
+    }
+
+    struct DialogScene {
+        page_focus: Cell<bool>,
+        text: RefCell<String>,
+        page_id: Cell<Option<egui::Id>>,
+        result: Cell<Option<bool>>,
+    }
+
+    impl DialogScene {
+        fn new() -> Self {
+            Self {
+                page_focus: Cell::new(false),
+                text: RefCell::new(String::new()),
+                page_id: Cell::new(None),
+                result: Cell::new(None),
+            }
+        }
+
+        fn draw(&self, c: &Context) {
+            CentralPanel::default().show(c, |ui| {
+                let r = ui.text_edit_singleline(&mut *self.text.borrow_mut());
+                if self.page_focus.replace(false) {
+                    r.request_focus();
+                }
+                self.page_id.set(Some(r.id));
+            });
+            dialog(c, "d", "Confirm", 360.0, |ui| {
+                if let Some(answer) = dialog_buttons(ui, "d", "Apply", "Cancel") {
+                    self.result.set(Some(answer));
+                }
+            });
+        }
+    }
+
+    fn cancel_id() -> egui::Id {
+        egui::Id::new(("wintune_dialog_cancel", "d"))
+    }
+
+    fn confirm_id() -> egui::Id {
+        egui::Id::new(("wintune_dialog_confirm", "d"))
+    }
+
+    fn key(key: Key, modifiers: Modifiers) -> RawInput {
+        frame_input(vec![Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers,
+        }])
+    }
+
+    #[test]
+    fn dialog_focus_starts_on_cancel_and_tab_stays_inside() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let scene = DialogScene::new();
+        // The page has a focused text field when the dialog opens.
+        scene.page_focus.set(true);
+        let _ = ctx.run(frame_input(vec![]), |c| scene.draw(c));
+        let _ = ctx.run(frame_input(vec![]), |c| scene.draw(c));
+        let has = |id| ctx.memory(|m| m.has_focus(id));
+        assert!(has(cancel_id()), "focus starts on cancel");
+
+        let _ = ctx.run(key(Key::Tab, Modifiers::NONE), |c| scene.draw(c));
+        assert!(has(confirm_id()), "Tab moves to confirm");
+        let _ = ctx.run(key(Key::Tab, Modifiers::NONE), |c| scene.draw(c));
+        assert!(has(cancel_id()), "Tab wraps to cancel");
+        let _ = ctx.run(key(Key::Tab, Modifiers::SHIFT), |c| scene.draw(c));
+        assert!(has(confirm_id()), "Shift+Tab moves to confirm");
+        assert!(!has(scene.page_id.get().unwrap()), "the page never focuses");
+        assert_eq!(scene.result.get(), None);
+    }
+
+    #[test]
+    fn enter_on_the_initial_focus_cancels() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let scene = DialogScene::new();
+        let _ = ctx.run(frame_input(vec![]), |c| scene.draw(c));
+        let _ = ctx.run(key(Key::Enter, Modifiers::NONE), |c| scene.draw(c));
+        assert_eq!(scene.result.get(), Some(false));
+    }
+
+    struct TileScene {
+        rect: Cell<egui::Rect>,
+        clicked: Cell<bool>,
+    }
+
+    fn tile_clicked(enabled: bool) -> bool {
+        let ctx = ctx_for(ThemeMode::Light);
+        let scene = TileScene {
+            rect: Cell::new(egui::Rect::NOTHING),
+            clicked: Cell::new(false),
+        };
+        let draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                let r = tile(
+                    ui,
+                    Icon::Explorer,
+                    "Explorer",
+                    "3 tweaks",
+                    enabled,
+                    Some("Not yet"),
+                );
+                scene.rect.set(r.rect);
+                if r.clicked() {
+                    scene.clicked.set(true);
+                }
+            });
+        };
+        let _ = ctx.run(frame_input(vec![]), draw);
+        click_frames(&ctx, scene.rect.get().center(), draw);
+        scene.clicked.get()
+    }
+
+    #[test]
+    fn a_focused_tile_paints_a_focus_ring() {
+        fn ring(shape: &Shape) -> bool {
+            match shape {
+                Shape::Rect(r) => r.stroke.width == 2.0,
+                Shape::Vec(v) => v.iter().any(ring),
+                _ => false,
+            }
+        }
+        let ctx = ctx_for(ThemeMode::Light);
+        let draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                tile(ui, Icon::Explorer, "Explorer", "3 tweaks", true, None);
+            });
+        };
+        let has_ring = |out: &egui::FullOutput| out.shapes.iter().any(|c| ring(&c.shape));
+        let _ = ctx.run(frame_input(vec![]), draw);
+        let before = ctx.run(frame_input(vec![]), draw);
+        assert!(!has_ring(&before), "no ring while unfocused");
+        let _ = ctx.run(key(Key::Tab, Modifiers::NONE), draw);
+        let after = ctx.run(frame_input(vec![]), draw);
+        assert!(
+            has_ring(&after),
+            "Tab focuses the tile and it paints a ring"
+        );
+    }
+
+    #[test]
+    fn a_focused_nav_row_paints_a_focus_ring() {
+        fn ring(shape: &Shape) -> bool {
+            match shape {
+                Shape::Rect(r) => r.stroke.width == 2.0,
+                Shape::Vec(v) => v.iter().any(ring),
+                _ => false,
+            }
+        }
+        let ctx = ctx_for(ThemeMode::Light);
+        let brand = Brand {
+            logo: None,
+            name: "WinTune",
+            caption: "x",
+        };
+        let draw = |c: &Context| {
+            let mut sel = 0_u8;
+            let items = vec![NavItem {
+                key: 1_u8,
+                icon: Icon::Explorer,
+                label: "Row",
+                badge: None,
+                enabled: true,
+                disabled_hint: None,
+            }];
+            let groups = [NavGroup { title: None, items }];
+            nav_sidebar(c, &brand, &mut sel, &groups, &[]);
+        };
+        let has_ring = |out: &egui::FullOutput| out.shapes.iter().any(|c| ring(&c.shape));
+        let _ = ctx.run(frame_input(vec![]), draw);
+        let before = ctx.run(frame_input(vec![]), draw);
+        assert!(!has_ring(&before), "no ring while unfocused");
+        let _ = ctx.run(key(Key::Tab, Modifiers::NONE), draw);
+        let after = ctx.run(frame_input(vec![]), draw);
+        assert!(has_ring(&after), "Tab focuses the row and it paints a ring");
+    }
+
+    #[test]
+    fn a_disabled_tile_does_not_click() {
+        assert!(!tile_clicked(false));
+    }
+
+    #[test]
+    fn an_enabled_tile_clicks() {
+        assert!(tile_clicked(true));
+    }
+
+    fn texts(shape: &Shape, out: &mut Vec<String>) {
+        match shape {
+            Shape::Text(t) => out.push(t.galley.text().to_owned()),
+            Shape::Vec(v) => v.iter().for_each(|s| texts(s, out)),
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn the_nav_draws_the_brand_name() {
+        #[derive(Clone, Copy, PartialEq)]
+        struct Key0;
+        let ctx = ctx_for(ThemeMode::Light);
+        let brand = Brand {
+            logo: None,
+            name: "WinTune",
+            caption: "Customize Windows",
+        };
+        let out = ctx.run(frame_input(vec![]), |c| {
+            let mut sel = Key0;
+            nav_sidebar(c, &brand, &mut sel, &[], &[]);
+        });
+        let mut found = Vec::new();
+        for clipped in &out.shapes {
+            texts(&clipped.shape, &mut found);
+        }
+        assert!(found.iter().any(|t| t == "WinTune"), "texts: {found:?}");
+        assert!(found.iter().any(|t| t == "Customize Windows"));
     }
 }

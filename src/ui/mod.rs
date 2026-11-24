@@ -1,14 +1,16 @@
 //! egui front-end. Each module of the app is one tab, in its own file:
 //! adding a customization module means adding an `ActiveTab` variant, its
-//! sidebar subtitle and a `show_*_tab` method in a new file.
+//! navigation entry and a `show_*_tab` method in a new file.
 //!
 //! Long operations (apply, rollback, icon pack build) run on a background
 //! thread through `jobs`, so the window never freezes.
 
 mod associations_tab;
+mod autosave;
 mod confirm;
 mod gallery_tab;
 mod history_panel;
+mod home;
 mod jobs;
 pub mod kit;
 mod polish;
@@ -18,8 +20,8 @@ mod rollback_tab;
 mod rule_status;
 #[cfg(test)]
 mod safety_tests;
-mod sidebar;
-mod status_bar;
+mod settings;
+mod shell;
 #[cfg(test)]
 mod test_support;
 mod tweaks_tab;
@@ -67,6 +69,10 @@ pub(crate) struct AppEnv {
     pub user_label: String,
     /// Operation log (one JSON line per registry job).
     pub history_path: PathBuf,
+    /// Folder holding config.json, backups and the history.
+    pub data_dir: PathBuf,
+    /// Opens a folder in Explorer.
+    pub open_folder: Arc<dyn Fn(&Path) + Send + Sync>,
 }
 
 impl AppEnv {
@@ -83,29 +89,45 @@ impl AppEnv {
             is_windows_11: windows_build().is_some_and(is_windows_11_build),
             user_label: current_user_label(),
             history_path: crate::history::default_history_path(),
+            data_dir: app_data_dir(),
+            open_folder: Arc::new(|path| {
+                // Nothing to report to from here: a failed spawn is ignored.
+                let _ = std::process::Command::new("explorer.exe").arg(path).spawn();
+            }),
         }
     }
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub(crate) enum ActiveTab {
+    Home,
     Associations,
     Tweaks,
     StartPrivacy,
     Gallery,
+    History,
     Rollback,
+    Settings,
+    /// Not built yet: shown in the navigation, disabled.
+    ContextMenu,
 }
 
 impl ActiveTab {
-    /// Sidebar order.
-    pub(crate) const ALL: [ActiveTab; 5] = [
+    /// Every page that can be opened, in navigation order (the tests walk it).
+    #[cfg(test)]
+    pub(crate) const ALL: [ActiveTab; 8] = [
+        ActiveTab::Home,
         ActiveTab::Associations,
         ActiveTab::Tweaks,
         ActiveTab::StartPrivacy,
         ActiveTab::Gallery,
+        ActiveTab::History,
         ActiveTab::Rollback,
+        ActiveTab::Settings,
     ];
 
+    /// English module label written to history.jsonl (not a navigation
+    /// label: those are translated). Empty for pages that are not modules.
     pub(crate) fn title(self) -> &'static str {
         match self {
             ActiveTab::Associations => "File Associations",
@@ -113,8 +135,20 @@ impl ActiveTab {
             ActiveTab::StartPrivacy => "Start & Privacy",
             ActiveTab::Gallery => "Icon Gallery",
             ActiveTab::Rollback => "Selective Rollback",
+            ActiveTab::Home | ActiveTab::History | ActiveTab::Settings | ActiveTab::ContextMenu => {
+                ""
+            }
         }
     }
+}
+
+/// What a finished job did, to word its toast.
+#[derive(Clone, Copy)]
+pub(super) enum ReportKind {
+    AppliedRules,
+    RestoredRules,
+    AppliedTweaks,
+    RestoredTweaks,
 }
 
 pub struct WinTuneApp {
@@ -129,9 +163,8 @@ pub struct WinTuneApp {
     gallery_category: IconCategory,
     assign_icon_to_selected_ext: bool,
     rollback_selection: HashSet<String>,
-    status_message: String,
-    /// Full error / warning list of the last operation (status-bar tooltip).
-    status_details: String,
+    /// Transient messages, drawn bottom-right.
+    toasts: kit::Toasts,
     /// Set when backups.json cannot be read: registry changes are blocked so
     /// the next save cannot overwrite the recorded snapshots.
     backup_store_error: Option<String>,
@@ -165,10 +198,11 @@ pub struct WinTuneApp {
     focus_search: bool,
     /// Recent operations, newest first.
     history: Vec<crate::history::HistoryEntry>,
-    show_history: bool,
     /// Set when config.json exists but is unreadable: saving is refused so
     /// the user's rules are never replaced by the defaults.
     config_error: Option<String>,
+    /// Debounced writes of config.json.
+    autosave: autosave::Autosave,
 }
 
 impl WinTuneApp {
@@ -181,13 +215,12 @@ impl WinTuneApp {
             }
         }
         let mut app = Self::with_config(&cc.egui_ctx, config, has_wsl_distribution(), env);
+        shell::round_borderless_window(cc);
         let windir = std::env::var_os("WINDIR").unwrap_or_else(|| r"C:\Windows".into());
         kit::fonts::install(&cc.egui_ctx, &std::path::Path::new(&windir).join("Fonts"));
         if let Some(e) = &config_error {
-            app.set_status(format!(
-                "Using the default rules: {} Saving is disabled until it is fixed.",
-                e
-            ));
+            let text = app.tr.t_args("notice.config_unreadable", &[e]);
+            app.notify(kit::ToastKind::Error, text);
         }
         app.config_error = config_error;
         app.reload_backup_store();
@@ -209,6 +242,7 @@ impl WinTuneApp {
         kit::set_theme_mode(ctx, config.theme);
         let ui_theme = kit::resolved(config.theme, ctx);
         let tr = Tr::new(&config.language);
+        let autosave = autosave::Autosave::new(&config);
 
         let mut gallery = IconGallery::default();
         gallery.reload(&config.icon_source_folder, &config.pak_file_path);
@@ -218,15 +252,14 @@ impl WinTuneApp {
             config,
             gallery,
             backup_store: BackupStore::default(),
-            active_tab: ActiveTab::Associations,
+            active_tab: ActiveTab::Home,
             selected_ext_index: 0,
             ext_search_query: String::new(),
             gallery_search_query: String::new(),
             gallery_category: IconCategory::FilesOnly,
             assign_icon_to_selected_ext: false,
             rollback_selection: HashSet::new(),
-            status_message: "Ready.".to_string(),
-            status_details: String::new(),
+            toasts: kit::Toasts::default(),
             backup_store_error: None,
             wsl_detected,
             new_ext_input: String::new(),
@@ -246,8 +279,8 @@ impl WinTuneApp {
             ui_theme,
             focus_search: false,
             history: Vec::new(),
-            show_history: false,
             config_error: None,
+            autosave,
         }
     }
 
@@ -259,35 +292,85 @@ impl WinTuneApp {
         self.pump_status_refresh(ctx);
         self.guard_close_while_busy(ctx);
 
-        self.show_sidebar(ctx);
-        self.show_status_bar(ctx);
-        self.show_history_panel(ctx);
+        // Before the nav: the dialog claims the keyboard first (it is an Area,
+        // so the panel layout does not depend on the order).
         self.show_confirm_dialog(ctx);
+        self.show_caption(ctx);
+        self.show_nav(ctx);
+        if let Some(job) = &self.job {
+            let p = job.progress();
+            let label = if p.total > 0 {
+                self.tr.t_args("job.progress", &[&p.done, &p.total])
+            } else {
+                String::new()
+            };
+            let status = self.tr.t(job.title_key());
+            kit::action_bar(
+                ctx,
+                &status,
+                kit::ActionBarState::Busy {
+                    label: &label,
+                    fraction: p.fraction(),
+                },
+                |_| {},
+            );
+        }
+        self.show_autosave_banner(ctx);
 
         match self.active_tab {
+            ActiveTab::Home | ActiveTab::ContextMenu => self.show_home(ctx),
+            ActiveTab::History => self.show_history_page(ctx),
+            ActiveTab::Settings => self.show_settings(ctx),
             ActiveTab::Associations => self.show_associations_tab(ctx),
             ActiveTab::Tweaks | ActiveTab::StartPrivacy => self.show_tweaks_tab(ctx),
             ActiveTab::Gallery => self.show_gallery_tab(ctx),
             ActiveTab::Rollback => self.show_rollback_tab(ctx),
         }
+
+        self.toasts.show(ctx, &self.tr.t("toast.clear_all"));
+        // After every widget, so the resize cursor wins at the window edges.
+        if let Some(direction) = kit::resize_edge(ctx) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(direction));
+        }
+        // Last, so an edit made by a widget this frame is noticed this frame.
+        self.pump_autosave(ctx);
     }
 
     /// Switches the language now and remembers it. An unshipped code is
     /// stored as the English fallback actually in use.
-    #[allow(dead_code)] // called by the Settings page (PR 2)
     pub(super) fn set_language(&mut self, code: &str) {
         self.tr = Tr::new(code);
         self.config.language = self.tr.code().to_string();
-        self.save_config();
+    }
+
+    fn set_theme(&mut self, ctx: &egui::Context, mode: ThemeMode) {
+        self.config.theme = mode;
+        kit::set_theme_mode(ctx, mode);
+        self.ui_theme = kit::resolved(mode, ctx);
     }
 
     fn is_busy(&self) -> bool {
         self.job.is_some()
     }
 
-    fn set_status(&mut self, message: impl Into<String>) {
-        self.status_message = message.into();
-        self.status_details.clear();
+    fn notify(&mut self, kind: kit::ToastKind, text: impl Into<String>) {
+        self.toasts.push(kind, text);
+    }
+
+    /// `details` show on hover over the toast.
+    fn notify_details(
+        &mut self,
+        kind: kit::ToastKind,
+        text: impl Into<String>,
+        details: impl Into<String>,
+    ) {
+        self.toasts.push_details(kind, text, details);
+    }
+
+    /// Text (and details) of the most recent toast, even after it expired.
+    #[cfg(test)]
+    fn last_notice(&self) -> String {
+        self.toasts.latest().unwrap_or_default()
     }
 
     fn reload_backup_store(&mut self) {
@@ -298,39 +381,58 @@ impl WinTuneApp {
             }
             Err(e) => {
                 self.backup_store = BackupStore::default();
-                self.set_status(e.clone());
+                self.notify(kit::ToastKind::Error, e.clone());
                 self.backup_store_error = Some(e);
             }
         }
     }
 
-    /// `what` names the items, e.g. "extension(s)" or "tweak(s)".
-    fn show_report(&mut self, verb: &str, what: &str, report: &OperationReport) {
-        let mut msg = format!("{} {} {}", verb, report.succeeded.len(), what);
+    /// Toast for a finished registry job: an error toast when something
+    /// failed, with the full error / warning list on hover.
+    fn show_report(&mut self, kind: ReportKind, report: &OperationReport) {
+        let tr = self.tr;
+        let count = report.succeeded.len();
+        let mut msg = match kind {
+            ReportKind::AppliedRules => tr.t_args("report.applied_rules", &[&count]),
+            ReportKind::RestoredRules => tr.t_args("report.restored_rules", &[&count]),
+            ReportKind::AppliedTweaks => tr.t_args("report.applied_tweaks", &[&count]),
+            ReportKind::RestoredTweaks => tr.t_args("report.restored_tweaks", &[&count]),
+        };
         if let Some(first) = report.errors.first() {
-            msg.push_str(&format!(
-                ", {} error(s) (first: {})",
-                report.errors.len(),
-                first
-            ));
+            msg.push_str(&tr.t_args("report.errors", &[&report.errors.len(), first]));
         }
         if !report.warnings.is_empty() {
-            msg.push_str(&format!(", {} warning(s)", report.warnings.len()));
+            msg.push_str(&tr.t_args("report.warnings", &[&report.warnings.len()]));
         }
         msg.push('.');
         if report.reg_backup_file.is_some() {
-            msg.push_str(" A .reg backup of the previous state was saved.");
+            msg.push(' ');
+            msg.push_str(&tr.t("report.reg_backup"));
         }
 
         let mut details: Vec<String> = Vec::new();
-        details.extend(report.errors.iter().map(|e| format!("Error: {}", e)));
-        details.extend(report.warnings.iter().map(|w| format!("Warning: {}", w)));
+        details.extend(
+            report
+                .errors
+                .iter()
+                .map(|e| tr.t_args("report.detail_error", &[e])),
+        );
+        details.extend(
+            report
+                .warnings
+                .iter()
+                .map(|w| tr.t_args("report.detail_warning", &[w])),
+        );
         if let Some(file) = &report.reg_backup_file {
-            details.push(format!(".reg backup: {}", file.display()));
+            details.push(tr.t_args("report.detail_reg", &[&file.display()]));
         }
 
-        self.status_message = msg;
-        self.status_details = details.join("\n");
+        let toast = if report.errors.is_empty() {
+            kit::ToastKind::Success
+        } else {
+            kit::ToastKind::Error
+        };
+        self.notify_details(toast, msg, details.join("\n"));
     }
 
     fn load_app_logo(ctx: &egui::Context) -> Option<TextureHandle> {
@@ -356,28 +458,9 @@ impl WinTuneApp {
             return Err(e.clone());
         }
         let path = &self.env.config_path;
+        // The persist error already names the file: it is the raw detail
+        // shown after the translated summary.
         crate::persist::save_json(&self.config, path)
-            .map_err(|e| format!("cannot write {}: {}", path.display(), e))
-    }
-
-    fn save_config(&mut self) {
-        if self.config_error.is_some() {
-            let msg = format!(
-                "Configuration not saved: {}",
-                self.config_error.clone().unwrap_or_default()
-            );
-            self.set_status(msg);
-            return;
-        }
-        let path = self.env.config_path.clone();
-        match crate::persist::save_json(&self.config, &path) {
-            Ok(()) => self.set_status("Configuration saved."),
-            Err(e) => self.set_status(format!(
-                "Cannot save configuration to {}: {}",
-                path.display(),
-                e
-            )),
-        }
     }
 
     /// Never let the window close in the middle of a registry write.
@@ -385,9 +468,14 @@ impl WinTuneApp {
         if self.is_busy() && ctx.input(|i| i.viewport().close_requested()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.close_when_idle = true;
-            self.set_status("An operation is running: WinTune will close as soon as it finishes.");
+            let text = self.tr.t("notice.close_after_job");
+            self.notify(kit::ToastKind::Info, text);
+        }
+        if ctx.input(|i| i.viewport().close_requested()) && !self.is_busy() {
+            self.flush_config();
         }
         if self.close_when_idle && !self.is_busy() {
+            self.flush_config();
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
@@ -543,9 +631,9 @@ mod tests {
         run_until_idle(&mut app, &ctx);
 
         assert!(
-            app.status_message.starts_with("Packed 2 icons"),
+            app.last_notice().starts_with("Packed 2 icons"),
             "{}",
-            app.status_message
+            app.last_notice()
         );
         assert!(Path::new(&app.config.pak_file_path).is_file());
         assert_eq!(app.gallery.names().len(), 2);
@@ -573,9 +661,9 @@ mod tests {
         app.start_build_pak(&ctx);
 
         assert!(
-            app.status_message.contains("still running"),
+            app.last_notice().contains("still running"),
             "{}",
-            app.status_message
+            app.last_notice()
         );
         release_tx.send(()).unwrap();
         run_until_idle(&mut app, &ctx);

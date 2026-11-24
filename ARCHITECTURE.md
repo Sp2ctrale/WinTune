@@ -6,8 +6,8 @@ the library, so it can be tested without the GUI and without elevation.
 
 ```
                  ┌──────────────────────── ui (egui) ────────────────────────┐
-                 │ tabs: associations · tweaks (×2) · gallery · rollback      │
-                 │ sidebar · status bar · history panel · confirm dialog      │
+                 │ pages: home · associations · tweaks (×2) · gallery · ...   │
+                 │ navigation · toasts · progress bar · history · dialog      │
                  │ jobs ── tasks::BackgroundJob (one at a time, with progress)│
                  └───────────────┬───────────────────────────┬────────────────┘
                                  │ AppEnv (injectable)        │
@@ -58,10 +58,23 @@ save writes a temp file, then renames it over the old one.
 
 ## UI
 
-- `ui/mod.rs` holds `WinTuneApp`, `ActiveTab` (the sidebar list) and
+- `ui/mod.rs` holds `WinTuneApp`, `ActiveTab` (the navigation list) and
   `AppEnv`. `AppEnv` carries the targets, store paths, notifications and
   user label, and tests replace it with a sandboxed one.
-- **One file per tab.** The two tweak tabs share `tweaks_tab.rs`, and each
+- **The frame** (`ui/shell.rs`). A grouped navigation on the left, one page
+  in the middle, and two kinds of notice: toasts for results and a progress
+  bar while a job runs. Home (`home.rs`) shows one tile per module, a drift
+  banner and the recent operations. Settings (`settings.rs`) and History
+  (`history_panel.rs`) are pages too. `config.json` is saved by `autosave.rs`
+  one second after the last edit, and always before the window closes.
+- **`open_page` is the single entry** for switching page. It reloads the
+  stores and refreshes statuses (never under a running job), so every
+  navigation click, Home tile and "Review" link goes through it. Do not set
+  `active_tab` directly.
+- **History labels.** `history.jsonl` stores English labels. They are
+  translated only when drawn, by `history_module` and `history_action` in
+  `i18n/messages.rs`; unknown labels are shown as stored.
+- **One file per page.** The two tweak tabs share `tweaks_tab.rs`, and each
   shows its own `TweakGroup`s.
 - **Jobs.** Long operations (apply, rollback, tweaks, icon pack) run on a
   background thread through `ui/jobs.rs`. Only one runs at a time, and none

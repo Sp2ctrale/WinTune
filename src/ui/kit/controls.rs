@@ -2,9 +2,10 @@
 //! the action button. They return `Response`s or values and never act.
 
 use egui::{
-    pos2, vec2, Align2, CursorIcon, FontId, Id, Response, Rounding, Sense, Shape, Stroke, Ui,
-    WidgetInfo, WidgetType,
+    pos2, vec2, Align2, CursorIcon, FontId, Galley, Id, Rect, Response, Rounding, Sense, Shape,
+    Stroke, Ui, WidgetInfo, WidgetType,
 };
+use std::sync::Arc;
 
 use super::{current_palette, radius, space, text_size};
 
@@ -239,6 +240,39 @@ pub fn disclosure<R>(
 /// Text button used by banners and empty states. `primary` draws it with the
 /// accent fill.
 pub(super) fn action_button(ui: &mut Ui, text: &str, primary: bool) -> Response {
+    let galley = action_button_galley(ui, text, primary);
+    let size = vec2(galley.size().x + 2.0 * space::L, 32.0);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    paint_action_button(ui, rect, response, text, primary, galley)
+}
+
+/// `action_button` with a stable id, so callers can ask whether it has focus.
+pub(super) fn action_button_with_id(ui: &mut Ui, id: Id, text: &str, primary: bool) -> Response {
+    let galley = action_button_galley(ui, text, primary);
+    let size = vec2(galley.size().x + 2.0 * space::L, 32.0);
+    let (_, rect) = ui.allocate_space(size);
+    let response = ui.interact(rect, id, Sense::click());
+    paint_action_button(ui, rect, response, text, primary, galley)
+}
+
+fn action_button_galley(ui: &Ui, text: &str, primary: bool) -> Arc<Galley> {
+    let p = current_palette(ui.ctx());
+    let color = if primary { p.on_accent } else { p.text };
+    ui.painter().layout_no_wrap(
+        text.to_owned(),
+        FontId::proportional(text_size::BODY),
+        color,
+    )
+}
+
+fn paint_action_button(
+    ui: &Ui,
+    rect: Rect,
+    response: Response,
+    text: &str,
+    primary: bool,
+    galley: Arc<Galley>,
+) -> Response {
     let p = current_palette(ui.ctx());
     let (fill_rest, fill_hover, stroke, text_color) = if primary {
         (p.accent, p.accent_hover, Stroke::NONE, p.on_accent)
@@ -250,13 +284,6 @@ pub(super) fn action_button(ui: &mut Ui, text: &str, primary: bool) -> Response 
             p.text,
         )
     };
-    let galley = ui.painter().layout_no_wrap(
-        text.to_owned(),
-        FontId::proportional(text_size::BODY),
-        text_color,
-    );
-    let size = vec2(galley.size().x + 2.0 * space::L, 32.0);
-    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, text));
     if ui.is_rect_visible(rect) {
@@ -267,6 +294,13 @@ pub(super) fn action_button(ui: &mut Ui, text: &str, primary: bool) -> Response 
         };
         let painter = ui.painter();
         painter.rect(rect, Rounding::same(radius::CONTROL), fill, stroke);
+        if response.has_focus() {
+            painter.rect_stroke(
+                rect.expand(1.0),
+                Rounding::same(radius::CONTROL),
+                Stroke::new(2.0_f32, p.accent),
+            );
+        }
         painter.galley(rect.center() - galley.size() / 2.0, galley, text_color);
     }
     response

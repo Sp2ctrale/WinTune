@@ -26,7 +26,8 @@ impl WinTuneApp {
                 JobPoll::Running => return,
                 JobPoll::Finished(map) => self.rule_statuses = map,
                 JobPoll::Panicked(msg) => {
-                    self.set_status(format!("Could not read the rules' status: {}", msg))
+                    let text = self.tr.t_args("notice.status_failed", &[&msg]);
+                    self.notify(super::kit::ToastKind::Error, text);
                 }
             }
             self.status_job = None;

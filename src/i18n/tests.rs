@@ -328,3 +328,18 @@ fn english_tweak_texts_are_unchanged() {
         "Show file extensions"
     );
 }
+
+#[test]
+fn known_history_labels_are_translated_and_unknown_ones_kept() {
+    use super::messages::{history_action, history_module};
+    let fr = Tr::new("fr");
+    assert_eq!(
+        history_module(fr, "File associations"),
+        fr.t("history.module.associations")
+    );
+    assert_eq!(
+        history_action(fr, "Rollback"),
+        fr.t("history.action.rollback")
+    );
+    assert_eq!(history_module(fr, "Legacy thing"), "Legacy thing");
+}

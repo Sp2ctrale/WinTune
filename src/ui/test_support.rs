@@ -8,7 +8,7 @@ use crate::regsnap::test_support::Sandbox;
 use eframe::egui::{self, FullOutput, RawInput, ViewportCommand, ViewportEvent, ViewportId};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use winreg::enums::HKEY_CURRENT_USER;
 use winreg::RegKey;
@@ -18,6 +18,7 @@ use winreg::RegKey;
 pub(super) struct TempIcons {
     pub(super) dir: PathBuf,
     pub(super) sandbox: Sandbox,
+    opened: Arc<Mutex<Vec<PathBuf>>>,
 }
 
 pub(super) const TEST_HIVE: &str = "S-1-5-21-test";
@@ -51,6 +52,11 @@ impl TempIcons {
             is_windows_11: true,
             user_label: "TEST\\user".into(),
             history_path: self.dir.join("history.jsonl"),
+            data_dir: self.dir.join("data"),
+            open_folder: {
+                let opened = self.opened.clone();
+                Arc::new(move |path: &Path| opened.lock().unwrap().push(path.to_path_buf()))
+            },
         }
     }
 
@@ -87,7 +93,16 @@ impl TempIcons {
             .root
             .create_subkey(sandbox.key(&format!("Users\\{}", TEST_HIVE)))
             .expect("create test user hive");
-        Self { dir, sandbox }
+        Self {
+            dir,
+            sandbox,
+            opened: Arc::default(),
+        }
+    }
+
+    /// Folders the app asked Explorer to open (nothing is really opened).
+    pub(super) fn opened_folders(&self) -> Vec<PathBuf> {
+        self.opened.lock().unwrap().clone()
     }
 
     pub(super) fn config(&self) -> AppConfig {
@@ -177,4 +192,34 @@ pub(super) fn run_until_idle(app: &mut WinTuneApp, ctx: &egui::Context) {
         std::thread::sleep(Duration::from_millis(10));
     }
     assert!(!app.is_busy(), "job did not finish");
+}
+
+/// Every text drawn in a frame, in paint order.
+pub(super) fn drawn_texts(out: &FullOutput) -> Vec<String> {
+    fn walk(shape: &egui::epaint::Shape, texts: &mut Vec<String>) {
+        match shape {
+            egui::epaint::Shape::Text(t) => texts.push(t.galley.text().to_string()),
+            egui::epaint::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, texts)),
+            _ => {}
+        }
+    }
+    let mut texts = Vec::new();
+    for clipped in &out.shapes {
+        walk(&clipped.shape, &mut texts);
+    }
+    texts
+}
+
+/// Center of the first text drawn as exactly `text`, to aim a click at it.
+pub(super) fn text_center(out: &FullOutput, text: &str) -> Option<egui::Pos2> {
+    fn find(shape: &egui::epaint::Shape, text: &str) -> Option<egui::Pos2> {
+        match shape {
+            egui::epaint::Shape::Text(t) if t.galley.text() == text => {
+                Some(t.pos + t.galley.rect.center().to_vec2())
+            }
+            egui::epaint::Shape::Vec(shapes) => shapes.iter().find_map(|s| find(s, text)),
+            _ => None,
+        }
+    }
+    out.shapes.iter().find_map(|c| find(&c.shape, text))
 }

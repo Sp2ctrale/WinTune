@@ -1,7 +1,6 @@
 use super::rule_status::{status_badge, status_details};
 use super::{ActiveTab, WinTuneApp};
 use crate::associations::{find_rule_problems, validate_extension};
-use crate::detector::resolve_vscode_executable;
 use crate::models::{CustomContextCommand, DoubleClickMode, ExtensionConfig};
 use crate::theme::{accent_button, card_frame, draw_badge, get_palette};
 use eframe::egui::{self, Margin, RichText};
@@ -26,20 +25,6 @@ impl WinTuneApp {
             .show(ctx, |ui| {
                 card_frame(self.ui_theme).show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Default Code Editor:").strong());
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.config.code_executable)
-                                .hint_text("C:\\...\\Microsoft VS Code\\Code.exe")
-                                .desired_width(320.0),
-                        );
-                        if ui.button("Browse...").clicked() {
-                            if let Some(file) = rfd::FileDialog::new()
-                                .add_filter("Executable", &["exe"])
-                                .pick_file()
-                            {
-                                self.config.code_executable = file.to_string_lossy().to_string();
-                            }
-                        }
                         if ui
                             .add_enabled(!busy, egui::Button::new("Refresh status"))
                             .on_hover_text(
@@ -49,15 +34,6 @@ impl WinTuneApp {
                         {
                             self.request_status_refresh();
                         }
-                        if ui.button("Auto-Detect").clicked() {
-                            if let Some(found) = resolve_vscode_executable(None) {
-                                self.config.code_executable = found;
-                                self.set_status("VS Code path resolved automatically.");
-                            } else {
-                                self.set_status("Could not locate Code.exe automatically.");
-                            }
-                        }
-
                         let disabled_reason = self.apply_disabled_reason();
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let resp = ui.add_enabled(
@@ -92,7 +68,10 @@ impl WinTuneApp {
             .iter()
             .any(|e| e.extension.eq_ignore_ascii_case(&ext))
         {
-            self.set_status(format!("{} is already in the list.", ext));
+            self.notify(
+                super::kit::ToastKind::Info,
+                format!("{} is already in the list.", ext),
+            );
             return;
         }
         let clean = ext.trim_start_matches('.').to_uppercase();
@@ -114,7 +93,10 @@ impl WinTuneApp {
             extra_verbs: Vec::new(),
         };
         if let Err(e) = validate_extension(&candidate) {
-            self.set_status(format!("Cannot add {}: {}", ext, e));
+            self.notify(
+                super::kit::ToastKind::Error,
+                format!("Cannot add {}: {}", ext, e),
+            );
             return;
         }
         self.config.extensions.push(candidate);
@@ -372,7 +354,7 @@ impl WinTuneApp {
 
                 if open_gallery_picker {
                     self.assign_icon_to_selected_ext = true;
-                    self.active_tab = ActiveTab::Gallery;
+                    self.open_page(ActiveTab::Gallery);
                 }
 
                 if apply_single {
@@ -604,11 +586,7 @@ mod tests {
         app.start_apply(&ctx, rules);
 
         assert!(!app.is_busy(), "apply started despite an invalid rule");
-        assert!(
-            app.status_message.contains(".a b"),
-            "{}",
-            app.status_message
-        );
+        assert!(app.last_notice().contains(".a b"), "{}", app.last_notice());
         assert!(!fx.key_exists(&fx.classes(".foo")));
         assert!(!app.apply_blockers().is_empty());
     }
@@ -624,9 +602,9 @@ mod tests {
 
         assert!(!app.is_busy());
         assert!(
-            app.status_message.contains("more than once"),
+            app.last_notice().contains("more than once"),
             "{}",
-            app.status_message
+            app.last_notice()
         );
     }
 
@@ -642,7 +620,7 @@ mod tests {
         app.start_apply(&ctx, rules);
         run_until_idle(&mut app, &ctx);
 
-        assert!(fx.key_exists(&fx.classes(".foo")), "{}", app.status_message);
+        assert!(fx.key_exists(&fx.classes(".foo")), "{}", app.last_notice());
     }
 
     #[test]
@@ -656,9 +634,9 @@ mod tests {
 
         assert_eq!(app.config.extensions.len(), 1);
         assert!(
-            app.status_message.contains("invalid"),
+            app.last_notice().contains("invalid"),
             "{}",
-            app.status_message
+            app.last_notice()
         );
         assert_eq!(app.new_ext_input, "my ext", "input kept so it can be fixed");
     }

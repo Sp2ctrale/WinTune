@@ -76,3 +76,25 @@ pub fn tweak_description(tr: Tr, id: &str) -> String {
 pub fn group_title(tr: Tr, g: TweakGroup) -> String {
     tr.t(&format!("group.{}", g.id()))
 }
+
+/// A module label as stored in `history.jsonl` (always English), shown in
+/// the current language. Unknown labels are kept as stored.
+pub fn history_module(tr: Tr, stored: &str) -> String {
+    match stored {
+        "File associations" => tr.t("history.module.associations"),
+        "Explorer & Taskbar" => tr.t("history.module.explorer"),
+        "Start & Privacy" => tr.t("history.module.start"),
+        other => other.to_string(),
+    }
+}
+
+/// An action label as stored in `history.jsonl`, shown in the current
+/// language. Unknown labels are kept as stored.
+pub fn history_action(tr: Tr, stored: &str) -> String {
+    match stored {
+        "Apply" => tr.t("history.action.apply"),
+        "Rollback" => tr.t("history.action.rollback"),
+        "Restore" => tr.t("history.action.restore"),
+        other => other.to_string(),
+    }
+}

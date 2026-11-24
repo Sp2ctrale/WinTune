@@ -5,6 +5,8 @@
 
 use super::confirm::{Confirm, ConfirmAction};
 use super::jobs::{RunningJob, TweakOutcome};
+use super::kit::ToastKind;
+use super::ReportKind;
 use super::{ActiveTab, WinTuneApp};
 use crate::i18n::messages;
 use crate::tasks::BackgroundJob;
@@ -24,7 +26,7 @@ impl WinTuneApp {
             }
             Err(e) => {
                 self.tweak_store = TweakBackupStore::default();
-                self.set_status(e.clone());
+                self.notify(ToastKind::Error, e.clone());
                 self.tweak_store_error = Some(e);
             }
         }
@@ -161,14 +163,14 @@ impl WinTuneApp {
         }
         if let Some(err) = &self.tweak_store_error {
             let msg = format!("Tweak changes are blocked: {}", err);
-            self.set_status(msg);
+            self.notify(ToastKind::Error, msg);
             return;
         }
         let tab = self.active_tab;
         let changes = self.pending_tweak_changes_in(Self::tweak_groups_of(tab));
         let module = Self::tweaks_module_of(tab);
         if changes.is_empty() {
-            self.set_status("No tweak change to apply.");
+            self.notify(ToastKind::Info, "No tweak change to apply.");
             return;
         }
 
@@ -199,7 +201,6 @@ impl WinTuneApp {
             },
         );
         self.job = Some(RunningJob::Tweaks(job, module));
-        self.set_status("Applying tweaks…");
     }
 
     /// Asks before putting tweaks back to their state before WinTune.
@@ -213,13 +214,13 @@ impl WinTuneApp {
             .filter_map(|id| crate::tweaks::find_tweak(id).map(|t| messages::tweak_title(tr, t.id)))
             .collect();
         self.pending_confirm = Some(Confirm {
-            title: "Restore original settings".to_string(),
+            title: tr.t("confirm.restore_tweaks.title"),
             message: format!(
-                "Put {} setting(s) back exactly as they were before WinTune changed them?\n\n{}",
-                ids.len(),
+                "{}\n\n{}",
+                tr.t_args("confirm.restore_tweaks.body", &[&ids.len()]),
                 titles.join("\n")
             ),
-            confirm_label: "Restore".to_string(),
+            confirm_label: tr.t("confirm.restore"),
             action: ConfirmAction::RestoreTweaks(ids),
         });
     }
@@ -230,7 +231,7 @@ impl WinTuneApp {
         }
         if let Some(err) = &self.tweak_store_error {
             let msg = format!("Restore is blocked: {}", err);
-            self.set_status(msg);
+            self.notify(ToastKind::Error, msg);
             return;
         }
         let env = self.env.clone();
@@ -261,7 +262,6 @@ impl WinTuneApp {
             },
         );
         self.job = Some(RunningJob::Tweaks(job, module));
-        self.set_status("Restoring original settings…");
     }
 
     pub(super) fn finish_tweaks_job(&mut self, outcome: TweakOutcome) {
@@ -276,12 +276,12 @@ impl WinTuneApp {
                 Some(TweakStatus::Custom(_)) => true,
                 _ => *wanted,
             });
-        let verb = if outcome.restored {
-            "Restored"
+        let kind = if outcome.restored {
+            ReportKind::RestoredTweaks
         } else {
-            "Applied"
+            ReportKind::AppliedTweaks
         };
-        self.show_report(verb, "tweak(s)", &outcome.report);
+        self.show_report(kind, &outcome.report);
         let action = if outcome.restored { "Restore" } else { "Apply" };
         self.record_history(outcome.module, action, &outcome.report);
     }
@@ -552,7 +552,7 @@ mod tests {
             dword(&fx, ADVANCED, "HideFileExt"),
             Some(0),
             "{}",
-            app.status_message
+            app.last_notice()
         );
         assert_eq!(
             app.tweak_statuses.get("show_extensions"),
@@ -690,9 +690,9 @@ mod tests {
 
         assert!(!app.is_busy());
         assert!(
-            app.status_message.contains("blocked"),
+            app.last_notice().contains("blocked"),
             "{}",
-            app.status_message
+            app.last_notice()
         );
         assert_eq!(dword(&fx, ADVANCED, "HideFileExt"), None);
     }

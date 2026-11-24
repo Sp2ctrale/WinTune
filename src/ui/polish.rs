@@ -22,7 +22,7 @@ impl WinTuneApp {
     /// Ctrl+F: remember to focus the current tab's search box this frame.
     /// (No shortcut changes the registry: those stay mouse + confirmation.)
     pub(super) fn handle_shortcuts(&mut self, ctx: &egui::Context) {
-        if self.pending_confirm.is_some() {
+        if self.pending_confirm.is_some() || self.icon_picker.is_some() {
             return;
         }
         let find = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::F);

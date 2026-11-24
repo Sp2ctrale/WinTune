@@ -353,8 +353,10 @@ impl WinTuneApp {
                 });
 
                 if open_gallery_picker {
-                    self.assign_icon_to_selected_ext = true;
-                    self.open_page(ActiveTab::Gallery);
+                    let extension = self.config.extensions[self.selected_ext_index]
+                        .extension
+                        .clone();
+                    self.open_icon_picker(&extension);
                 }
 
                 if apply_single {

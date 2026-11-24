@@ -567,4 +567,37 @@
   <data name="window.close" xml:space="preserve">
     <value>Fermer</value>
   </data>
+  <data name="picker.title" xml:space="preserve">
+    <value>Choisir une icône</value>
+  </data>
+  <data name="picker.search" xml:space="preserve">
+    <value>Rechercher une icône</value>
+  </data>
+  <data name="picker.cat.all" xml:space="preserve">
+    <value>Toutes</value>
+  </data>
+  <data name="picker.cat.files" xml:space="preserve">
+    <value>Fichiers</value>
+  </data>
+  <data name="picker.cat.folders" xml:space="preserve">
+    <value>Dossiers</value>
+  </data>
+  <data name="picker.cat.light" xml:space="preserve">
+    <value>Claires</value>
+  </data>
+  <data name="picker.cat.clones" xml:space="preserve">
+    <value>Clones</value>
+  </data>
+  <data name="picker.empty" xml:space="preserve">
+    <value>Aucune icône ne correspond.</value>
+  </data>
+  <data name="picker.no_icons" xml:space="preserve">
+    <value>Aucune icône dans {0}</value>
+  </data>
+  <data name="picker.assigned" xml:space="preserve">
+    <value>{1} utilise maintenant l'icône {0}.</value>
+  </data>
+  <data name="picker.cancel" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
 </root>

@@ -568,4 +568,37 @@
   <data name="window.close" xml:space="preserve">
     <value>Close</value>
   </data>
+  <data name="picker.title" xml:space="preserve">
+    <value>Choose an icon</value>
+  </data>
+  <data name="picker.search" xml:space="preserve">
+    <value>Search icons</value>
+  </data>
+  <data name="picker.cat.all" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="picker.cat.files" xml:space="preserve">
+    <value>Files</value>
+  </data>
+  <data name="picker.cat.folders" xml:space="preserve">
+    <value>Folders</value>
+  </data>
+  <data name="picker.cat.light" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="picker.cat.clones" xml:space="preserve">
+    <value>Clones</value>
+  </data>
+  <data name="picker.empty" xml:space="preserve">
+    <value>No icon matches.</value>
+  </data>
+  <data name="picker.no_icons" xml:space="preserve">
+    <value>No icons in {0}</value>
+  </data>
+  <data name="picker.assigned" xml:space="preserve">
+    <value>{1} now uses the {0} icon.</value>
+  </data>
+  <data name="picker.cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
 </root>

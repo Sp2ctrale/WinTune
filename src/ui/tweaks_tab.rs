@@ -148,10 +148,6 @@ impl WinTuneApp {
     }
 
     /// "Discard changes" of one tab: the other tab keeps its ticks.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the page's action bar calls it (next commit)")
-    )]
     pub(super) fn discard_tweak_changes(&mut self, tab: ActiveTab) {
         let groups = Self::tweak_groups_of(tab);
         self.tweak_desired.retain(|id, _| {
@@ -197,10 +193,6 @@ impl WinTuneApp {
         )
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the page's action bar calls it (next commit)")
-    )]
     pub(super) fn start_apply_tweaks(&mut self, ctx: &egui::Context) {
         if self.refuse_if_busy() {
             return;
@@ -332,6 +324,8 @@ impl WinTuneApp {
     }
 
     pub(super) fn show_tweaks_tab(&mut self, ctx: &egui::Context) {
+        // Before the panel, so the bar spans the whole page width.
+        self.tweaks_action_bar(ctx);
         Self::page_panel(ctx, |ui| {
             self.tweaks_header(ui);
             self.tweaks_search(ui);
@@ -344,6 +338,43 @@ impl WinTuneApp {
                 .auto_shrink([false, false])
                 .show(ui, |ui| self.tweak_sections(ui));
         });
+    }
+
+    /// The page's bar: how many changes this tab has pending with Discard
+    /// and Apply, or the job's progress while one runs.
+    fn tweaks_action_bar(&mut self, ctx: &egui::Context) {
+        let tr = self.tr;
+        let tab = self.active_tab;
+        let pending = self
+            .pending_tweak_changes_in(Self::tweak_groups_of(tab))
+            .len();
+        let status = (pending > 0).then(|| tr.t_args("tweaks.pending_n", &[&pending]));
+        let disabled_reason = self.tweak_apply_disabled_reason();
+        let p = kit::current_palette(ctx);
+        let apply_label = tr.t("tweaks.apply");
+        let discard_label = tr.t("tweaks.discard");
+
+        let (mut apply, mut discard) = (false, false);
+        // Right to left: Apply sits at the far right.
+        self.page_action_bar(ctx, status.as_deref(), |ui| {
+            let resp = ui.add_enabled(
+                disabled_reason.is_none(),
+                kit::primary_button(p, &apply_label),
+            );
+            let resp = match &disabled_reason {
+                Some(reason) => resp.on_disabled_hover_text(reason),
+                None => resp,
+            };
+            apply = resp.clicked();
+            discard = ui.add(kit::secondary_button(&discard_label)).clicked();
+        });
+
+        if apply {
+            self.start_apply_tweaks(ctx);
+        }
+        if discard {
+            self.discard_tweak_changes(tab);
+        }
     }
 
     /// Breadcrumb, title, whose settings these are, and "Restore all
@@ -1109,6 +1140,149 @@ mod tests {
             app.tr
                 .t_args("tweaks.blocked", &[&app.tweak_store_error.clone().unwrap()])
         );
+        assert_eq!(dword(&fx, ADVANCED, "HideFileExt"), None);
+    }
+
+    /// Holds a pak build until the returned sender is used (or dropped).
+    fn hold_job(app: &mut WinTuneApp) -> std::sync::mpsc::Sender<()> {
+        use super::super::jobs::RunningJob;
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        app.job = Some(RunningJob::BuildPak(BackgroundJob::spawn(
+            "Building gallery.pak",
+            || {},
+            move |_| {
+                let _ = release_rx.recv();
+                Ok(crate::gallery::PakStats {
+                    count: 0,
+                    bytes_before: 0,
+                    bytes_after: 0,
+                })
+            },
+        )));
+        release_tx
+    }
+
+    /// One pending change on each tab; the app ends on Explorer & Taskbar.
+    fn pending_on_both_tabs(app: &mut WinTuneApp) {
+        app.tweak_desired.insert("show_extensions", true);
+        app.tweak_desired.insert("no_app_launch_tracking", true);
+        app.active_tab = ActiveTab::Tweaks;
+    }
+
+    fn one_pending(app: &WinTuneApp) -> String {
+        app.tr.t_args("tweaks.pending_n", &[&1])
+    }
+
+    #[test]
+    fn the_bar_appears_with_a_pending_change_and_applies_only_this_tab() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        pending_on_both_tabs(&mut app);
+
+        let pending = one_pending(&app);
+        for tab in [ActiveTab::Tweaks, ActiveTab::StartPrivacy] {
+            app.active_tab = tab;
+            let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+            assert!(texts.contains(&pending), "{tab:?}: {texts:?}");
+        }
+
+        // Start & Privacy is showing.
+        let label = app.tr.t("tweaks.apply");
+        click_text(&mut app, &ctx, &label);
+        run_until_idle(&mut app, &ctx);
+
+        assert_eq!(dword(&fx, ADVANCED, "Start_TrackProgs"), Some(0));
+        assert_eq!(dword(&fx, ADVANCED, "HideFileExt"), None);
+        assert_eq!(
+            app.pending_tweak_changes_in(explorer_groups()),
+            vec![("show_extensions".to_string(), true)]
+        );
+    }
+
+    #[test]
+    fn the_bar_is_absent_without_a_pending_change() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+        for key in ["tweaks.apply", "tweaks.discard"] {
+            assert!(!texts.contains(&app.tr.t(key)), "{key} drawn");
+        }
+    }
+
+    #[test]
+    fn discard_in_the_bar_only_clears_this_tab() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        pending_on_both_tabs(&mut app);
+
+        let label = app.tr.t("tweaks.discard");
+        click_text(&mut app, &ctx, &label);
+
+        assert!(app.pending_tweak_changes_in(explorer_groups()).is_empty());
+        let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+        assert!(
+            !texts.contains(&app.tr.t("tweaks.discard")),
+            "bar still drawn"
+        );
+        assert_eq!(
+            app.pending_tweak_changes_in(WinTuneApp::tweak_groups_of(ActiveTab::StartPrivacy))
+                .len(),
+            1
+        );
+        app.active_tab = ActiveTab::StartPrivacy;
+        let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+        assert!(texts.contains(&one_pending(&app)));
+    }
+
+    #[test]
+    fn while_a_job_runs_the_tweak_bar_shows_progress_and_no_actions() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        pending_on_both_tabs(&mut app);
+        let release = hold_job(&mut app);
+
+        let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+        let title = app.tr.t("job.build_pak");
+        assert_eq!(
+            texts.iter().filter(|t| **t == title).count(),
+            1,
+            "one action bar, with the job's title: {texts:?}"
+        );
+        for key in ["tweaks.apply", "tweaks.discard"] {
+            assert!(!texts.contains(&app.tr.t(key)), "{key} drawn during a job");
+        }
+
+        let toggle = toggle_of(&mut app, &ctx, "hide_recent_files");
+        let busy = app.busy_or_blocked(&None).expect("busy reason");
+        assert!(hover_texts(&mut app, &ctx, toggle).contains(&busy));
+        release.send(()).unwrap();
+        run_until_idle(&mut app, &ctx);
+    }
+
+    #[test]
+    fn an_unreadable_store_disables_apply_with_the_reason() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        std::fs::write(fx.dir.join("tweaks-backups.json"), "{ broken").unwrap();
+        let mut app = tweaks_app(&fx, &ctx);
+        app.reload_tweak_store();
+        let error = app.tweak_store_error.clone().expect("store error");
+        app.tweak_desired.insert("show_extensions", true);
+
+        let out = frame(&mut app, &ctx, tall_input(vec![]));
+        let apply = text_center(&out, &app.tr.t("tweaks.apply")).expect("Apply drawn");
+        let blocked = app.tr.t_args("tweaks.blocked", &[&error]);
+        assert!(
+            hover_texts(&mut app, &ctx, apply).contains(&blocked),
+            "no blocked reason over Apply"
+        );
+        click_at(&mut app, &ctx, apply);
+        run_until_idle(&mut app, &ctx);
+        assert!(!app.is_busy());
         assert_eq!(dword(&fx, ADVANCED, "HideFileExt"), None);
     }
 }

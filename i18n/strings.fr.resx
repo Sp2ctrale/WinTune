@@ -797,6 +797,15 @@ La restauration remet ce choix, mais Windows le protège par un hachage : il peu
   <data name="tweaks.blocked" xml:space="preserve">
     <value>Les modifications sont bloquées : {0}</value>
   </data>
+  <data name="tweaks.pending_n" xml:space="preserve">
+    <value>{0} modification(s) en attente</value>
+  </data>
+  <data name="tweaks.apply" xml:space="preserve">
+    <value>Appliquer</value>
+  </data>
+  <data name="tweaks.discard" xml:space="preserve">
+    <value>Annuler les modifications</value>
+  </data>
   <data name="tweaks.nothing_to_apply" xml:space="preserve">
     <value>Rien à appliquer : activez ou désactivez d'abord un réglage.</value>
   </data>

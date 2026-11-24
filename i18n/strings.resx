@@ -798,6 +798,15 @@ Rollback puts the choice back, but Windows protects it with a hash: it may still
   <data name="tweaks.blocked" xml:space="preserve">
     <value>Changes are blocked: {0}</value>
   </data>
+  <data name="tweaks.pending_n" xml:space="preserve">
+    <value>{0} changes pending</value>
+  </data>
+  <data name="tweaks.apply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="tweaks.discard" xml:space="preserve">
+    <value>Discard</value>
+  </data>
   <data name="tweaks.nothing_to_apply" xml:space="preserve">
     <value>Nothing to apply: turn a setting on or off first.</value>
   </data>

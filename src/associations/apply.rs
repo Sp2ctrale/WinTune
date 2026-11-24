@@ -404,7 +404,7 @@ pub fn apply_extensions(
         ) {
             Ok(()) => report.succeeded.push(ext.clone()),
             Err(e) => report.errors.push(format!(
-                "{}: {} (may be partially applied, use Rollback to restore it)",
+                "{}: {} (may be partially applied: restore it from History)",
                 ext, e
             )),
         }

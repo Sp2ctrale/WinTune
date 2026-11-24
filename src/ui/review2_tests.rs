@@ -132,7 +132,7 @@ fn a_refused_config_save_is_reported_after_an_apply() {
     let fx = TempIcons::new(&["foo"]);
     let ctx = egui::Context::default();
     let mut app = fx.app_with_rules(&ctx, &[".foo"]);
-    app.config_error = Some("config.json is unreadable".into());
+    app.config_error = Some(corrupt("config.json", "bad json"));
     let rules = app.config.extensions.clone();
 
     app.start_apply(&ctx, rules);

@@ -1,9 +1,11 @@
 //! Translation of the engines' message codes. The engines return enums
-//! (`RuleProblem`, `DriftReason`, `CustomReason`); the UI turns them into
-//! text in the chosen language here. Arguments follow the enum fields.
+//! (`RuleProblem`, `DriftReason`, `CustomReason`, `LoadError`); the UI turns
+//! them into text in the chosen language here. Arguments follow the enum
+//! fields.
 
 use super::Tr;
 use crate::associations::{DriftField, DriftReason, RuleProblem};
+use crate::persist::LoadError;
 use crate::tweaks::{CustomReason, TweakGroup};
 
 pub fn rule_problem(tr: Tr, p: &RuleProblem) -> String {
@@ -62,6 +64,19 @@ pub fn custom_reason(tr: Tr, c: &CustomReason) -> String {
         }
         CustomReason::UnexpectedType { name } => tr.t_args("custom.unexpected_type", &[name]),
         CustomReason::Unreadable(e) => tr.t_args("custom.unreadable", &[e]),
+    }
+}
+
+/// A store or config file that could not be loaded: the path and the raw
+/// serde / OS detail inside a translated sentence.
+pub fn load_error(tr: Tr, e: &LoadError) -> String {
+    match e {
+        LoadError::Corrupt { path, detail } => {
+            tr.t_args("load.corrupt", &[&path.display(), detail])
+        }
+        LoadError::Unreadable { path, detail } => {
+            tr.t_args("load.unreadable", &[&path.display(), detail])
+        }
     }
 }
 

@@ -348,6 +348,12 @@
   <data name="notice.config_unreadable" xml:space="preserve">
     <value>Règles par défaut utilisées : {0} L'enregistrement est désactivé tant que ce n'est pas corrigé.</value>
   </data>
+  <data name="load.corrupt" xml:space="preserve">
+    <value>{0} est illisible ({1}). Il n'a pas été modifié : corrigez-le ou déplacez-le avant d'appliquer des changements.</value>
+  </data>
+  <data name="load.unreadable" xml:space="preserve">
+    <value>Impossible de lire {0} : {1}</value>
+  </data>
   <data name="nav.home" xml:space="preserve">
     <value>Accueil</value>
   </data>
@@ -454,7 +460,7 @@
     <value>WinTune ne connaît plus ce réglage et ne peut donc pas le restaurer.</value>
   </data>
   <data name="originals.unreadable" xml:space="preserve">
-    <value>{0} est illisible, ses restaurations sont donc bloquées : {1}</value>
+    <value>Les restaurations sont bloquées : {0}</value>
   </data>
   <data name="originals.empty" xml:space="preserve">
     <value>Rien d'enregistré pour l'instant. WinTune enregistre l'original la première fois qu'il modifie quelque chose.</value>
@@ -598,7 +604,7 @@
     <value>Projet sur GitHub</value>
   </data>
   <data name="settings.config_unreadable" xml:space="preserve">
-    <value>config.json est illisible : {0} Les modifications ne sont pas enregistrées tant qu'il n'est pas réparé.</value>
+    <value>{0} Les modifications ne sont pas enregistrées tant qu'il n'est pas réparé.</value>
   </data>
   <data name="window.minimize" xml:space="preserve">
     <value>Réduire</value>
@@ -873,7 +879,7 @@ La restauration remet ce choix, mais Windows le protège par un hachage : il peu
     <value>Aucun réglage ne correspond à « {0} ».</value>
   </data>
   <data name="tweaks.store_unreadable" xml:space="preserve">
-    <value>Les originaux enregistrés sont illisibles, les modifications sont donc bloquées : {0}</value>
+    <value>Les modifications sont bloquées : {0}</value>
   </data>
   <data name="tweaks.restore_original" xml:space="preserve">
     <value>Restaurer l'original</value>

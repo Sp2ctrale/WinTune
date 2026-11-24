@@ -50,7 +50,8 @@ impl WinTuneApp {
             }
             Err(e) => {
                 self.tweak_store = TweakBackupStore::default();
-                self.notify(ToastKind::Error, e.clone());
+                let text = messages::load_error(self.tr, &e);
+                self.notify(ToastKind::Error, text);
                 self.tweak_store_error = Some(e);
             }
         }
@@ -225,7 +226,8 @@ impl WinTuneApp {
             return;
         }
         if let Some(err) = &self.tweak_store_error {
-            let msg = self.tr.t_args("tweaks.blocked", &[err]);
+            let detail = messages::load_error(self.tr, err);
+            let msg = self.tr.t_args("tweaks.blocked", &[&detail]);
             self.notify(ToastKind::Error, msg);
             return;
         }
@@ -302,7 +304,8 @@ impl WinTuneApp {
             return;
         }
         if let Some(err) = &self.tweak_store_error {
-            let msg = self.tr.t_args("tweaks.blocked", &[err]);
+            let detail = messages::load_error(self.tr, err);
+            let msg = self.tr.t_args("tweaks.blocked", &[&detail]);
             self.notify(ToastKind::Error, msg);
             return;
         }
@@ -369,7 +372,8 @@ impl WinTuneApp {
             self.tweaks_header(ui);
             self.tweaks_search(ui);
             if let Some(e) = &self.tweak_store_error {
-                let text = self.tr.t_args("tweaks.store_unreadable", &[e]);
+                let detail = messages::load_error(self.tr, e);
+                let text = self.tr.t_args("tweaks.store_unreadable", &[&detail]);
                 kit::banner(ui, kit::BannerKind::Error, &text, None);
                 ui.add_space(space::S);
             }
@@ -869,7 +873,10 @@ mod tests {
         let error = app.tweak_store_error.clone().expect("store error");
 
         let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
-        let banner = app.tr.t_args("tweaks.store_unreadable", &[&error]);
+        let banner = app.tr.t_args(
+            "tweaks.store_unreadable",
+            &[&messages::load_error(app.tr, &error)],
+        );
         assert!(texts.contains(&banner), "no banner: {texts:?}");
 
         let toggle = toggle_of(&mut app, &ctx, "show_extensions");
@@ -892,8 +899,11 @@ mod tests {
             Some(app.tr.t("tweaks.win11_only"))
         );
 
-        app.tweak_store_error = Some("bad json".into());
-        let blocked = app.tr.t_args("tweaks.blocked", &[&"bad json"]);
+        let error = corrupt("tweaks-backups.json", "bad json");
+        app.tweak_store_error = Some(error.clone());
+        let blocked = app
+            .tr
+            .t_args("tweaks.blocked", &[&messages::load_error(app.tr, &error)]);
         assert_eq!(app.tweak_toggle_disabled_reason(left), Some(blocked));
 
         let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
@@ -1023,7 +1033,8 @@ mod tests {
         assert!(!app.is_busy(), "a job started");
         assert_eq!(
             app.last_notice(),
-            app.tr.t_args("tweaks.blocked", &[&error])
+            app.tr
+                .t_args("tweaks.blocked", &[&messages::load_error(app.tr, &error)])
         );
         assert_eq!(dword(&fx, ADVANCED, "Hidden"), applied);
     }
@@ -1285,8 +1296,13 @@ mod tests {
         assert!(!app.is_busy());
         assert_eq!(
             app.last_notice(),
-            app.tr
-                .t_args("tweaks.blocked", &[&app.tweak_store_error.clone().unwrap()])
+            app.tr.t_args(
+                "tweaks.blocked",
+                &[&messages::load_error(
+                    app.tr,
+                    &app.tweak_store_error.clone().unwrap()
+                )]
+            )
         );
         assert_eq!(dword(&fx, ADVANCED, "HideFileExt"), None);
     }
@@ -1423,7 +1439,9 @@ mod tests {
 
         let out = frame(&mut app, &ctx, tall_input(vec![]));
         let apply = text_center(&out, &app.tr.t("tweaks.apply")).expect("Apply drawn");
-        let blocked = app.tr.t_args("tweaks.blocked", &[&error]);
+        let blocked = app
+            .tr
+            .t_args("tweaks.blocked", &[&messages::load_error(app.tr, &error)]);
         assert!(
             hover_texts(&mut app, &ctx, apply).contains(&blocked),
             "no blocked reason over Apply"

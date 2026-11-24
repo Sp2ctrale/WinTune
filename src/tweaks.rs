@@ -454,7 +454,7 @@ pub fn default_tweak_store_path() -> PathBuf {
     app_data_dir().join("tweaks-backups.json")
 }
 
-pub fn load_tweak_store(path: &Path) -> Result<TweakBackupStore, String> {
+pub fn load_tweak_store(path: &Path) -> Result<TweakBackupStore, crate::persist::LoadError> {
     crate::persist::load_json(path)
 }
 

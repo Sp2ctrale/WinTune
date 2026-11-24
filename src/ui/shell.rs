@@ -354,8 +354,8 @@ mod tests {
         let mut app = fx.app_with_rules(&ctx, &[".foo"]);
 
         // Control: idle, opening the pages reloads the stores.
-        app.backup_store_error = Some("sentinel".into());
-        app.tweak_store_error = Some("sentinel".into());
+        app.backup_store_error = Some(corrupt("backups.json", "sentinel"));
+        app.tweak_store_error = Some(corrupt("tweaks-backups.json", "sentinel"));
         app.open_page(ActiveTab::History);
         app.open_page(ActiveTab::Tweaks);
         assert_eq!(app.backup_store_error, None);
@@ -374,13 +374,19 @@ mod tests {
                 })
             },
         )));
-        app.backup_store_error = Some("sentinel".into());
-        app.tweak_store_error = Some("sentinel".into());
+        app.backup_store_error = Some(corrupt("backups.json", "sentinel"));
+        app.tweak_store_error = Some(corrupt("tweaks-backups.json", "sentinel"));
 
         app.open_page(ActiveTab::History);
         app.open_page(ActiveTab::Tweaks);
-        assert_eq!(app.backup_store_error.as_deref(), Some("sentinel"));
-        assert_eq!(app.tweak_store_error.as_deref(), Some("sentinel"));
+        assert_eq!(
+            app.backup_store_error,
+            Some(corrupt("backups.json", "sentinel"))
+        );
+        assert_eq!(
+            app.tweak_store_error,
+            Some(corrupt("tweaks-backups.json", "sentinel"))
+        );
         release_tx.send(()).unwrap();
         run_until_idle(&mut app, &ctx);
     }
@@ -448,6 +454,81 @@ mod tests {
         for tab in [ActiveTab::Home, ActiveTab::History, ActiveTab::Settings] {
             assert!(super::super::polish::search_box_id(tab).is_none());
         }
+    }
+
+    #[test]
+    fn a_corrupt_store_reads_in_french() {
+        use crate::i18n::messages::load_error;
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let config_path = fx.dir.join("config.json");
+        std::fs::write(&config_path, "{ broken").unwrap();
+        std::fs::write(fx.dir.join("backups.json"), "{ broken").unwrap();
+        std::fs::write(fx.dir.join("tweaks-backups.json"), "{ broken").unwrap();
+        let (config, config_error) = WinTuneApp::load_or_init_config(&config_path);
+        let mut app = fx.app_with(&ctx, config);
+        app.set_language("fr");
+        let tr = app.tr;
+
+        // What startup does, in that order.
+        app.adopt_config_error(config_error);
+        let config_error = app.config_error.clone().expect("config error");
+        assert_eq!(
+            app.last_notice(),
+            tr.t_args(
+                "notice.config_unreadable",
+                &[&load_error(tr, &config_error)]
+            )
+        );
+        app.reload_backup_store();
+        let backups = app.backup_store_error.clone().expect("backups error");
+        assert_eq!(app.last_notice(), load_error(tr, &backups));
+        app.reload_tweak_store();
+        let tweaks = app.tweak_store_error.clone().expect("tweaks error");
+        assert_eq!(app.last_notice(), load_error(tr, &tweaks));
+
+        let mut drawn = Vec::new();
+        for tab in [ActiveTab::History, ActiveTab::Settings, ActiveTab::Tweaks] {
+            app.open_page(tab);
+            for _ in 0..3 {
+                drawn.extend(drawn_texts(&frame(&mut app, &ctx, RawInput::default())));
+            }
+        }
+
+        for (banner, cause) in [
+            (
+                tr.t_args("originals.unreadable", &[&load_error(tr, &backups)]),
+                load_error(tr, &backups),
+            ),
+            (
+                tr.t_args("originals.unreadable", &[&load_error(tr, &tweaks)]),
+                load_error(tr, &tweaks),
+            ),
+            (
+                tr.t_args(
+                    "settings.config_unreadable",
+                    &[&load_error(tr, &config_error)],
+                ),
+                load_error(tr, &config_error),
+            ),
+            (
+                tr.t_args("tweaks.store_unreadable", &[&load_error(tr, &tweaks)]),
+                load_error(tr, &tweaks),
+            ),
+        ] {
+            assert!(banner.contains(&cause));
+            assert!(drawn.contains(&banner), "{banner:?} not drawn: {drawn:?}");
+        }
+        for english in ["It was left untouched", "is unreadable", "Cannot read"] {
+            assert!(
+                !drawn.iter().any(|t| t.contains(english)),
+                "English {english:?} drawn: {drawn:?}"
+            );
+        }
+        // Writing stays blocked, and config.json is left as it was.
+        assert!(app.tweak_apply_disabled_reason().is_some());
+        assert!(app.apply_disabled_reason().is_some());
+        assert_eq!(std::fs::read_to_string(&config_path).unwrap(), "{ broken");
     }
 
     #[test]
@@ -832,8 +913,10 @@ mod tests {
             app.tr.t("history.operations"),
             app.tr.t("originals.title"),
             app.tr.t_args("originals.restore_all", &[&1]),
-            app.tr
-                .t_args("originals.unreadable", &[&"tweaks-backups.json", &error]),
+            app.tr.t_args(
+                "originals.unreadable",
+                &[&crate::i18n::messages::load_error(app.tr, &error)],
+            ),
             app.tr.t("history.copy_reg"),
             ".b: failed".to_string(),
             "C:\\backups\\x.reg".to_string(),

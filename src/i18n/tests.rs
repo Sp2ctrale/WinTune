@@ -239,6 +239,36 @@ fn every_engine_message_translates_in_every_shipped_language() {
         vec!["NAME10"],
     );
     custom(CustomReason::Unreadable(s("WHY11")), vec!["WHY11"]);
+    // Load errors: `Display` keeps the historical English sentences (logs,
+    // reports), the UI has its own wording (UI redesign PR 6 ruling). Both
+    // carry the path and the raw detail.
+    let mut load = |e: crate::persist::LoadError, args: Vec<&'static str>, shown: &str| {
+        for a in &args {
+            assert!(e.to_string().contains(a), "Display lacks {a:?}");
+        }
+        let shown = shown.to_string();
+        cases.push((
+            Box::new(move |tr| super::messages::load_error(tr, &e)),
+            args,
+            shown,
+        ));
+    };
+    load(
+        crate::persist::LoadError::Corrupt {
+            path: "PATH12".into(),
+            detail: s("WHY12"),
+        },
+        vec!["PATH12", "WHY12"],
+        "PATH12 can't be read (WHY12). It was left untouched: fix or move it before applying changes.",
+    );
+    load(
+        crate::persist::LoadError::Unreadable {
+            path: "PATH13".into(),
+            detail: s("WHY13"),
+        },
+        vec!["PATH13", "WHY13"],
+        "Can't read PATH13: WHY13",
+    );
 
     for (code, _) in Tr::languages() {
         let tr = Tr::new(code);

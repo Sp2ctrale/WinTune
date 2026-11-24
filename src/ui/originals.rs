@@ -144,7 +144,7 @@ impl WinTuneApp {
 
         match &self.backup_store_error {
             Some(e) => {
-                let text = tr.t_args("originals.unreadable", &[&"backups.json", e]);
+                let text = tr.t_args("originals.unreadable", &[&messages::load_error(tr, e)]);
                 kit::banner(ui, kit::BannerKind::Error, &text, None);
                 shown += 1;
             }
@@ -166,7 +166,7 @@ impl WinTuneApp {
         }
         match &self.tweak_store_error {
             Some(e) => {
-                let text = tr.t_args("originals.unreadable", &[&"tweaks-backups.json", e]);
+                let text = tr.t_args("originals.unreadable", &[&messages::load_error(tr, e)]);
                 kit::banner(ui, kit::BannerKind::Error, &text, None);
                 shown += 1;
             }
@@ -551,9 +551,10 @@ mod tests {
 
         let out = settle(&mut app, &ctx);
         let texts = drawn_texts(&out);
-        let banner = app
-            .tr
-            .t_args("originals.unreadable", &[&"backups.json", &error]);
+        let banner = app.tr.t_args(
+            "originals.unreadable",
+            &[&messages::load_error(app.tr, &error)],
+        );
         assert!(texts.contains(&banner), "no banner: {texts:?}");
         let assoc = app.tr.t("history.module.associations");
         assert!(in_originals(&app, &out, &assoc).is_none());
@@ -585,9 +586,10 @@ mod tests {
 
         let out = settle(&mut app, &ctx);
         let texts = drawn_texts(&out);
-        let banner = app
-            .tr
-            .t_args("originals.unreadable", &[&"tweaks-backups.json", &error]);
+        let banner = app.tr.t_args(
+            "originals.unreadable",
+            &[&messages::load_error(app.tr, &error)],
+        );
         assert!(texts.contains(&banner), "no banner: {texts:?}");
         for key in ["history.module.explorer", "history.module.start"] {
             assert!(
@@ -736,8 +738,8 @@ mod tests {
         let mut app = fx.app_with_rules(&ctx, &[".foo"]);
 
         // Idle: opening History reloads both stores.
-        app.backup_store_error = Some("sentinel".into());
-        app.tweak_store_error = Some("sentinel".into());
+        app.backup_store_error = Some(corrupt("backups.json", "sentinel"));
+        app.tweak_store_error = Some(corrupt("tweaks-backups.json", "sentinel"));
         app.open_page(ActiveTab::History);
         assert_eq!(app.backup_store_error, None);
         assert_eq!(app.tweak_store_error, None);
@@ -745,11 +747,17 @@ mod tests {
         // Under a running job they are left alone.
         app.open_page(ActiveTab::Home);
         let release = hold_job(&mut app);
-        app.backup_store_error = Some("sentinel".into());
-        app.tweak_store_error = Some("sentinel".into());
+        app.backup_store_error = Some(corrupt("backups.json", "sentinel"));
+        app.tweak_store_error = Some(corrupt("tweaks-backups.json", "sentinel"));
         app.open_page(ActiveTab::History);
-        assert_eq!(app.backup_store_error.as_deref(), Some("sentinel"));
-        assert_eq!(app.tweak_store_error.as_deref(), Some("sentinel"));
+        assert_eq!(
+            app.backup_store_error,
+            Some(corrupt("backups.json", "sentinel"))
+        );
+        assert_eq!(
+            app.tweak_store_error,
+            Some(corrupt("tweaks-backups.json", "sentinel"))
+        );
         release.send(()).unwrap();
         run_until_idle(&mut app, &ctx);
     }

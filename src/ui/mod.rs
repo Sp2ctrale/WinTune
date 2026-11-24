@@ -36,9 +36,10 @@ use crate::detector::{
     has_wsl_distribution, is_windows_11_build, resolve_vscode_executable, windows_build,
 };
 use crate::gallery::{IconCategory, IconGallery};
-use crate::i18n::Tr;
+use crate::i18n::{messages, Tr};
 use crate::models::ThemeMode;
 use crate::models::{app_data_dir, AppConfig, BackupStore};
+use crate::persist::LoadError;
 use crate::tweaks::{
     current_user_label, default_tweak_store_path, notify_explorer_settings, TweakBackupStore,
     TweakStatus, TweakTarget,
@@ -176,7 +177,7 @@ pub struct WinTuneApp {
     toasts: kit::Toasts,
     /// Set when backups.json cannot be read: registry changes are blocked so
     /// the next save cannot overwrite the recorded snapshots.
-    backup_store_error: Option<String>,
+    backup_store_error: Option<LoadError>,
     wsl_detected: bool,
     new_ext_input: String,
     logo_texture: Option<TextureHandle>,
@@ -193,7 +194,7 @@ pub struct WinTuneApp {
     /// Original states of the tweaks (tweaks-backups.json).
     tweak_store: TweakBackupStore,
     /// Set when tweaks-backups.json cannot be read: tweak changes are blocked.
-    tweak_store_error: Option<String>,
+    tweak_store_error: Option<LoadError>,
     tweak_statuses: HashMap<&'static str, TweakStatus>,
     /// Checkbox states the user changed and has not applied yet.
     tweak_desired: HashMap<&'static str, bool>,
@@ -214,7 +215,7 @@ pub struct WinTuneApp {
     history_show_all: bool,
     /// Set when config.json exists but is unreadable: saving is refused so
     /// the user's rules are never replaced by the defaults.
-    config_error: Option<String>,
+    config_error: Option<LoadError>,
     /// Debounced writes of config.json.
     autosave: autosave::Autosave,
 }
@@ -232,11 +233,7 @@ impl WinTuneApp {
         shell::round_borderless_window(cc);
         let windir = std::env::var_os("WINDIR").unwrap_or_else(|| r"C:\Windows".into());
         kit::fonts::install(&cc.egui_ctx, &std::path::Path::new(&windir).join("Fonts"));
-        if let Some(e) = &config_error {
-            let text = app.tr.t_args("notice.config_unreadable", &[e]);
-            app.notify(kit::ToastKind::Error, text);
-        }
-        app.config_error = config_error;
+        app.adopt_config_error(config_error);
         app.reload_backup_store();
         app.reload_tweak_store();
         app.refresh_tweak_statuses();
@@ -381,7 +378,8 @@ impl WinTuneApp {
             }
             Err(e) => {
                 self.backup_store = BackupStore::default();
-                self.notify(kit::ToastKind::Error, e.clone());
+                let text = messages::load_error(self.tr, &e);
+                self.notify(kit::ToastKind::Error, text);
                 self.backup_store_error = Some(e);
             }
         }
@@ -445,17 +443,29 @@ impl WinTuneApp {
     }
 
     /// The config, plus an error when the file exists but cannot be used.
-    fn load_or_init_config(path: &Path) -> (AppConfig, Option<String>) {
+    fn load_or_init_config(path: &Path) -> (AppConfig, Option<LoadError>) {
         match crate::persist::load_json::<AppConfig>(path) {
             Ok(config) => (config, None),
             Err(e) => (AppConfig::default(), Some(e)),
         }
     }
 
+    /// Startup: remembers why config.json could not be loaded (which blocks
+    /// every save of it) and says so in a toast.
+    fn adopt_config_error(&mut self, error: Option<LoadError>) {
+        if let Some(e) = &error {
+            let detail = messages::load_error(self.tr, e);
+            let text = self.tr.t_args("notice.config_unreadable", &[&detail]);
+            self.notify(kit::ToastKind::Error, text);
+        }
+        self.config_error = error;
+    }
+
     /// Saves config.json; refused while the file on disk is unreadable.
+    /// The error is English: it ends up in the report and the history.
     fn try_save_config(&self) -> Result<(), String> {
         if let Some(e) = &self.config_error {
-            return Err(e.clone());
+            return Err(e.to_string());
         }
         let path = &self.env.config_path;
         // The persist error already names the file: it is the raw detail

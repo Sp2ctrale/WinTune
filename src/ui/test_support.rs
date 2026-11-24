@@ -126,6 +126,14 @@ pub(super) fn frame(app: &mut WinTuneApp, ctx: &egui::Context, input: RawInput) 
     ctx.run(input, |ctx| app.ui(ctx))
 }
 
+/// A store error, for tests that only need one to be set.
+pub(super) fn corrupt(file: &str, detail: &str) -> crate::persist::LoadError {
+    crate::persist::LoadError::Corrupt {
+        path: file.into(),
+        detail: detail.into(),
+    }
+}
+
 pub(super) fn close_request() -> RawInput {
     let mut input = RawInput::default();
     input

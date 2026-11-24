@@ -129,7 +129,8 @@ impl WinTuneApp {
             return;
         }
         if let Some(err) = &self.backup_store_error {
-            let text = self.tr.t_args("notice.registry_blocked", &[err]);
+            let detail = crate::i18n::messages::load_error(self.tr, err);
+            let text = self.tr.t_args("notice.registry_blocked", &[&detail]);
             self.notify(ToastKind::Error, text);
             return;
         }
@@ -183,7 +184,8 @@ impl WinTuneApp {
             return;
         }
         if let Some(err) = &self.backup_store_error {
-            let text = self.tr.t_args("notice.rollback_blocked", &[err]);
+            let detail = crate::i18n::messages::load_error(self.tr, err);
+            let text = self.tr.t_args("notice.rollback_blocked", &[&detail]);
             self.notify(ToastKind::Error, text);
             return;
         }

@@ -55,7 +55,7 @@ pub struct UserOverrideSnapshot {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtensionBackup {
     pub extension: String,
-    /// ProgID written by the most recent apply (shown in the Rollback tab).
+    /// ProgID written by the most recent apply (shown in History).
     #[serde(default)]
     pub custom_prog_id: String,
     #[serde(default)]

@@ -158,8 +158,8 @@ the module filter and one expandable row per entry of `history.jsonl`.
 and `tweaks-backups.json`, grouped by module (a snapshot of a tweak that no
 longer exists goes under "Other", with its raw id). Each item, and each group,
 has a restore button that asks first and then runs one existing job
-(`start_rollback` or `start_restore_tweaks`). There is no "restore
-everything" button. Opening History reloads both stores, unless a job runs.
+(`start_rollback` or `start_restore_tweaks`). Each group has its own
+"Restore all", but there is no global restore-everything button. Opening History reloads both stores, unless a job runs.
 An unreadable store disables only its own groups. There is no Rollback tab:
 History replaced it.
 

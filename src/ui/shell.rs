@@ -672,6 +672,7 @@ mod tests {
             })
         };
         let mut texts = Vec::new();
+        let applied_tweaks = pending_tweaks.clone();
         for (tab, tweak) in pending_tweaks {
             app.active_tab = tab;
             for _ in 0..3 {
@@ -839,16 +840,22 @@ mod tests {
         ] {
             assert!(texts.contains(&drawn), "{drawn:?} not drawn on History");
         }
-        for key in [
-            "history.module.associations",
-            "history.module.explorer",
-            "history.module.start",
-            "originals.other",
-        ] {
-            let drawn = app.tr.t(key);
+        // The module names are also the filter chips, so prove each group
+        // by one of its own rows.
+        let mut rows = vec![
+            ".a".to_string(),
+            "gone_tweak".to_string(),
+            app.tr.t("originals.other"),
+        ];
+        rows.extend(
+            applied_tweaks
+                .iter()
+                .map(|(_, id)| crate::i18n::messages::tweak_title(app.tr, id)),
+        );
+        for drawn in rows {
             assert!(
                 all_groups.contains(&drawn),
-                "{key} ({drawn:?}) group not drawn"
+                "{drawn:?} (saved original) not drawn"
             );
         }
         for (key, value) in &english_only {

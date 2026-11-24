@@ -107,16 +107,25 @@ impl WinTuneApp {
         self.tweak_statuses.get(id) == Some(&TweakStatus::On)
     }
 
+    /// Whether wanting `wanted` for `tweak` is a change to apply: the one
+    /// rule behind both the row's pending pill and `pending_tweak_changes`.
+    /// `has_desired` says the user picked a value (in `tweak_desired`).
+    /// Unavailable tweaks never are; a "Custom" value is neither on nor off,
+    /// so either picked choice is a change.
+    fn tweak_change_is_pending(&self, tweak: &Tweak, wanted: bool, has_desired: bool) -> bool {
+        self.tweak_available(tweak)
+            && (wanted != self.tweak_is_on(tweak.id)
+                || (has_desired && self.tweak_is_custom(tweak.id)))
+    }
+
     /// Changes the user asked for that differ from the registry, available
     /// tweaks only, in catalog order.
     pub(super) fn pending_tweak_changes(&self) -> Vec<(String, bool)> {
         catalog()
             .iter()
-            .filter(|t| self.tweak_available(t))
             .filter_map(|t| {
                 let wanted = *self.tweak_desired.get(t.id)?;
-                // A "Custom" value is neither on nor off: either choice is a change.
-                (wanted != self.tweak_is_on(t.id) || self.tweak_is_custom(t.id))
+                self.tweak_change_is_pending(t, wanted, true)
                     .then(|| (t.id.to_string(), wanted))
             })
             .collect()
@@ -483,11 +492,9 @@ impl WinTuneApp {
                     kit::pill(ui, &tr.t("tweaks.pill.unofficial"), PillKind::Warning)
                         .on_hover_text(tr.t("tweaks.unofficial_hint"));
                 }
-                // After the toggle, so the pill follows this frame's click. A
-                // Custom value is neither on nor off: either choice is a change.
-                let pending =
-                    available && (wanted != current_on || (custom && (desired || changed)));
-                if pending {
+                // After the toggle, so the pill follows this frame's click (a
+                // first click on a Custom tweak turns it on: `wanted` differs).
+                if self.tweak_change_is_pending(tweak, wanted, desired) {
                     let label = if wanted {
                         tr.t("tweaks.pill.will_on")
                     } else {
@@ -706,6 +713,63 @@ mod tests {
         assert_eq!(app.pending_tweak_changes_in(explorer_groups()).len(), 1);
         app.tweak_desired.insert("show_extensions", true);
         assert_eq!(app.pending_tweak_changes_in(explorer_groups()).len(), 1);
+    }
+
+    #[test]
+    fn the_pending_pill_and_the_pending_changes_agree() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        set_dword(&fx, ADVANCED, "HideFileExt", 7);
+        set_dword(&fx, ADVANCED, "Hidden", 1);
+        app.refresh_tweak_statuses();
+        app.env.is_windows_11 = false;
+        assert!(matches!(
+            app.tweak_statuses.get("show_extensions"),
+            Some(TweakStatus::Custom(_))
+        ));
+        assert_eq!(
+            app.tweak_statuses.get("show_hidden"),
+            Some(&TweakStatus::On)
+        );
+        assert_eq!(
+            app.tweak_statuses.get("hide_task_view"),
+            Some(&TweakStatus::Off)
+        );
+        let (will_on, will_off) = (
+            app.tr.t("tweaks.pill.will_on"),
+            app.tr.t("tweaks.pill.will_off"),
+        );
+
+        // Custom, On, Off, and a Windows 11-only tweak on Windows 10.
+        for id in [
+            "show_extensions",
+            "show_hidden",
+            "hide_task_view",
+            "taskbar_left",
+        ] {
+            for wanted in [None, Some(true), Some(false)] {
+                app.tweak_desired.clear();
+                if let Some(w) = wanted {
+                    app.tweak_desired.insert(id, w);
+                }
+                let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+                let pills: Vec<bool> = texts
+                    .iter()
+                    .filter_map(|t| {
+                        (*t == will_on)
+                            .then_some(true)
+                            .or((*t == will_off).then_some(false))
+                    })
+                    .collect();
+                let pending: Vec<bool> = app
+                    .pending_tweak_changes_in(explorer_groups())
+                    .into_iter()
+                    .map(|(_, w)| w)
+                    .collect();
+                assert_eq!(pills, pending, "{id} wanted {wanted:?}");
+            }
+        }
     }
 
     #[test]

@@ -163,8 +163,29 @@ impl WinTuneApp {
         }
     }
 
+    /// History / status name of a tweak restore: the open tweaks tab's, or,
+    /// from another page (History), the tab of the restored tweaks.
+    fn restore_module_of(&self, ids: &[String]) -> &'static str {
+        let tab = match self.active_tab {
+            tab @ (ActiveTab::Tweaks | ActiveTab::StartPrivacy) => tab,
+            _ => {
+                let start = Self::tweak_groups_of(ActiveTab::StartPrivacy);
+                let all_start = !ids.is_empty()
+                    && ids.iter().all(|id| {
+                        crate::tweaks::find_tweak(id).is_some_and(|t| start.contains(&t.group))
+                    });
+                if all_start {
+                    ActiveTab::StartPrivacy
+                } else {
+                    ActiveTab::Tweaks
+                }
+            }
+        };
+        Self::tweaks_module_of(tab)
+    }
+
     /// Ids of this user's recorded originals that belong to `groups`.
-    fn user_backups_in(&self, groups: &[TweakGroup]) -> Vec<String> {
+    pub(super) fn user_backups_in(&self, groups: &[TweakGroup]) -> Vec<String> {
         self.tweak_store
             .backups_of(&self.env.user_label)
             .map(|b| {
@@ -246,9 +267,13 @@ impl WinTuneApp {
             return;
         }
         let tr = self.tr;
+        // A tweak the catalog no longer knows is named by its raw id.
         let titles: Vec<String> = ids
             .iter()
-            .filter_map(|id| crate::tweaks::find_tweak(id).map(|t| messages::tweak_title(tr, t.id)))
+            .map(|id| match crate::tweaks::find_tweak(id) {
+                Some(t) => messages::tweak_title(tr, t.id),
+                None => id.clone(),
+            })
             .collect();
         self.pending_confirm = Some(Confirm {
             title: tr.t("confirm.restore_tweaks.title"),
@@ -275,7 +300,7 @@ impl WinTuneApp {
         let mut store = self.tweak_store.clone();
         let (user, is_windows_11, store_path, reg_backup_dir) = self.tweak_options();
         let repaint_ctx = ctx.clone();
-        let module = Self::tweaks_module_of(self.active_tab);
+        let module = self.restore_module_of(&ids);
         let job = BackgroundJob::spawn(
             "Restoring original settings",
             move || repaint_ctx.request_repaint(),

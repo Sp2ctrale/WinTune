@@ -427,6 +427,36 @@
   <data name="history.no_match" xml:space="preserve">
     <value>No operation for this module.</value>
   </data>
+  <data name="originals.title" xml:space="preserve">
+    <value>Saved originals</value>
+  </data>
+  <data name="originals.subtitle" xml:space="preserve">
+    <value>What Windows had before WinTune changed it. Restoring puts it back.</value>
+  </data>
+  <data name="originals.restore_all" xml:space="preserve">
+    <value>Restore all ({0})</value>
+  </data>
+  <data name="originals.restore" xml:space="preserve">
+    <value>Restore original</value>
+  </data>
+  <data name="originals.assoc_desc" xml:space="preserve">
+    <value>Original: {0} · saved {1}</value>
+  </data>
+  <data name="originals.saved_on" xml:space="preserve">
+    <value>Saved {0}</value>
+  </data>
+  <data name="originals.none" xml:space="preserve">
+    <value>none</value>
+  </data>
+  <data name="originals.other" xml:space="preserve">
+    <value>Other</value>
+  </data>
+  <data name="originals.unreadable" xml:space="preserve">
+    <value>{0} can't be read, so its restores are blocked: {1}</value>
+  </data>
+  <data name="originals.empty" xml:space="preserve">
+    <value>Nothing saved yet. WinTune saves the original the first time it changes something.</value>
+  </data>
   <data name="home.title" xml:space="preserve">
     <value>Home</value>
   </data>

@@ -5,7 +5,7 @@ use egui::{
     RichText, Rounding, Sense, Stroke, Ui, WidgetInfo, WidgetType,
 };
 
-use super::controls::action_button;
+use super::controls::{action_button, BUTTON_HEIGHT};
 use super::fonts::{semibold, ICONS};
 use super::icons::{glyph, icon_text, icons_available};
 use super::{current_palette, radius, space, text_size, Icon};
@@ -47,18 +47,38 @@ pub fn card<R>(ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> R {
         .inner
 }
 
-/// A semibold title above a card.
-pub fn section<R>(ui: &mut Ui, title: &str, body: impl FnOnce(&mut Ui) -> R) -> R {
+fn section_title(ui: &mut Ui, title: &str) {
     let p = current_palette(ui.ctx());
     ui.label(
         RichText::new(title)
             .font(semibold(ui.ctx(), text_size::SECTION))
             .color(p.text),
     );
+}
+
+fn section_card<R>(ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> R {
     ui.add_space(space::S);
     let result = card(ui, body);
     ui.add_space(space::L);
     result
+}
+
+/// A semibold title above a card.
+pub fn section<R>(ui: &mut Ui, title: &str, body: impl FnOnce(&mut Ui) -> R) -> R {
+    section_title(ui, title);
+    section_card(ui, body)
+}
+
+/// `section` with an action on the title line: `action` is laid out
+/// right-to-left at the far right, the title on the left.
+pub fn section_with_action<R>(
+    ui: &mut Ui,
+    title: &str,
+    action: impl FnOnce(&mut Ui),
+    body: impl FnOnce(&mut Ui) -> R,
+) -> R {
+    split_row(ui, BUTTON_HEIGHT, action, |ui| section_title(ui, title));
+    section_card(ui, body)
 }
 
 /// One line of a settings card: icon, title and description on the left, a

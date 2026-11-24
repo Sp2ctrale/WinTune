@@ -15,6 +15,7 @@ mod icon_grid;
 mod icon_picker;
 mod jobs;
 pub mod kit;
+mod originals;
 mod polish;
 #[cfg(test)]
 mod review2_tests;

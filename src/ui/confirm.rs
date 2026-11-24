@@ -61,6 +61,17 @@ impl WinTuneApp {
         self.confirm_rollback(vec![extension.to_string()]);
     }
 
+    /// Asks before restoring every saved association original (History's
+    /// "Restore all" of the associations group).
+    pub(super) fn request_restore_all_rules(&mut self) {
+        if self.backup_store.backups.is_empty() {
+            return;
+        }
+        let mut extensions: Vec<String> = self.backup_store.backups.keys().cloned().collect();
+        extensions.sort();
+        self.confirm_rollback(extensions);
+    }
+
     fn confirm_rollback(&mut self, extensions: Vec<String>) {
         let tr = self.tr;
         self.pending_confirm = Some(Confirm {

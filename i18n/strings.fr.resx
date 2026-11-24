@@ -426,6 +426,36 @@
   <data name="history.no_match" xml:space="preserve">
     <value>Aucune opération pour ce module.</value>
   </data>
+  <data name="originals.title" xml:space="preserve">
+    <value>Originaux enregistrés</value>
+  </data>
+  <data name="originals.subtitle" xml:space="preserve">
+    <value>Ce que Windows avait avant que WinTune le modifie. Restaurer le remet en place.</value>
+  </data>
+  <data name="originals.restore_all" xml:space="preserve">
+    <value>Tout restaurer ({0})</value>
+  </data>
+  <data name="originals.restore" xml:space="preserve">
+    <value>Restaurer l'original</value>
+  </data>
+  <data name="originals.assoc_desc" xml:space="preserve">
+    <value>Original : {0} · enregistré le {1}</value>
+  </data>
+  <data name="originals.saved_on" xml:space="preserve">
+    <value>Enregistré le {0}</value>
+  </data>
+  <data name="originals.none" xml:space="preserve">
+    <value>aucun</value>
+  </data>
+  <data name="originals.other" xml:space="preserve">
+    <value>Autres</value>
+  </data>
+  <data name="originals.unreadable" xml:space="preserve">
+    <value>{0} est illisible, ses restaurations sont donc bloquées : {1}</value>
+  </data>
+  <data name="originals.empty" xml:space="preserve">
+    <value>Rien d'enregistré pour l'instant. WinTune enregistre l'original la première fois qu'il modifie quelque chose.</value>
+  </data>
   <data name="home.title" xml:space="preserve">
     <value>Accueil</value>
   </data>

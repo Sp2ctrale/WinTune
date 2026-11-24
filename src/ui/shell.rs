@@ -83,6 +83,10 @@ impl WinTuneApp {
         if page == ActiveTab::Rollback && !self.is_busy() {
             self.reload_backup_store();
         }
+        if page == ActiveTab::History && !self.is_busy() {
+            self.reload_backup_store();
+            self.reload_tweak_store();
+        }
         if page == ActiveTab::Associations && self.active_tab != page {
             self.request_status_refresh();
         }

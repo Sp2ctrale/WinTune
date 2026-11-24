@@ -49,13 +49,14 @@ impl WinTuneApp {
         self.history.truncate(HISTORY_LIMIT);
     }
 
-    /// The History page: the operations list (Task 3 adds saved originals).
+    /// The History page: the operations list, then the saved originals.
     pub(super) fn show_history_page(&mut self, ctx: &egui::Context) {
         let title = self.tr.t("nav.history");
         Self::page_panel(ctx, |ui| {
             kit::page_header(ui, &[], &title, None, |_| {});
             egui::ScrollArea::vertical().show(ui, |ui| {
                 self.show_operations(ui);
+                self.show_originals(ui);
             });
         });
     }

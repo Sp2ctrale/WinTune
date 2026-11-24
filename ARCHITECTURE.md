@@ -128,8 +128,11 @@ colors, sizes or fonts**: they call kit controls and read tokens.
 - **Icons** (`icons.rs`): the `Icon` enum, drawn from Segoe Fluent Icons, or
   Segoe MDL2 Assets on older Windows. Without an icon font the caller gets
   `None` and draws text.
-- **Components**: `controls.rs` (toggle, pill, segmented, disclosure),
-  `surfaces.rs` (card, section, `SettingRow`, banner, empty state), `nav.rs`
+- **Components**: `controls.rs` (toggle, pill, status dot, segmented,
+  disclosure, the `…` overflow menu with its `OVERFLOW_BUTTON` size, and the
+  shared `primary_button` / `secondary_button` at `BUTTON_HEIGHT`),
+  `surfaces.rs` (card, section, `SettingRow` and `show_with_note`, banner,
+  empty state), `nav.rs`
   (navigation sidebar, page header), `feedback.rs` (action bar, toasts,
   dialog).
 

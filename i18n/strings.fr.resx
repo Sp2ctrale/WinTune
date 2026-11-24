@@ -839,6 +839,9 @@ La restauration remet ce choix, mais Windows le protège par un hachage : il peu
   <data name="tweaks.more" xml:space="preserve">
     <value>Plus</value>
   </data>
+  <data name="tweaks.more_for" xml:space="preserve">
+    <value>Plus : {0}</value>
+  </data>
   <data name="tweaks.pill.custom" xml:space="preserve">
     <value>Personnalisé</value>
   </data>

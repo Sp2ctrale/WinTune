@@ -489,7 +489,7 @@ mod controls {
         let picked = RefCell::new(Vec::new());
         let mut draw = |c: &Context| {
             CentralPanel::default().show(c, |ui| {
-                if let Some(i) = overflow_menu(ui, "menu", "More actions", items) {
+                if let Some(i) = overflow_menu(ui, "menu", "More actions", "More: row", items) {
                     picked.borrow_mut().push(i);
                 }
             });

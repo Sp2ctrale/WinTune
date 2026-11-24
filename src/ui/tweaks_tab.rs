@@ -480,6 +480,7 @@ impl WinTuneApp {
         let title = messages::tweak_title(tr, tweak.id);
         let description = messages::tweak_description(tr, tweak.id);
         let more = tr.t("tweaks.more");
+        let more_for = tr.t_args("tweaks.more_for", &[&title]);
         let restore_label = tr.t("tweaks.restore_original");
         let win11_hint = if available {
             tr.t("tweaks.win11_hint")
@@ -508,7 +509,7 @@ impl WinTuneApp {
                         disabled_hint: menu_reason.as_deref(),
                     }];
                     let salt = format!("tweak_menu_{}", tweak.id);
-                    restore = kit::overflow_menu(ui, &salt, &more, &items) == Some(0);
+                    restore = kit::overflow_menu(ui, &salt, &more, &more_for, &items) == Some(0);
                 }
                 if let Some(hint) = &custom_hint {
                     kit::pill(ui, &tr.t("tweaks.pill.custom"), PillKind::Warning)
@@ -559,7 +560,7 @@ mod tests {
     /// Size of a toggle and of a `…` button: no other widget of the tweak
     /// pages has these sizes.
     const TOGGLE: Vec2 = egui::vec2(40.0, 20.0);
-    const MENU: Vec2 = egui::vec2(28.0, 28.0);
+    const MENU: Vec2 = kit::OVERFLOW_BUTTON;
 
     fn dword(fx: &TempIcons, rel: &str, name: &str) -> Option<u32> {
         fx.sandbox
@@ -917,6 +918,114 @@ mod tests {
                 tweak.id
             );
         }
+    }
+
+    #[test]
+    fn an_open_menu_does_not_come_back_after_a_page_switch() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        app.tweak_desired.insert("show_hidden", true);
+        app.start_apply_tweaks(&ctx);
+        run_until_idle(&mut app, &ctx);
+
+        let restore = app.tr.t("tweaks.restore_original");
+        let menu = row_widget(&mut app, &ctx, "show_hidden", MENU).expect("… drawn");
+        click_at(&mut app, &ctx, menu);
+        let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+        assert!(texts.contains(&restore), "the menu did not open");
+
+        // Away and back through the real navigation.
+        let (start, explorer) = (app.tr.t("nav.start"), app.tr.t("nav.explorer"));
+        click_text(&mut app, &ctx, &start);
+        assert_eq!(app.active_tab, ActiveTab::StartPrivacy);
+        // Back, watching every frame of the click: the menu must not show,
+        // not even for the frame in which the page comes back.
+        let out = frame(&mut app, &ctx, tall_input(vec![]));
+        let pos = text_center(&out, &explorer).expect("nav entry drawn");
+        let button = |pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        let mut shown = Vec::new();
+        for events in [
+            vec![egui::Event::PointerMoved(pos)],
+            vec![button(true)],
+            vec![button(false)],
+            vec![],
+            vec![],
+        ] {
+            shown.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(events))));
+        }
+        assert_eq!(app.active_tab, ActiveTab::Tweaks);
+        assert!(!shown.contains(&restore), "the menu reopened by itself");
+    }
+
+    #[test]
+    fn a_blocked_restore_starts_nothing_and_says_why() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        app.tweak_desired.insert("show_hidden", true);
+        app.start_apply_tweaks(&ctx);
+        run_until_idle(&mut app, &ctx);
+        let applied = dword(&fx, ADVANCED, "Hidden");
+        assert_eq!(applied, Some(1), "{}", app.last_notice());
+        assert!(app.tweak_store.has_backup("TEST\\user", "show_hidden"));
+
+        std::fs::write(fx.dir.join("tweaks-backups.json"), "{ broken").unwrap();
+        app.reload_tweak_store();
+        let error = app.tweak_store_error.clone().expect("store error");
+
+        app.start_restore_tweaks(&ctx, vec!["show_hidden".into()]);
+
+        assert!(!app.is_busy(), "a job started");
+        assert_eq!(
+            app.last_notice(),
+            app.tr.t_args("tweaks.blocked", &[&error])
+        );
+        assert_eq!(dword(&fx, ADVANCED, "Hidden"), applied);
+    }
+
+    #[test]
+    fn the_windows_11_pill_says_why_on_windows_10() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        app.env.is_windows_11 = false;
+
+        let out = frame(&mut app, &ctx, tall_input(vec![]));
+        let description = messages::tweak_description(app.tr, "taskbar_left");
+        let row = text_center(&out, &description).expect("row drawn");
+        let label = app.tr.t("tweaks.pill.win11");
+        fn centers(shape: &egui::epaint::Shape, text: &str, found: &mut Vec<Pos2>) {
+            match shape {
+                egui::epaint::Shape::Text(t) if t.galley.text() == text => {
+                    found.push(t.pos + t.galley.rect.center().to_vec2());
+                }
+                egui::epaint::Shape::Vec(shapes) => {
+                    shapes.iter().for_each(|s| centers(s, text, found));
+                }
+                _ => {}
+            }
+        }
+        let mut pills = Vec::new();
+        out.shapes
+            .iter()
+            .for_each(|c| centers(&c.shape, &label, &mut pills));
+        let pill = pills
+            .into_iter()
+            .filter(|p| (p.y - row.y).abs() < 24.0)
+            .min_by(|a, b| (a.y - row.y).abs().total_cmp(&(b.y - row.y).abs()))
+            .expect("the Windows 11 pill of the row");
+
+        let only = app.tr.t("tweaks.win11_only");
+        assert!(
+            hover_texts(&mut app, &ctx, pill).contains(&only),
+            "no reason over the Windows 11 pill"
+        );
     }
 
     #[test]

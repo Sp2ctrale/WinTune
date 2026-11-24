@@ -175,6 +175,12 @@ impl WinTuneApp {
 
         let mut selected = self.active_tab;
         if kit::nav_sidebar(ctx, &brand, &mut selected, &groups, &footer) {
+            if selected != self.active_tab {
+                // The click lands before the page draws, so an open `…` menu
+                // never sees it; egui keeps one popup id and would show the
+                // menu again when its page comes back.
+                ctx.memory_mut(|m| m.close_popup());
+            }
             self.open_page(selected);
         }
     }
@@ -660,7 +666,7 @@ mod tests {
                 texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
             }
             // Open the row's `…` menu; it opens the frame after the click.
-            let menu = widget_on_row(&mut app, tweak, egui::vec2(28.0, 28.0))
+            let menu = widget_on_row(&mut app, tweak, kit::OVERFLOW_BUTTON)
                 .unwrap_or_else(|| panic!("{tab:?}: no … on row {tweak}"));
             let button = |pressed| Event::PointerButton {
                 pos: menu,

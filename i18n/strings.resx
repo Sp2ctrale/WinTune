@@ -799,7 +799,7 @@ Rollback puts the choice back, but Windows protects it with a hash: it may still
     <value>Changes are blocked: {0}</value>
   </data>
   <data name="tweaks.pending_n" xml:space="preserve">
-    <value>{0} changes pending</value>
+    <value>{0} change(s) pending</value>
   </data>
   <data name="tweaks.apply" xml:space="preserve">
     <value>Apply</value>
@@ -839,6 +839,9 @@ Rollback puts the choice back, but Windows protects it with a hash: it may still
   </data>
   <data name="tweaks.more" xml:space="preserve">
     <value>More</value>
+  </data>
+  <data name="tweaks.more_for" xml:space="preserve">
+    <value>More: {0}</value>
   </data>
   <data name="tweaks.pill.custom" xml:space="preserve">
     <value>Custom</value>

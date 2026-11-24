@@ -17,7 +17,7 @@ mod tokens;
 pub use chrome::{caption_bar, resize_edge, CaptionAction, CaptionLabels, CAPTION_HEIGHT};
 pub use controls::{
     disclosure, overflow_menu, pill, primary_button, secondary_button, segmented, status_dot,
-    toggle, toggle_enabled, MenuItem, PillKind, BUTTON_HEIGHT,
+    toggle, toggle_enabled, MenuItem, PillKind, BUTTON_HEIGHT, OVERFLOW_BUTTON,
 };
 pub use feedback::{
     action_bar, dialog, dialog_buttons, ActionBarState, ToastKind, Toasts, TOAST_SECONDS,

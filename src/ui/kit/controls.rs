@@ -307,21 +307,27 @@ pub struct MenuItem<'a> {
     pub disabled_hint: Option<&'a str>,
 }
 
-/// A small `…` button that opens a popup with one entry per item. Returns the
-/// index of the enabled item the user clicked; a disabled item never returns.
+/// Size of the `…` button of an `overflow_menu`.
+pub const OVERFLOW_BUTTON: egui::Vec2 = egui::vec2(28.0, 28.0);
+
+/// A small `…` button that opens a popup with one entry per item. `tooltip`
+/// is the visible hover text; `label` is the accessible name of the button
+/// (for example to say which row it belongs to). Returns the index of the
+/// enabled item the user clicked; a disabled item never returns.
 pub fn overflow_menu(
     ui: &mut Ui,
     id_salt: &str,
     tooltip: &str,
+    label: &str,
     items: &[MenuItem<'_>],
 ) -> Option<usize> {
     let p = current_palette(ui.ctx());
     let popup_id = ui.make_persistent_id(("kit_overflow_menu", id_salt));
-    let (rect, response) = ui.allocate_exact_size(vec2(28.0, 28.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(OVERFLOW_BUTTON, Sense::click());
     let response = response
         .on_hover_cursor(CursorIcon::PointingHand)
         .on_hover_text(tooltip);
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tooltip));
+    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
     if response.clicked() {
         ui.memory_mut(|m| m.toggle_popup(popup_id));
     }
@@ -369,7 +375,8 @@ pub fn overflow_menu(
         |ui| {
             ui.set_min_width(160.0);
             for (i, item) in items.iter().enumerate() {
-                let button = egui::Button::new(item.label).frame(false);
+                let text = egui::RichText::new(item.label).size(text_size::BODY);
+                let button = egui::Button::new(text).frame(false);
                 let mut r = ui.add_enabled(item.enabled, button);
                 if !item.enabled {
                     if let Some(hint) = item.disabled_hint {

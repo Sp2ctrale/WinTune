@@ -596,6 +596,124 @@ mod tests {
                 "associations page or icon picker draws English-only text {value:?} (key {key})"
             );
         }
+
+        // The two tweak pages: one applied tweak with a backup (and its
+        // opened `…` menu), one tweak in a Custom state, a pending change
+        // for the bar, then a Windows 10 frame.
+        let advanced = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced";
+        let mut pending_tweaks = Vec::new();
+        for tab in [ActiveTab::Tweaks, ActiveTab::StartPrivacy] {
+            let tweak = crate::tweaks::catalog()
+                .iter()
+                .find(|t| {
+                    WinTuneApp::tweak_groups_of(tab).contains(&t.group)
+                        && t.os != crate::tweaks::OsRequirement::Windows11
+                        && t.id != "show_extensions"
+                })
+                .unwrap();
+            app.active_tab = tab;
+            app.tweak_desired.insert(tweak.id, true);
+            app.start_apply_tweaks(&ctx);
+            run_until_idle(&mut app, &ctx);
+            assert!(
+                app.tweak_store.has_backup("TEST\\user", tweak.id),
+                "{tab:?}: no backup for {}",
+                tweak.id
+            );
+            // A new pending change: the opposite of what was applied.
+            app.tweak_desired.insert(tweak.id, false);
+            pending_tweaks.push((tab, tweak.id));
+        }
+        let (key, _) = fx
+            .sandbox
+            .root
+            .create_subkey(fx.hkcu(advanced))
+            .expect("create sandbox key");
+        key.set_value("HideFileExt", &7u32).expect("write value");
+        app.refresh_tweak_statuses();
+        // The Unreadable reason replaced by the refresh: draw it too.
+        app.tweak_statuses.insert(
+            id,
+            crate::tweaks::TweakStatus::Custom(crate::tweaks::CustomReason::Unreadable("x".into())),
+        );
+
+        // Center of the widget of exactly `size` on the row of tweak `tweak`.
+        let widget_on_row = |app: &mut WinTuneApp, tweak: &str, size: egui::Vec2| {
+            let out = frame(app, &ctx, tall(vec![]));
+            let description = crate::i18n::messages::tweak_description(app.tr, tweak);
+            let at = text_center(&out, &description)?;
+            ctx.viewport_for(egui::ViewportId::ROOT, |v| {
+                v.prev_pass
+                    .widgets
+                    .layers()
+                    .flat_map(|(_, widgets)| widgets.iter())
+                    .filter(|w| w.rect.size() == size && w.rect.center().x > at.x)
+                    .map(|w| w.rect.center())
+                    .filter(|c| (c.y - at.y).abs() < 24.0)
+                    .min_by(|a, b| (a.y - at.y).abs().total_cmp(&(b.y - at.y).abs()))
+            })
+        };
+        let mut texts = Vec::new();
+        for (tab, tweak) in pending_tweaks {
+            app.active_tab = tab;
+            for _ in 0..3 {
+                texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+            }
+            // Open the row's `…` menu; it opens the frame after the click.
+            let menu = widget_on_row(&mut app, tweak, egui::vec2(28.0, 28.0))
+                .unwrap_or_else(|| panic!("{tab:?}: no … on row {tweak}"));
+            let button = |pressed| Event::PointerButton {
+                pos: menu,
+                button: PointerButton::Primary,
+                pressed,
+                modifiers: Default::default(),
+            };
+            for events in [
+                vec![Event::PointerMoved(menu)],
+                vec![button(true)],
+                vec![button(false)],
+            ] {
+                frame(&mut app, &ctx, tall(events));
+            }
+            for _ in 0..3 {
+                texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+            }
+            // Close the menu again before the next page.
+            frame(&mut app, &ctx, tall(vec![key_press(egui::Key::Escape)]));
+        }
+        app.env.is_windows_11 = false;
+        for tab in [ActiveTab::Tweaks, ActiveTab::StartPrivacy] {
+            app.active_tab = tab;
+            for _ in 0..3 {
+                texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+            }
+        }
+        // The pages, the pending bar, the Custom pill, the menu and the
+        // refresh labels were drawn.
+        let positive = [
+            app.tr.t_args("tweaks.pending_n", &[&1]),
+            app.tr.t("tweaks.pill.custom"),
+            app.tr.t("tweaks.restore_original"),
+        ];
+        for drawn in positive {
+            assert!(texts.contains(&drawn), "{drawn:?} not drawn on tweak pages");
+        }
+        assert!(
+            [
+                "refresh.live",
+                "refresh.new_windows",
+                "refresh.explorer_restart"
+            ]
+            .iter()
+            .any(|k| texts.contains(&app.tr.t(k))),
+            "no refresh label drawn"
+        );
+        for (key, value) in &english_only {
+            assert!(
+                !texts.iter().any(|t| t == *value),
+                "a tweak page draws English-only text {value:?} (key {key})"
+            );
+        }
     }
 
     fn key_press(key: egui::Key) -> Event {

@@ -75,7 +75,9 @@ save writes a temp file, then renames it over the old one.
   translated only when drawn, by `history_module` and `history_action` in
   `i18n/messages.rs`; unknown labels are shown as stored.
 - **One file per page.** The two tweak tabs share `tweaks_tab.rs`, and each
-  shows its own `TweakGroup`s.
+  shows its own `TweakGroup`s. They are kit pages: a section per group, a
+  `SettingRow` per tweak with its state pill, and a `…` menu on rows that
+  have a saved original (it holds "Restore original").
 - **Jobs.** Long operations (apply, rollback, tweaks, icon pack) run on a
   background thread through `ui/jobs.rs`. Only one runs at a time, and none
   starts while a confirmation dialog is open. If you close the window during
@@ -139,7 +141,9 @@ grid. The user no longer goes to the Icons page to assign an icon.
 
 One action bar is drawn per frame. A page with `ActiveTab::owns_action_bar`
 set draws its own bar (`page_action_bar` in `shell.rs`), and the shell draws
-none for it. Toasts sit above that bar.
+none for it. Three pages do: File associations, Explorer & Taskbar and
+Start & Privacy. A tweak page's bar counts only its own pending changes, and
+Discard and Apply touch only its own groups. Toasts sit above that bar.
 
 The other screens still use the helpers in `src/theme.rs`. They are
 rewritten onto the kit in later PRs, and `theme.rs` goes away with them.

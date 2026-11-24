@@ -1,7 +1,7 @@
 # WinTune
 
 WinTune is a Windows 10/11 desktop app for customizing the system. Every change it
-makes can be undone. It has two modules:
+makes can be undone. It has three modules:
 
 - **File associations**: custom icons, the double-click action (open in your
   editor or run the script), right-click verbs, and Explorer preview metadata.
@@ -179,16 +179,15 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `regsnap` | Generic snapshot, restore, delete-tree and `.reg` export. Every module that writes to the registry builds on it |
 | `associations` | File-association engine on an injectable `AssocTarget`, split into `target`, `validate`, `store`, `apply`, `rollback`, `status` and `tests` |
 | `tweaks` | Explorer & Taskbar tweaks engine (catalog, status, apply, restore) on an injectable `TweakTarget` |
-| `persist` | JSON stores: a missing file is empty, a corrupt file is an error, saves are atomic |
+| `persist` | JSON stores: a missing file is empty, a corrupt or unreadable file is a `LoadError` (a code the UI translates), saves are atomic |
 | `history` | Operation log (`history.jsonl`): append one line per operation, read the most recent |
-| `models` | Config and backup data types, plus the default rules |
+| `models` | Config and backup data types, `ThemeMode`, plus the default rules |
 | `gallery` | Shareable icon library (folder plus in-memory `.pak`), background thumbnail decoding, and the pack builder |
 | `tasks` | Background jobs with progress reporting and panic capture |
 | `detector` | VS Code, WSL and user-hive detection |
 | `clock` | Local timestamps |
-| `theme` | Fluent-style dark and light theme (old screens; being replaced by `ui::kit`) |
 | `i18n` | Translations: `.resx` catalogs in `i18n/`, the `Tr` handle, and engine message codes turned into text |
-| `ui` | egui interface, one file per page (`home`, `settings`, `history_panel`, `associations_tab`, `tweaks_tab`, `gallery_tab`), `originals` (History's saved originals), `icon_grid` (the shared icon grid), `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation), `autosave`, `confirm`, `rule_status` and `jobs` |
+| `ui` | egui interface, one file per page (`home`, `associations_tab`, `tweaks_tab` for both tweak pages, `gallery_tab` for Icons, `history_panel`, `settings`), `originals` (History's saved originals), `icon_grid` and `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation and action bars), `autosave`, `confirm`, `rule_status`, `jobs`, and `kit/`, the design kit that holds the theme and every control |
 | `main.rs` | Window setup only |
 
 Apply, rollback and pack building run on a background thread, a progress bar
@@ -212,9 +211,13 @@ disabled button explains on hover why it is disabled.
 1. Put the engine in its own library module, on top of `regsnap`, with an
    injectable target like `AssocTarget` so it can be tested in the HKCU
    sandbox.
-2. Add a variant to `ui::ActiveTab` (title and navigation entry) and a
-   `show_*_tab` method in a new `src/ui/<module>_tab.rs` file.
+2. Add a variant to `ui::ActiveTab` and a page in a new
+   `src/ui/<module>_tab.rs` file, built from `ui::kit` components. Add its
+   navigation entry and Home tile, and its texts in every `.resx` file.
 3. Run long operations through `ui::jobs`.
+
+[CONTRIBUTING.md](CONTRIBUTING.md#adding-a-tweak-or-a-module) has the
+full steps.
 
 ## Releasing
 

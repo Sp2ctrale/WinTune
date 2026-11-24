@@ -6,7 +6,7 @@ the library, so it can be tested without the GUI and without elevation.
 
 ```
                  ┌──────────────────────── ui (egui) ────────────────────────┐
-                 │ pages: home · associations · tweaks (×2) · gallery · ...   │
+                 │ pages: home · associations · tweaks (×2) · icons · history │
                  │ navigation · toasts · progress bar · history · dialog      │
                  │ jobs ── tasks::BackgroundJob (one at a time, with progress)│
                  └───────────────┬───────────────────────────┬────────────────┘
@@ -36,7 +36,7 @@ the library, so it can be tested without the GUI and without elevation.
 
 | File | Owner | Rule |
 | --- | --- | --- |
-| `config.json` | `ui` | Saved atomically. If it is unreadable, defaults are used in memory and **saving is refused** |
+| `config.json` | `ui` | Saved atomically. If it is unreadable, defaults are used in memory and **saving is refused** (the file is never overwritten) |
 | `backups.json` | `associations` | Missing means empty. Unreadable means an error, and all association changes are blocked |
 | `tweaks-backups.json` | `tweaks` | Same rule as `backups.json`. Entries are keyed by user (HKCU is per user), then by tweak id |
 | `history.jsonl` | `history` | Append-only. A damaged line is skipped, never fatal |
@@ -44,6 +44,14 @@ the library, so it can be tested without the GUI and without elevation.
 
 `persist::load_json` and `save_json` implement the first three rules. Every
 save writes a temp file, then renames it over the old one.
+
+`load_json` fails with a `LoadError`, a code and not a sentence:
+`Corrupt { path, detail }` (the file is not valid JSON for the store) or
+`Unreadable { path, detail }` (the OS refused to read it). `detail` is the
+raw serde or OS text. `Display` is an English sentence kept for logs and
+reports. The UI never shows it: `i18n::messages::load_error` turns the code
+into a translated sentence (`load.corrupt`, `load.unreadable`) around the
+raw detail.
 
 ## Safety model (every module that writes to the registry)
 
@@ -63,14 +71,16 @@ save writes a temp file, then renames it over the old one.
   user label, and tests replace it with a sandboxed one.
 - **The frame** (`ui/shell.rs`). A grouped navigation on the left, one page
   in the middle, and two kinds of notice: toasts for results and a progress
-  bar while a job runs. Home (`home.rs`) shows one tile per module, a drift
-  banner and the recent operations. Settings (`settings.rs`) and History
-  (`history_panel.rs`) are pages too. `config.json` is saved by `autosave.rs`
+  bar while a job runs. The pages are Home, File associations, Explorer &
+  Taskbar, Start & Privacy, Icons, History and Settings. A Context menu entry
+  is shown disabled ("coming soon"). Home (`home.rs`) shows one tile per
+  module, a drift banner and the recent operations. Settings (`settings.rs`)
+  and History (`history_panel.rs`) are pages too. `config.json` is saved by `autosave.rs`
   one second after the last edit, and always before the window closes.
 - **`open_page` is the single entry** for switching page. It reloads the
   stores and refreshes statuses (never under a running job), so every
   navigation click, Home tile and "Review" link goes through it. Do not set
-  `active_tab` directly.
+  `active_tab` directly. It also closes any open popup.
 - **History labels.** `history.jsonl` stores English labels. They are
   translated only when drawn, by `history_module` and `history_action` in
   `i18n/messages.rs`; unknown labels are shown as stored.
@@ -100,9 +110,10 @@ save writes a temp file, then renames it over the old one.
   fills `{0}`, `{1}` placeholders (`{{` and `}}` are literal braces in `t_args` only, not in `t`).
   `Tr::languages()` lists the shipped codes with each language's own name
   (the `language.name` key).
-- **Engines return codes, not text.** `RuleProblem`, `DriftReason` and
-  `CustomReason` are enums. `i18n/messages.rs` turns them into text in the
-  chosen language, and also holds the tweak titles, descriptions and group
+- **Engines return codes, not text.** `RuleProblem`, `DriftReason`,
+  `CustomReason` and `LoadError` are enums. `i18n/messages.rs` turns them
+  into text in the chosen language (a raw OS or serde detail stays as it is,
+  inside a translated sentence), and also holds the tweak titles, descriptions and group
   titles (looked up by `TweakGroup` id).
 - **Tests** (`src/i18n/tests.rs`) keep the catalogs honest: every shipped
   language is complete (a missing key would silently fall back to English), no language has keys English lacks, placeholders match English,
@@ -117,8 +128,10 @@ colors, sizes or fonts**: they call kit controls and read tokens.
 - **Tokens** (`tokens.rs`): the `Palette` for light and dark (opaque colors,
   in the spirit of Windows 11 Settings), plus `space`, `radius` and
   `text_size`.
-- **Styles** (`style.rs`): `install_styles` builds one egui style per theme,
-  once. `set_theme_mode` maps `ThemeMode` (System, Light, Dark) to egui's
+- **Styles** (`style.rs`): the theme lives here. `install_styles` builds one
+  egui style per theme, once. `set_theme_mode` maps `ThemeMode` (System,
+  Light, Dark; the type is in `src/models.rs`, because `config.json` stores
+  it) to egui's
   theme preference, so System follows Windows and switching rebuilds nothing.
   `current_palette` and `resolved` give screens the theme in use.
 - **Fonts** (`fonts.rs`): Segoe UI Variable (or `segoeui`) and `seguisb`
@@ -142,9 +155,12 @@ right, with the less common settings under Advanced options. Choosing an
 icon opens the icon picker (`icon_picker.rs`), a dialog over a shared icon
 grid. The user no longer goes to the Icons page to assign an icon.
 
+A page body goes in `WinTuneApp::page_panel` (the central panel with the
+kit's margins) and starts with `kit::page_header`.
+
 One action bar is drawn per frame. A page with `ActiveTab::owns_action_bar`
 set draws its own bar (`page_action_bar` in `shell.rs`), and the shell draws
-none for it. Three pages do: File associations, Explorer & Taskbar and
+only the job's progress bar for the others. Three pages do: File associations, Explorer & Taskbar and
 Start & Privacy. A tweak page's bar counts only its own pending changes, and
 Discard and Apply touch only its own groups. Toasts sit above that bar.
 
@@ -164,10 +180,10 @@ History reloads both stores, unless a job runs. An unreadable store disables
 only its own groups. **Operations** (`history_panel.rs`) is the module filter
 and one expandable row per entry of `history.jsonl`: the 20 most recent
 matching entries, and a "Show all" button for the rest. There is no Rollback
-tab: History replaced it.
+tab: History replaced it. The file-association rollback itself is still an
+engine operation (`associations::rollback`), run from History.
 
-The remaining screens still use the helpers in `src/theme.rs`. They are
-rewritten onto the kit in later PRs, and `theme.rs` goes away with them.
+Every screen is on the kit. The old `theme.rs` helpers are gone.
 
 ## Adding a customization module
 

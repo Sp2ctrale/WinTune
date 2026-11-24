@@ -69,12 +69,27 @@ For a new module:
    `home.*` keys in every `.resx`. Switch to it only through `open_page`.
    Run long operations through `ui/jobs.rs`, ask for confirmation before
    destructive actions, and record finished jobs with `record_history`.
-4. **Add headless UI tests** with `TempIcons`.
+4. **Build the page on the kit** (`src/ui/kit/`). Put the body in
+   `WinTuneApp::page_panel`, start it with `kit::page_header`, and use kit
+   components (`section`, `SettingRow`, `banner`, buttons, and so on). Never
+   set colors, sizes or fonts on a page: use the kit's tokens.
+5. **Pick the action bar.** If the page applies changes, add it to
+   `ActiveTab::owns_action_bar` and draw the bar with `page_action_bar`.
+   Other pages get only the job's progress bar from the shell.
+6. **Write every text as a key**, used as a literal string
+   (`tr.t("mymod.title")`), in both `i18n/strings.resx` and
+   `i18n/strings.fr.resx`. A literal lets the tests find the key. Engine
+   messages the page shows are enums (like `DriftReason`), translated in
+   `i18n/messages.rs`, not English sentences.
+7. **Add headless UI tests** with `TempIcons`, and draw the page in
+   `shell_pages_draw_no_english_only_text_in_french` (`ui/shell.rs`). That
+   test fails if the page draws a text that French lacks.
 
 ## Adding a language
 
 1. **Copy `i18n/strings.resx` to `i18n/strings.<code>.resx`**, for example
-   `strings.de.resx`. The build picks the file up on its own.
+   `strings.de.resx`. Dropping the file in is enough: the build picks it up
+   and the language picker lists it, with no code change.
 2. **Translate the values**, not the keys. Set `language.name` to the
    language's own name (`Deutsch`): that is what the picker shows.
 3. **Keep placeholders.** `{0}`, `{1}` must appear in the translation as in
@@ -90,7 +105,8 @@ For a new module:
      `{n}` placeholders as English, for every language.
    - `every_engine_message_translates_in_every_shipped_language` and
      `every_tweak_and_group_has_texts_in_every_shipped_language` also run
-     on every language, so a new file must cover those texts.
+     on every language, so a new file must cover those texts. The engine
+     messages include the load errors (`load.corrupt`, `load.unreadable`).
 
 A key a language lacks would silently fall back to English at run time, which
 is why the tests above insist that every shipped language is complete. A new

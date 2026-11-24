@@ -142,6 +142,12 @@ impl ActiveTab {
             }
         }
     }
+
+    /// Pages that draw their own action bar (with the job's progress while
+    /// one runs). The shell draws the progress bar for the others.
+    pub(super) fn owns_action_bar(self) -> bool {
+        matches!(self, ActiveTab::Associations)
+    }
 }
 
 /// What a finished job did, to word its toast.
@@ -301,23 +307,8 @@ impl WinTuneApp {
         self.show_icon_picker(ctx);
         self.show_caption(ctx);
         self.show_nav(ctx);
-        if let Some(job) = &self.job {
-            let p = job.progress();
-            let label = if p.total > 0 {
-                self.tr.t_args("job.progress", &[&p.done, &p.total])
-            } else {
-                String::new()
-            };
-            let status = self.tr.t(job.title_key());
-            kit::action_bar(
-                ctx,
-                &status,
-                kit::ActionBarState::Busy {
-                    label: &label,
-                    fraction: p.fraction(),
-                },
-                |_| {},
-            );
+        if !self.active_tab.owns_action_bar() {
+            self.job_progress_bar(ctx);
         }
         self.show_autosave_banner(ctx);
 

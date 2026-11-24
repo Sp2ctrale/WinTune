@@ -662,4 +662,134 @@
   <data name="assoc.state.invalid" xml:space="preserve">
     <value>Invalid</value>
   </data>
+  <data name="assoc.select" xml:space="preserve">
+    <value>Select a rule on the left, or add one.</value>
+  </data>
+  <data name="assoc.opens_with" xml:space="preserve">
+    <value>Opens with {0}</value>
+  </data>
+  <data name="assoc.no_editor" xml:space="preserve">
+    <value>No code editor set</value>
+  </data>
+  <data name="assoc.runs" xml:space="preserve">
+    <value>Runs the file · Edit opens {0}</value>
+  </data>
+  <data name="assoc.original_saved" xml:space="preserve">
+    <value>Original saved</value>
+  </data>
+  <data name="assoc.double_click" xml:space="preserve">
+    <value>On double-click</value>
+  </data>
+  <data name="assoc.mode.editor" xml:space="preserve">
+    <value>Open in editor</value>
+  </data>
+  <data name="assoc.mode.run" xml:space="preserve">
+    <value>Run</value>
+  </data>
+  <data name="assoc.launch_command" xml:space="preserve">
+    <value>Launch command</value>
+  </data>
+  <data name="assoc.appearance" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="assoc.icon" xml:space="preserve">
+    <value>Icon</value>
+  </data>
+  <data name="assoc.change_icon" xml:space="preserve">
+    <value>Change icon</value>
+  </data>
+  <data name="assoc.options" xml:space="preserve">
+    <value>Options</value>
+  </data>
+  <data name="assoc.clean_overrides" xml:space="preserve">
+    <value>Clean per-user overrides</value>
+  </data>
+  <data name="assoc.clean_overrides_desc" xml:space="preserve">
+    <value>Removes this extension's keys under HKCU\Software\Classes.</value>
+  </data>
+  <data name="assoc.ignore_open_with" xml:space="preserve">
+    <value>Ignore the “Open with” choice</value>
+  </data>
+  <data name="assoc.ignore_open_with_hint" xml:space="preserve">
+    <value>Removes the per-user “Open with… / Always” choice so WinTune's association is used.
+Rollback puts the choice back, but Windows protects it with a hash: it may still report “An app default was reset” and fall back to its default app.</value>
+  </data>
+  <data name="assoc.advanced" xml:space="preserve">
+    <value>Advanced options</value>
+  </data>
+  <data name="assoc.field.extension" xml:space="preserve">
+    <value>Extension</value>
+  </data>
+  <data name="assoc.field.prog_id" xml:space="preserve">
+    <value>ProgID</value>
+  </data>
+  <data name="assoc.field.description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="assoc.field.perceived_type" xml:space="preserve">
+    <value>PerceivedType</value>
+  </data>
+  <data name="assoc.field.content_type" xml:space="preserve">
+    <value>MIME type</value>
+  </data>
+  <data name="assoc.preserve" xml:space="preserve">
+    <value>Keep the extension's other properties</value>
+  </data>
+  <data name="assoc.preserve_desc" xml:space="preserve">
+    <value>OpenWithProgids, ShellNew and Shellex stay as they are.</value>
+  </data>
+  <data name="assoc.run_as_admin" xml:space="preserve">
+    <value>“Run as administrator” menu entry</value>
+  </data>
+  <data name="assoc.admin_command" xml:space="preserve">
+    <value>Administrator command</value>
+  </data>
+  <data name="assoc.verbs" xml:space="preserve">
+    <value>Right-click entries</value>
+  </data>
+  <data name="assoc.verbs.none" xml:space="preserve">
+    <value>No extra right-click entries.</value>
+  </data>
+  <data name="assoc.verb.add" xml:space="preserve">
+    <value>Add entry</value>
+  </data>
+  <data name="assoc.verb.remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="assoc.verb.key" xml:space="preserve">
+    <value>Registry key</value>
+  </data>
+  <data name="assoc.verb.label" xml:space="preserve">
+    <value>Menu label</value>
+  </data>
+  <data name="assoc.verb.command" xml:space="preserve">
+    <value>Command</value>
+  </data>
+  <data name="assoc.bar.checking" xml:space="preserve">
+    <value>Checking status…</value>
+  </data>
+  <data name="assoc.bar.not_applied" xml:space="preserve">
+    <value>Not applied yet</value>
+  </data>
+  <data name="assoc.bar.up_to_date" xml:space="preserve">
+    <value>Applied and up to date</value>
+  </data>
+  <data name="assoc.bar.changed" xml:space="preserve">
+    <value>Changed since it was applied</value>
+  </data>
+  <data name="assoc.bar.invalid" xml:space="preserve">
+    <value>Can't be applied: {0}</value>
+  </data>
+  <data name="assoc.apply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="assoc.restore" xml:space="preserve">
+    <value>Restore original</value>
+  </data>
+  <data name="assoc.remove" xml:space="preserve">
+    <value>Remove rule</value>
+  </data>
+  <data name="assoc.blocked.this_rule" xml:space="preserve">
+    <value>Fix this rule first.</value>
+  </data>
 </root>

@@ -179,6 +179,47 @@ impl WinTuneApp {
         }
     }
 
+    /// The action bar in its busy state while a job runs. Returns whether
+    /// it was drawn.
+    pub(super) fn job_progress_bar(&self, ctx: &egui::Context) -> bool {
+        let Some(job) = &self.job else {
+            return false;
+        };
+        let p = job.progress();
+        let label = if p.total > 0 {
+            self.tr.t_args("job.progress", &[&p.done, &p.total])
+        } else {
+            String::new()
+        };
+        let status = self.tr.t(job.title_key());
+        kit::action_bar(
+            ctx,
+            &status,
+            kit::ActionBarState::Busy {
+                label: &label,
+                fraction: p.fraction(),
+            },
+            |_| {},
+        );
+        true
+    }
+
+    /// The action bar of a page that owns it: the job's progress while one
+    /// runs (no actions), else `status` with `actions`, else nothing.
+    pub(super) fn page_action_bar(
+        &self,
+        ctx: &egui::Context,
+        status: Option<&str>,
+        actions: impl FnOnce(&mut egui::Ui),
+    ) {
+        if self.job_progress_bar(ctx) {
+            return;
+        }
+        if let Some(status) = status {
+            kit::action_bar(ctx, status, kit::ActionBarState::Idle, actions);
+        }
+    }
+
     /// Central panel with the kit's page margins.
     pub(super) fn page_panel(ctx: &egui::Context, body: impl FnOnce(&mut egui::Ui)) {
         egui::CentralPanel::default()
@@ -322,16 +363,50 @@ mod tests {
         app.open_page(ActiveTab::Tweaks);
         assert_eq!(app.backup_store_error.as_deref(), Some("sentinel"));
         assert_eq!(app.tweak_store_error.as_deref(), Some("sentinel"));
+        release_tx.send(()).unwrap();
+        run_until_idle(&mut app, &ctx);
+    }
+
+    #[test]
+    fn other_pages_still_show_the_shell_progress_bar() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo"]);
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        app.job = Some(RunningJob::BuildPak(BackgroundJob::spawn(
+            "Building gallery.pak",
+            || {},
+            move |_| {
+                release_rx.recv().unwrap();
+                Ok(PakStats {
+                    count: 0,
+                    bytes_before: 0,
+                    bytes_after: 0,
+                })
+            },
+        )));
 
         let busy_text = app.tr.t("job.build_pak");
         for tab in ActiveTab::ALL {
             app.active_tab = tab;
             let out = frame(&mut app, &ctx, RawInput::default());
-            assert!(
-                drawn_texts(&out).contains(&busy_text),
-                "{tab:?} lost the progress bar"
+            // Exactly one bar: the shell's, or the page's own.
+            assert_eq!(
+                drawn_texts(&out)
+                    .iter()
+                    .filter(|t| **t == busy_text)
+                    .count(),
+                1,
+                "{tab:?} lost the progress bar, or drew two"
             );
         }
+        // Without a rule selected, the page's bar still shows the job.
+        app.active_tab = ActiveTab::Associations;
+        app.config.extensions.clear();
+        let out = frame(&mut app, &ctx, RawInput::default());
+        assert!(drawn_texts(&out).contains(&busy_text));
+        assert!(ActiveTab::Associations.owns_action_bar());
+        assert!(!ActiveTab::Home.owns_action_bar());
         release_tx.send(()).unwrap();
         run_until_idle(&mut app, &ctx);
     }

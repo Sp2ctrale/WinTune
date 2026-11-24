@@ -6,8 +6,7 @@ use super::WinTuneApp;
 use crate::associations::{rule_status, RuleStatus, StatusContext};
 use crate::detector::build_editor_command;
 use crate::tasks::{BackgroundJob, JobPoll};
-use crate::theme::{draw_badge, get_palette, ThemeMode};
-use eframe::egui::{self, RichText};
+use eframe::egui;
 use std::collections::HashMap;
 
 pub(super) type StatusMap = HashMap<String, RuleStatus>;
@@ -63,46 +62,6 @@ impl WinTuneApp {
                     .collect()
             },
         ));
-    }
-}
-
-/// "Applied" / "Changed" pill for a rule (nothing when not applied or not
-/// computed yet). "Changed" explains itself on hover.
-pub(super) fn status_badge(ui: &mut egui::Ui, theme: ThemeMode, status: Option<&RuleStatus>) {
-    let palette = get_palette(theme);
-    match status {
-        Some(RuleStatus::Applied) => {
-            draw_badge(ui, "Applied", palette.success)
-                .on_hover_text("The registry matches this rule.");
-        }
-        Some(RuleStatus::Drifted(reasons)) => {
-            draw_badge(ui, "Changed", palette.warning).on_hover_text(format!(
-                "Applied, but the registry differs now:
-• {}
-
-Apply again to restore it.",
-                reasons
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(
-                        "
-• "
-                    )
-            ));
-        }
-        Some(RuleStatus::NotApplied) | None => {}
-    }
-}
-
-/// Full list of differences, shown in the rule's detail panel.
-pub(super) fn status_details(ui: &mut egui::Ui, theme: ThemeMode, status: Option<&RuleStatus>) {
-    if let Some(RuleStatus::Drifted(reasons)) = status {
-        let palette = get_palette(theme);
-        ui.add_space(4.0);
-        for reason in reasons {
-            ui.label(RichText::new(format!("• {}", reason)).color(palette.warning));
-        }
     }
 }
 

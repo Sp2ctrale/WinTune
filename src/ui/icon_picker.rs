@@ -38,11 +38,17 @@ impl WinTuneApp {
         let Some(rule) = self.config.extensions.get(index) else {
             return;
         };
+        // An empty or unknown icon name opens on All.
+        let category = if self.gallery.names().contains(&rule.icon_name) {
+            IconCategory::of(&rule.icon_name)
+        } else {
+            IconCategory::All
+        };
         self.icon_picker = Some(IconPicker {
             extension: rule.extension.clone(),
             index,
             query: String::new(),
-            category: IconCategory::of(&rule.icon_name),
+            category,
             focus_search: true,
         });
     }
@@ -305,7 +311,7 @@ mod tests {
 
     #[test]
     fn the_picker_opens_on_the_current_icons_category() {
-        let fx = TempIcons::new(&["foo"]);
+        let fx = TempIcons::new(&["foo", "folder-src", "rust_light", "rust.clone", "rust"]);
         let ctx = egui::Context::default();
         let mut app = fx.app_with_rules(&ctx, &[".foo"]);
         for (icon, category) in [
@@ -314,6 +320,7 @@ mod tests {
             ("rust.clone", IconCategory::Clones),
             ("rust", IconCategory::FilesOnly),
             ("", IconCategory::All),
+            ("not-in-pack", IconCategory::All),
         ] {
             app.config.extensions[0].icon_name = icon.into();
             app.open_icon_picker(0);

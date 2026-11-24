@@ -49,9 +49,10 @@ save writes a temp file, then renames it over the old one.
 `Corrupt { path, detail }` (the file is not valid JSON for the store) or
 `Unreadable { path, detail }` (the OS refused to read it). `detail` is the
 raw serde or OS text. `Display` is an English sentence kept for logs and
-reports. The UI never shows it: `i18n::messages::load_error` turns the code
-into a translated sentence (`load.corrupt`, `load.unreadable`) around the
-raw detail.
+reports. The UI shows that English only inside report details (for example
+the "Configuration not saved" warning); everywhere else
+`i18n::messages::load_error` turns the code into a translated sentence
+(`load.corrupt`, `load.unreadable`) around the raw detail.
 
 ## Safety model (every module that writes to the registry)
 

@@ -766,7 +766,7 @@
   </data>
   <data name="assoc.ignore_open_with_hint" xml:space="preserve">
     <value>Removes the per-user “Open with… / Always” choice so WinTune's association is used.
-Rollback puts the choice back, but Windows protects it with a hash: it may still report “An app default was reset” and fall back to its default app.</value>
+Restoring the original puts the choice back, but Windows protects it with a hash: it may still report “An app default was reset” and fall back to its default app.</value>
   </data>
   <data name="assoc.advanced" xml:space="preserve">
     <value>Advanced options</value>

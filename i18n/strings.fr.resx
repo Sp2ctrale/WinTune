@@ -765,7 +765,7 @@
   </data>
   <data name="assoc.ignore_open_with_hint" xml:space="preserve">
     <value>Supprime le choix « Ouvrir avec… / Toujours » de l'utilisateur, pour que l'association de WinTune s'applique.
-La restauration remet ce choix, mais Windows le protège par un hachage : il peut encore signaler « Une application par défaut a été réinitialisée » et revenir à son application par défaut.</value>
+Restaurer l'original remet ce choix en place, mais Windows le protège par un hachage : il peut encore signaler « Une application par défaut a été réinitialisée » et revenir à son application par défaut.</value>
   </data>
   <data name="assoc.advanced" xml:space="preserve">
     <value>Options avancées</value>

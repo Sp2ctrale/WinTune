@@ -276,7 +276,10 @@ fn every_engine_message_translates_in_every_shipped_language() {
             let text = build(tr);
             assert!(!text.is_empty(), "{code}: empty message");
             if code == "en" {
-                assert_eq!(&text, shown, "English .resx must equal Display");
+                assert_eq!(
+                    &text, shown,
+                    "English .resx must equal the expected English"
+                );
             }
             assert!(
                 !text.contains('{'),

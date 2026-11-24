@@ -103,7 +103,7 @@ WinTune broadcasts `WM_SETTINGCHANGE` so the taskbar picks it up.
 
 HKCU belongs to one account. If WinTune runs elevated under a different
 administrator account, the tweaks change that account's settings, not yours.
-The tab header shows which account is affected.
+The page subtitle shows which account is affected.
 
 ## Safety and undo
 
@@ -123,12 +123,12 @@ If saving the snapshots or the `.reg` file fails, nothing is applied. If
 `backups.json` cannot be read, all registry changes are blocked, so the next
 save cannot overwrite your snapshots.
 
-Each rule shows its live status: **Applied** means the registry matches the
+Each rule shows its live status: **Up to date** means the registry matches the
 rule. **Changed** means the rule was applied but something differs now, for
 example another app took the extension, an Explorer `UserChoice` override
-exists, a ProgID is missing, or the rule was edited since; hover the badge to
+exists, a ProgID is missing, or the rule was edited since; hover the status dot to
 see why. The status is read in the background at startup, after each apply or
-rollback, when you open the tab, and when you click **Refresh status**.
+rollback, when you open the page, and when you click **Refresh**.
 
 The interface checks rules as you edit them. A rule with an invalid extension
 or ProgID, or an extension listed twice, is flagged in red and blocks Apply.
@@ -146,7 +146,7 @@ their part of the snapshot is kept. Roll back again once they are signed in.
 **Known limit:** Explorer's per-user `UserChoice` key is protected by a hash
 that covers the key's metadata. Rollback restores its values, but Windows may
 still consider it tampered with, show "An app default was reset" and go back to
-its default app. Uncheck **Reset Explorer UserChoice override** on a rule to
+its default app. Uncheck **Ignore the "Open with" choice** on a rule to
 leave that key alone.
 
 The **History** page lists every operation and, under **Saved originals**,
@@ -187,7 +187,7 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `detector` | VS Code, WSL and user-hive detection |
 | `clock` | Local timestamps |
 | `i18n` | Translations: `.resx` catalogs in `i18n/`, the `Tr` handle, and engine message codes turned into text |
-| `ui` | egui interface, one file per page (`home`, `associations_tab`, `tweaks_tab` for both tweak pages, `gallery_tab` for Icons, `history_panel`, `settings`), `originals` (History's saved originals), `icon_grid` and `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation and action bars), `autosave`, `confirm`, `rule_status`, `jobs`, and `kit/`, the design kit that holds the theme and every control |
+| `ui` | egui interface, one file per page (`home`, `associations_tab`, `tweaks_tab` for both tweak pages, `gallery_tab` for Icons, `history_panel`, `settings`), `originals` (History's saved originals), `icon_grid` (the shared icon grid) and `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation and action bars), `autosave`, `confirm`, `rule_status`, `jobs`, and `kit/`, the design kit that holds the theme and every control |
 | `main.rs` | Window setup only |
 
 Apply, rollback and pack building run on a background thread, a progress bar
@@ -201,7 +201,7 @@ page. Changes there, and to the rules, are saved automatically about a
 second after the last edit and always before the window closes; if a save
 fails, a banner with a **Retry** button appears.
 
-**Ctrl+F** focuses the search box of the current tab, and **Esc** cancels a
+**Ctrl+F** focuses the search box of the current page, and **Esc** cancels a
 confirmation dialog. No keyboard shortcut changes the registry: those actions
 always take a click and, when they are destructive, a confirmation. A
 disabled button explains on hover why it is disabled.

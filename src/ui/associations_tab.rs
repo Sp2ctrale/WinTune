@@ -451,13 +451,6 @@ impl WinTuneApp {
                             row_label.clone(),
                         )
                     });
-                    if row.has_focus() {
-                        ui.painter().rect_stroke(
-                            rect.shrink(1.0),
-                            egui::Rounding::same(kit::radius::CONTROL),
-                            egui::Stroke::new(2.0_f32, p.accent),
-                        );
-                    }
                     let fill = if selected {
                         Some(p.accent.gamma_multiply(0.14))
                     } else if row.hovered() {
@@ -470,6 +463,14 @@ impl WinTuneApp {
                             rect,
                             egui::Rounding::same(kit::radius::CONTROL),
                             fill,
+                        );
+                    }
+                    // The ring goes over the fill, so it stays visible.
+                    if row.has_focus() {
+                        ui.painter().rect_stroke(
+                            rect.shrink(1.0),
+                            egui::Rounding::same(kit::radius::CONTROL),
+                            egui::Stroke::new(2.0_f32, p.accent),
                         );
                     }
                     let mut content = ui.new_child(
@@ -973,14 +974,31 @@ mod tests {
     }
 
     fn has_two_px_ring(out: &egui::FullOutput) -> bool {
-        fn ring(shape: &egui::Shape) -> bool {
+        ring_and_fill_order(out).0.is_some()
+    }
+
+    /// Paint-order indexes of the first 2 px stroke rect (the focus ring)
+    /// and of the first row-height filled, stroke-less rect (the row fill).
+    fn ring_and_fill_order(out: &egui::FullOutput) -> (Option<usize>, Option<usize>) {
+        fn flat<'a>(shape: &'a egui::Shape, acc: &mut Vec<&'a egui::Shape>) {
             match shape {
-                egui::Shape::Rect(r) => r.stroke.width == 2.0,
-                egui::Shape::Vec(v) => v.iter().any(ring),
-                _ => false,
+                egui::Shape::Vec(v) => v.iter().for_each(|s| flat(s, acc)),
+                s => acc.push(s),
             }
         }
-        out.shapes.iter().any(|c| ring(&c.shape))
+        let mut all = Vec::new();
+        out.shapes.iter().for_each(|c| flat(&c.shape, &mut all));
+        let ring = all
+            .iter()
+            .position(|s| matches!(s, egui::Shape::Rect(r) if r.stroke.width == 2.0));
+        let fill = all.iter().position(|s| {
+            matches!(s, egui::Shape::Rect(r)
+                if r.stroke.width == 0.0
+                    && r.fill != egui::Color32::TRANSPARENT
+                    && r.rect.height() >= ROW_HEIGHT - 0.5
+                    && r.rect.height() <= ROW_HEIGHT + 0.5)
+        });
+        (ring, fill)
     }
 
     #[test]
@@ -998,6 +1016,17 @@ mod tests {
         frame(&mut app, &ctx, page_input(vec![]));
         let after = frame(&mut app, &ctx, page_input(vec![]));
         assert!(has_two_px_ring(&after), "a focused row paints a ring");
+
+        // The selected row has a fill; the ring must be painted over it.
+        app.selected_ext_index = 1;
+        frame(&mut app, &ctx, page_input(vec![]));
+        let selected = frame(&mut app, &ctx, page_input(vec![]));
+        let (ring, fill) = ring_and_fill_order(&selected);
+        let (ring, fill) = (ring.expect("ring"), fill.expect("row fill"));
+        assert!(
+            ring > fill,
+            "ring ({ring}) must paint after the fill ({fill})"
+        );
     }
 
     #[test]

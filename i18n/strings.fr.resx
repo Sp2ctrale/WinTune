@@ -369,9 +369,6 @@
   <data name="nav.history" xml:space="preserve">
     <value>Historique</value>
   </data>
-  <data name="nav.rollback" xml:space="preserve">
-    <value>Restauration</value>
-  </data>
   <data name="nav.settings" xml:space="preserve">
     <value>Paramètres</value>
   </data>
@@ -853,9 +850,6 @@ La restauration remet ce choix, mais Windows le protège par un hachage : il peu
   </data>
   <data name="tweaks.nothing_to_restore" xml:space="preserve">
     <value>Rien à restaurer : WinTune n'a modifié aucun de ces réglages.</value>
-  </data>
-  <data name="rollback.tick_one" xml:space="preserve">
-    <value>Cochez au moins une extension à restaurer.</value>
   </data>
   <data name="tweaks.subtitle" xml:space="preserve">
     <value>Réglages de {0}. La première modification de chacun enregistre l'original, pour pouvoir le restaurer.</value>

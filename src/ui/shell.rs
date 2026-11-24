@@ -80,9 +80,6 @@ impl WinTuneApp {
             // Shown in the navigation but not built yet: never openable.
             return;
         }
-        if page == ActiveTab::Rollback && !self.is_busy() {
-            self.reload_backup_store();
-        }
         if page == ActiveTab::History && !self.is_busy() {
             self.reload_backup_store();
             self.reload_tweak_store();
@@ -119,7 +116,6 @@ impl WinTuneApp {
         let context_menu = tr.t("nav.context_menu");
         let icons = tr.t("nav.icons");
         let history = tr.t("nav.history");
-        let rollback = tr.t("nav.rollback");
         let settings = tr.t("nav.settings");
         let customize = tr.t("nav.group.customize");
         let tools = tr.t("nav.group.tools");
@@ -165,7 +161,6 @@ impl WinTuneApp {
                 items: vec![
                     item(ActiveTab::Gallery, kit::Icon::Icons, &icons),
                     item(ActiveTab::History, kit::Icon::History, &history),
-                    item(ActiveTab::Rollback, kit::Icon::Restore, &rollback),
                 ],
             },
         ];
@@ -247,7 +242,7 @@ mod tests {
     use crate::tasks::BackgroundJob;
     use egui::{Event, PointerButton, RawInput};
 
-    const NAV_LABELS: [&str; 9] = [
+    const NAV_LABELS: [&str; 8] = [
         "Home",
         "File associations",
         "Explorer & Taskbar",
@@ -255,7 +250,6 @@ mod tests {
         "Context menu",
         "Icons",
         "History",
-        "Rollback",
         "Settings",
     ];
 
@@ -291,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn the_nav_lists_pages_in_spec_order() {
+    fn the_nav_has_no_rollback_entry_and_follows_the_spec_order() {
         let fx = TempIcons::new(&[]);
         let ctx = egui::Context::default();
         let mut app = fx.app(&ctx);
@@ -308,6 +302,20 @@ mod tests {
         shown.sort_by(|a, b| a.0.total_cmp(&b.0));
         let shown: Vec<String> = shown.into_iter().map(|(_, t)| t).collect();
         assert_eq!(shown, NAV_LABELS);
+        assert!(
+            text_center(&out, "Rollback").is_none(),
+            "the nav still has a Rollback entry"
+        );
+        // The group titles keep the spec's grouping around those pages.
+        let customize = text_center(&out, &app.tr.t("nav.group.customize")).expect("Customize");
+        let tools = text_center(&out, &app.tr.t("nav.group.tools")).expect("Tools");
+        let y_of = |label: &str| shown_y(&out, label);
+        assert!(customize.y < y_of("File associations") && y_of("Context menu") < tools.y);
+        assert!(tools.y < y_of("Icons") && y_of("History") < y_of("Settings"));
+    }
+
+    fn shown_y(out: &egui::FullOutput, label: &str) -> f32 {
+        text_center(out, label).expect(label).y
     }
 
     #[test]
@@ -348,7 +356,7 @@ mod tests {
         // Control: idle, opening the pages reloads the stores.
         app.backup_store_error = Some("sentinel".into());
         app.tweak_store_error = Some("sentinel".into());
-        app.open_page(ActiveTab::Rollback);
+        app.open_page(ActiveTab::History);
         app.open_page(ActiveTab::Tweaks);
         assert_eq!(app.backup_store_error, None);
         assert_eq!(app.tweak_store_error, None);
@@ -369,7 +377,7 @@ mod tests {
         app.backup_store_error = Some("sentinel".into());
         app.tweak_store_error = Some("sentinel".into());
 
-        app.open_page(ActiveTab::Rollback);
+        app.open_page(ActiveTab::History);
         app.open_page(ActiveTab::Tweaks);
         assert_eq!(app.backup_store_error.as_deref(), Some("sentinel"));
         assert_eq!(app.tweak_store_error.as_deref(), Some("sentinel"));

@@ -45,16 +45,6 @@ impl WinTuneApp {
         });
     }
 
-    /// Asks before restoring every extension selected in the Rollback tab.
-    pub(super) fn request_rollback(&mut self) {
-        if self.rollback_selection.is_empty() {
-            return;
-        }
-        let mut extensions: Vec<String> = self.rollback_selection.iter().cloned().collect();
-        extensions.sort();
-        self.confirm_rollback(extensions);
-    }
-
     /// Asks before restoring the original of one rule (the associations
     /// page's "Restore original").
     pub(super) fn request_restore_rule(&mut self, extension: &str) {
@@ -218,7 +208,7 @@ mod tests {
     }
 
     #[test]
-    fn rollback_waits_for_confirmation_then_restores() {
+    fn restoring_all_rules_waits_for_confirmation_then_restores() {
         let fx = TempIcons::new(&["foo"]);
         let ctx = egui::Context::default();
         let mut app = fx.app_with_rules(&ctx, &[".foo"]);
@@ -226,9 +216,8 @@ mod tests {
         app.start_apply(&ctx, rules);
         run_until_idle(&mut app, &ctx);
         assert!(fx.key_exists(&fx.classes(".foo")), "{}", app.last_notice());
-        app.rollback_selection.insert(".foo".to_string());
 
-        app.request_rollback();
+        app.request_restore_all_rules();
         assert!(app.pending_confirm.is_some());
         assert!(!app.is_busy(), "rollback started without confirmation");
         app.resolve_confirm(&ctx, true);
@@ -239,12 +228,12 @@ mod tests {
     }
 
     #[test]
-    fn rollback_with_nothing_selected_asks_nothing() {
+    fn restoring_all_rules_with_no_saved_original_asks_nothing() {
         let fx = TempIcons::new(&["foo"]);
         let ctx = egui::Context::default();
         let mut app = fx.app_with_rules(&ctx, &[".foo"]);
 
-        app.request_rollback();
+        app.request_restore_all_rules();
 
         assert!(app.pending_confirm.is_none());
     }

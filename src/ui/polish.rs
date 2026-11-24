@@ -10,11 +10,7 @@ pub(super) fn search_box_id(tab: ActiveTab) -> Option<egui::Id> {
         ActiveTab::Associations => Some(egui::Id::new("search_associations")),
         ActiveTab::Tweaks | ActiveTab::StartPrivacy => Some(egui::Id::new("search_tweaks")),
         ActiveTab::Gallery => Some(egui::Id::new("search_gallery")),
-        ActiveTab::Rollback
-        | ActiveTab::Home
-        | ActiveTab::History
-        | ActiveTab::Settings
-        | ActiveTab::ContextMenu => None,
+        ActiveTab::Home | ActiveTab::History | ActiveTab::Settings | ActiveTab::ContextMenu => None,
     }
 }
 
@@ -89,14 +85,6 @@ impl WinTuneApp {
         store_error
             .as_ref()
             .map(|e| self.tr.t_args("tweaks.blocked", &[e]))
-    }
-
-    pub(super) fn rollback_disabled_reason(&self) -> Option<String> {
-        self.busy_or_blocked(&self.backup_store_error).or_else(|| {
-            self.rollback_selection
-                .is_empty()
-                .then(|| self.tr.t("rollback.tick_one"))
-        })
     }
 
     pub(super) fn tweak_apply_disabled_reason(&self) -> Option<String> {
@@ -205,13 +193,6 @@ mod tests {
         let ctx = egui::Context::default();
         let mut app = fx.app_with_rules(&ctx, &[".foo"]);
         app.refresh_tweak_statuses();
-
-        assert_eq!(
-            app.rollback_disabled_reason().unwrap(),
-            app.tr.t("rollback.tick_one")
-        );
-        app.rollback_selection.insert(".foo".into());
-        assert_eq!(app.rollback_disabled_reason(), None);
 
         assert_eq!(
             app.tweak_apply_disabled_reason().unwrap(),

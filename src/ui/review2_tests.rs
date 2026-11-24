@@ -101,7 +101,7 @@ fn start_and_privacy_operations_are_logged_under_their_own_module() {
 fn ctrl_f_on_a_tab_without_search_does_not_leak_focus_to_another_tab() {
     let fx = TempIcons::new(&["foo"]);
     let ctx = egui::Context::default();
-    let mut app = app(&fx, &ctx, ActiveTab::Rollback);
+    let mut app = app(&fx, &ctx, ActiveTab::History);
     frame(&mut app, &ctx, RawInput::default());
     let ctrl_f = RawInput {
         events: vec![Event::Key {

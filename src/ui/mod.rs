@@ -19,7 +19,6 @@ mod originals;
 mod polish;
 #[cfg(test)]
 mod review2_tests;
-mod rollback_tab;
 mod rule_status;
 #[cfg(test)]
 mod safety_tests;
@@ -46,7 +45,7 @@ use crate::tweaks::{
 };
 use eframe::egui::{self, ColorImage, TextureHandle, TextureOptions};
 use jobs::RunningJob;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -109,7 +108,6 @@ pub(crate) enum ActiveTab {
     StartPrivacy,
     Gallery,
     History,
-    Rollback,
     Settings,
     /// Not built yet: shown in the navigation, disabled.
     ContextMenu,
@@ -118,14 +116,13 @@ pub(crate) enum ActiveTab {
 impl ActiveTab {
     /// Every page that can be opened, in navigation order (the tests walk it).
     #[cfg(test)]
-    pub(crate) const ALL: [ActiveTab; 8] = [
+    pub(crate) const ALL: [ActiveTab; 7] = [
         ActiveTab::Home,
         ActiveTab::Associations,
         ActiveTab::Tweaks,
         ActiveTab::StartPrivacy,
         ActiveTab::Gallery,
         ActiveTab::History,
-        ActiveTab::Rollback,
         ActiveTab::Settings,
     ];
 
@@ -137,7 +134,6 @@ impl ActiveTab {
             ActiveTab::Tweaks => "Explorer & Taskbar",
             ActiveTab::StartPrivacy => "Start & Privacy",
             ActiveTab::Gallery => "Icon Gallery",
-            ActiveTab::Rollback => "Selective Rollback",
             ActiveTab::Home | ActiveTab::History | ActiveTab::Settings | ActiveTab::ContextMenu => {
                 ""
             }
@@ -175,7 +171,6 @@ pub struct WinTuneApp {
     gallery_category: IconCategory,
     /// The icon picker dialog, when open.
     icon_picker: Option<icon_picker::IconPicker>,
-    rollback_selection: HashSet<String>,
     /// Transient messages, drawn bottom-right.
     toasts: kit::Toasts,
     /// Set when backups.json cannot be read: registry changes are blocked so
@@ -273,7 +268,6 @@ impl WinTuneApp {
             gallery_search_query: String::new(),
             gallery_category: IconCategory::FilesOnly,
             icon_picker: None,
-            rollback_selection: HashSet::new(),
             toasts: kit::Toasts::default(),
             backup_store_error: None,
             wsl_detected,
@@ -326,7 +320,6 @@ impl WinTuneApp {
             ActiveTab::Associations => self.show_associations_tab(ctx),
             ActiveTab::Tweaks | ActiveTab::StartPrivacy => self.show_tweaks_tab(ctx),
             ActiveTab::Gallery => self.show_gallery_tab(ctx),
-            ActiveTab::Rollback => self.show_rollback_tab(ctx),
         }
 
         self.toasts.show(ctx, &self.tr.t("toast.clear_all"));

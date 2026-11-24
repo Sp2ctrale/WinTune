@@ -370,9 +370,6 @@
   <data name="nav.history" xml:space="preserve">
     <value>History</value>
   </data>
-  <data name="nav.rollback" xml:space="preserve">
-    <value>Rollback</value>
-  </data>
   <data name="nav.settings" xml:space="preserve">
     <value>Settings</value>
   </data>
@@ -854,9 +851,6 @@ Rollback puts the choice back, but Windows protects it with a hash: it may still
   </data>
   <data name="tweaks.nothing_to_restore" xml:space="preserve">
     <value>Nothing to restore: WinTune hasn't changed these settings.</value>
-  </data>
-  <data name="rollback.tick_one" xml:space="preserve">
-    <value>Tick at least one extension to restore.</value>
   </data>
   <data name="tweaks.subtitle" xml:space="preserve">
     <value>Settings of {0}. The first change of each one saves the original, so it can be restored.</value>

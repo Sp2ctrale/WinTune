@@ -163,10 +163,11 @@ impl WinTuneApp {
 
     /// History / status name of the module a tweaks tab belongs to.
     pub(super) fn tweaks_module_of(tab: ActiveTab) -> &'static str {
-        match tab {
-            ActiveTab::StartPrivacy => ActiveTab::StartPrivacy.title(),
-            _ => ActiveTab::Tweaks.title(),
-        }
+        let tab = match tab {
+            ActiveTab::StartPrivacy => ActiveTab::StartPrivacy,
+            _ => ActiveTab::Tweaks,
+        };
+        tab.history_module().expect("a tweaks tab is a module")
     }
 
     /// History / status name of a tweak restore: the open tweaks tab's, or,
@@ -263,7 +264,11 @@ impl WinTuneApp {
                 }
             },
         );
-        self.job = Some(RunningJob::Tweaks(job, module));
+        self.job = Some(RunningJob::Tweaks {
+            job,
+            module,
+            restore: false,
+        });
     }
 
     /// Asks before putting tweaks back to their state before WinTune.
@@ -328,7 +333,11 @@ impl WinTuneApp {
                 }
             },
         );
-        self.job = Some(RunningJob::Tweaks(job, module));
+        self.job = Some(RunningJob::Tweaks {
+            job,
+            module,
+            restore: true,
+        });
     }
 
     pub(super) fn finish_tweaks_job(&mut self, outcome: TweakOutcome) {

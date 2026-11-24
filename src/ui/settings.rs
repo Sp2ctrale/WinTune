@@ -4,7 +4,7 @@
 use super::{kit, WinTuneApp, APP_VERSION};
 use crate::detector::resolve_vscode_executable;
 use crate::i18n::Tr;
-use crate::theme::ThemeMode;
+use crate::models::ThemeMode;
 use eframe::egui;
 
 const REPO_URL: &str = "https://github.com/Sp2ctrale/WinTune";
@@ -380,7 +380,7 @@ mod tests {
 
     #[test]
     fn settings_renders_in_every_theme_and_language() {
-        use crate::theme::ThemeMode;
+        use crate::models::ThemeMode;
         let fx = TempIcons::new(&["foo"]);
         let ctx = egui::Context::default();
         for (code, _) in Tr::languages() {

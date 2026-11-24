@@ -2,8 +2,8 @@
 //! the action button. They return `Response`s or values and never act.
 
 use egui::{
-    pos2, vec2, Align2, CursorIcon, FontId, Galley, Id, Rect, Response, RichText, Rounding, Sense,
-    Shape, Stroke, Ui, WidgetInfo, WidgetType,
+    pos2, vec2, Align2, Color32, CursorIcon, FontId, Galley, Id, Rect, Response, RichText,
+    Rounding, Sense, Shape, Stroke, Ui, WidgetInfo, WidgetType,
 };
 use std::sync::Arc;
 
@@ -96,16 +96,21 @@ pub enum PillKind {
     Danger,
 }
 
-/// Small status label with a soft tinted background.
-pub fn pill(ui: &mut Ui, text: &str, kind: PillKind) -> Response {
-    let p = current_palette(ui.ctx());
-    let color = match kind {
+/// The palette color a status kind is drawn in.
+fn kind_color(p: &Palette, kind: PillKind) -> Color32 {
+    match kind {
         PillKind::Success => p.success,
         PillKind::Warning => p.warning,
         PillKind::Accent => p.accent,
         PillKind::Neutral => p.neutral,
         PillKind::Danger => p.danger,
-    };
+    }
+}
+
+/// Small status label with a soft tinted background.
+pub fn pill(ui: &mut Ui, text: &str, kind: PillKind) -> Response {
+    let p = current_palette(ui.ctx());
+    let color = kind_color(p, kind);
     let galley = ui.painter().layout_no_wrap(
         text.to_owned(),
         FontId::proportional(text_size::SECONDARY),
@@ -135,13 +140,7 @@ pub fn status_dot(ui: &mut Ui, kind: Option<PillKind>, hover: Option<&str>) -> R
         let painter = ui.painter();
         match kind {
             Some(kind) => {
-                let color = match kind {
-                    PillKind::Success => p.success,
-                    PillKind::Warning => p.warning,
-                    PillKind::Accent => p.accent,
-                    PillKind::Neutral => p.neutral,
-                    PillKind::Danger => p.danger,
-                };
+                let color = kind_color(p, kind);
                 painter.circle_filled(rect.center(), 4.0, color);
             }
             None => {

@@ -37,8 +37,8 @@ use crate::detector::{
 };
 use crate::gallery::{IconCategory, IconGallery};
 use crate::i18n::Tr;
+use crate::models::ThemeMode;
 use crate::models::{app_data_dir, AppConfig, BackupStore};
-use crate::theme::ThemeMode;
 use crate::tweaks::{
     current_user_label, default_tweak_store_path, notify_explorer_settings, TweakBackupStore,
     TweakStatus, TweakTarget,
@@ -126,17 +126,18 @@ impl ActiveTab {
         ActiveTab::Settings,
     ];
 
-    /// English module label written to history.jsonl (not a navigation
-    /// label: those are translated). Empty for pages that are not modules.
-    pub(crate) fn title(self) -> &'static str {
+    /// English module label stored in history.jsonl (not a navigation
+    /// label: those are translated). `None` for pages with no module.
+    pub(crate) fn history_module(self) -> Option<&'static str> {
         match self {
-            ActiveTab::Associations => "File Associations",
-            ActiveTab::Tweaks => "Explorer & Taskbar",
-            ActiveTab::StartPrivacy => "Start & Privacy",
-            ActiveTab::Gallery => "Icon Gallery",
-            ActiveTab::Home | ActiveTab::History | ActiveTab::Settings | ActiveTab::ContextMenu => {
-                ""
-            }
+            ActiveTab::Associations => Some("File associations"),
+            ActiveTab::Tweaks => Some("Explorer & Taskbar"),
+            ActiveTab::StartPrivacy => Some("Start & Privacy"),
+            ActiveTab::Home
+            | ActiveTab::Gallery
+            | ActiveTab::History
+            | ActiveTab::Settings
+            | ActiveTab::ContextMenu => None,
         }
     }
 
@@ -503,7 +504,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(c.language, "en");
-        assert_eq!(c.theme, crate::theme::ThemeMode::Dark);
+        assert_eq!(c.theme, crate::models::ThemeMode::Dark);
     }
 
     #[test]
@@ -532,7 +533,7 @@ mod tests {
 
     #[test]
     fn the_app_renders_a_frame_in_every_theme_mode() {
-        use crate::theme::ThemeMode;
+        use crate::models::ThemeMode;
         let icons = TempIcons::new(&["foo"]);
         let ctx = egui::Context::default();
         for mode in [ThemeMode::Light, ThemeMode::Dark, ThemeMode::System] {

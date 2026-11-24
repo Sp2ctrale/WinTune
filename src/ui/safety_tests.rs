@@ -100,14 +100,15 @@ fn a_registry_job_that_panics_is_logged_in_the_history() {
     let fx = TempIcons::new(&["foo"]);
     let ctx = egui::Context::default();
     let mut app = fx.app_with_rules(&ctx, &[".foo"]);
-    app.job = Some(RunningJob::Tweaks(
-        BackgroundJob::spawn(
+    app.job = Some(RunningJob::Tweaks {
+        job: BackgroundJob::spawn(
             "Applying tweaks",
             || {},
             |_| -> super::jobs::TweakOutcome { panic!("boom") },
         ),
-        "Explorer & Taskbar",
-    ));
+        module: "Explorer & Taskbar",
+        restore: false,
+    });
 
     run_until_idle(&mut app, &ctx);
 
@@ -118,4 +119,37 @@ fn a_registry_job_that_panics_is_logged_in_the_history() {
         "{:?}",
         entry.errors
     );
+}
+
+#[test]
+fn a_tweak_restore_job_is_titled_and_logged_as_restore() {
+    let fx = TempIcons::new(&["foo"]);
+    let ctx = egui::Context::default();
+    let mut app = fx.app_with_rules(&ctx, &[".foo"]);
+
+    app.start_restore_tweaks(&ctx, vec!["show_hidden".to_string()]);
+
+    let job = app.job.as_ref().expect("the restore job did not start");
+    assert_eq!(job.title_key(), "job.restore_tweaks");
+    assert_eq!(job.name_key(), "job.name.restore_tweaks");
+    assert_eq!(job.history_label(), Some(("Explorer & Taskbar", "Restore")));
+    run_until_idle(&mut app, &ctx);
+}
+
+#[test]
+fn history_module_labels_are_the_stored_ones() {
+    use super::ActiveTab;
+    assert_eq!(
+        ActiveTab::Associations.history_module(),
+        Some("File associations")
+    );
+    assert_eq!(
+        ActiveTab::Tweaks.history_module(),
+        Some("Explorer & Taskbar")
+    );
+    assert_eq!(
+        ActiveTab::StartPrivacy.history_module(),
+        Some("Start & Privacy")
+    );
+    assert_eq!(ActiveTab::Home.history_module(), None);
 }

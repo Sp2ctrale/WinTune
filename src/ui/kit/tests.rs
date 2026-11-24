@@ -1,5 +1,5 @@
 use super::*;
-use crate::theme::ThemeMode;
+use crate::models::ThemeMode;
 use egui::{Color32, RawInput, Theme};
 
 /// WCAG 2.x relative luminance of an opaque sRGB color.
@@ -386,7 +386,7 @@ fn every_glyph_exists_in_both_icon_fonts() {
 mod controls {
     use super::super::test_input::{click_frames, frame_input};
     use super::super::*;
-    use crate::theme::ThemeMode;
+    use crate::models::ThemeMode;
     use egui::{CentralPanel, Context, Rect};
     use std::cell::{Cell, RefCell};
 
@@ -699,7 +699,7 @@ mod controls {
 mod layout {
     use super::super::test_input::{click_frames, frame_input};
     use super::super::*;
-    use crate::theme::ThemeMode;
+    use crate::models::ThemeMode;
     use egui::{CentralPanel, Context};
     use std::cell::Cell;
 
@@ -1058,7 +1058,7 @@ mod layout {
 mod shell_kit {
     use super::super::test_input::{click_frames, frame_input};
     use super::super::*;
-    use crate::theme::ThemeMode;
+    use crate::models::ThemeMode;
     use egui::{CentralPanel, Context, Event, Key, Modifiers, RawInput, Shape};
     use std::cell::{Cell, RefCell};
 

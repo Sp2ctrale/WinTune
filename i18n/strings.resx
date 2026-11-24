@@ -415,6 +415,18 @@
   <data name="history.empty" xml:space="preserve">
     <value>No operation recorded yet.</value>
   </data>
+  <data name="history.operations" xml:space="preserve">
+    <value>Operations</value>
+  </data>
+  <data name="history.filter.all" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="history.succeeded" xml:space="preserve">
+    <value>Done: {0}</value>
+  </data>
+  <data name="history.no_match" xml:space="preserve">
+    <value>No operation for this module.</value>
+  </data>
   <data name="home.title" xml:space="preserve">
     <value>Home</value>
   </data>

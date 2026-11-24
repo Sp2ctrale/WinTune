@@ -210,6 +210,8 @@ pub struct WinTuneApp {
     focus_search: bool,
     /// Recent operations, newest first.
     history: Vec<crate::history::HistoryEntry>,
+    /// Module filter of the History page.
+    history_filter: history_panel::HistoryFilter,
     /// Set when config.json exists but is unreadable: saving is refused so
     /// the user's rules are never replaced by the defaults.
     config_error: Option<String>,
@@ -291,6 +293,7 @@ impl WinTuneApp {
             ui_theme,
             focus_search: false,
             history: Vec::new(),
+            history_filter: history_panel::HistoryFilter::All,
             config_error: None,
             autosave,
         }

@@ -887,4 +887,34 @@ La restauration remet ce choix, mais Windows le protège par un hachage : il peu
   <data name="refresh.explorer_restart_hint" xml:space="preserve">
     <value>Visible après redémarrage de l'Explorateur (Gestionnaire des tâches › Explorateur Windows › Redémarrer) ou une déconnexion.</value>
   </data>
+  <data name="icons.subtitle" xml:space="preserve">
+    <value>Icônes utilisées par vos associations de fichiers</value>
+  </data>
+  <data name="icons.build" xml:space="preserve">
+    <value>Créer le pack d'icônes</value>
+  </data>
+  <data name="icons.import" xml:space="preserve">
+    <value>Importer des .ico</value>
+  </data>
+  <data name="icons.folder" xml:space="preserve">
+    <value>Dossier : {0}</value>
+  </data>
+  <data name="icons.change_in_settings" xml:space="preserve">
+    <value>Modifier dans les paramètres</value>
+  </data>
+  <data name="icons.search" xml:space="preserve">
+    <value>Rechercher une icône</value>
+  </data>
+  <data name="icons.empty" xml:space="preserve">
+    <value>Aucune icône dans {0}</value>
+  </data>
+  <data name="icons.no_match" xml:space="preserve">
+    <value>Aucune icône ne correspond à « {0} ».</value>
+  </data>
+  <data name="icons.folder_error" xml:space="preserve">
+    <value>Impossible de créer le dossier d'icônes : {0}</value>
+  </data>
+  <data name="icons.imported" xml:space="preserve">
+    <value>{0} fichier(s) .ico importé(s) sur {1}.</value>
+  </data>
 </root>

@@ -888,4 +888,34 @@ Rollback puts the choice back, but Windows protects it with a hash: it may still
   <data name="refresh.explorer_restart_hint" xml:space="preserve">
     <value>Visible after restarting Explorer (Task Manager › Windows Explorer › Restart) or signing out.</value>
   </data>
+  <data name="icons.subtitle" xml:space="preserve">
+    <value>Icons used by your file associations</value>
+  </data>
+  <data name="icons.build" xml:space="preserve">
+    <value>Build icon pack</value>
+  </data>
+  <data name="icons.import" xml:space="preserve">
+    <value>Import .ico</value>
+  </data>
+  <data name="icons.folder" xml:space="preserve">
+    <value>Folder: {0}</value>
+  </data>
+  <data name="icons.change_in_settings" xml:space="preserve">
+    <value>Change in Settings</value>
+  </data>
+  <data name="icons.search" xml:space="preserve">
+    <value>Search icons</value>
+  </data>
+  <data name="icons.empty" xml:space="preserve">
+    <value>No icons in {0}</value>
+  </data>
+  <data name="icons.no_match" xml:space="preserve">
+    <value>No icon matches "{0}".</value>
+  </data>
+  <data name="icons.folder_error" xml:space="preserve">
+    <value>Can't create the icon folder: {0}</value>
+  </data>
+  <data name="icons.imported" xml:space="preserve">
+    <value>Imported {0} of {1} .ico files.</value>
+  </data>
 </root>

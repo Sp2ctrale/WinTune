@@ -102,6 +102,7 @@ impl WinTuneApp {
                         &names,
                         current.as_deref(),
                         "icon_picker_grid",
+                        true,
                     );
                 });
             }

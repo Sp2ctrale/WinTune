@@ -1,15 +1,114 @@
 use super::icon_grid::icon_grid;
-use super::{ActiveTab, WinTuneApp};
+use super::{kit, ActiveTab, WinTuneApp};
 use crate::gallery::IconCategory;
-use crate::theme::{accent_button, card_frame, get_palette};
-use eframe::egui::{self, Margin, RichText};
+use eframe::egui::{self, RichText};
+use kit::{primary_button, secondary_button, space, text_size};
 use std::fs;
 use std::path::Path;
 
 impl WinTuneApp {
     pub(super) fn show_gallery_tab(&mut self, ctx: &egui::Context) {
-        self.show_gallery_header(ctx);
-        self.show_gallery_grid(ctx);
+        let tr = self.tr;
+        let p = kit::current_palette(ctx);
+        let busy_reason = self.busy_or_blocked(&None);
+        let folder = self.config.icon_source_folder.clone();
+        let name = tr.t("nav.icons");
+        let subtitle = tr.t("icons.subtitle");
+        let build_label = tr.t("icons.build");
+        let import_label = tr.t("icons.import");
+        let categories = [
+            (IconCategory::All, tr.t("picker.cat.all")),
+            (IconCategory::FilesOnly, tr.t("picker.cat.files")),
+            (IconCategory::FoldersOnly, tr.t("picker.cat.folders")),
+            (IconCategory::LightVariants, tr.t("picker.cat.light")),
+            (IconCategory::Clones, tr.t("picker.cat.clones")),
+        ];
+        let options: Vec<(IconCategory, &str)> =
+            categories.iter().map(|(c, l)| (*c, l.as_str())).collect();
+
+        let (mut build, mut import, mut to_settings) = (false, false, false);
+        Self::page_panel(ctx, |ui| {
+            kit::page_header(ui, &["WinTune", &name], &name, Some(&subtitle), |ui| {
+                let resp = ui.add_enabled(busy_reason.is_none(), primary_button(p, &build_label));
+                build = match &busy_reason {
+                    Some(reason) => resp.on_disabled_hover_text(reason),
+                    None => resp,
+                }
+                .clicked();
+                import = ui.add(secondary_button(&import_label)).clicked();
+            });
+
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(tr.t_args("icons.folder", &[&folder]))
+                        .size(text_size::SECONDARY)
+                        .color(p.text_secondary),
+                );
+                let link = ui
+                    .add(
+                        egui::Button::new(
+                            RichText::new(tr.t("icons.change_in_settings"))
+                                .size(text_size::SECONDARY)
+                                .color(p.accent),
+                        )
+                        .frame(false),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::PointingHand);
+                to_settings = link.clicked();
+            });
+            ui.add_space(space::M);
+
+            ui.horizontal(|ui| {
+                let search = ui.add(
+                    egui::TextEdit::singleline(&mut self.gallery_search_query)
+                        .id(super::polish::search_box_id(ActiveTab::Gallery).expect("search box"))
+                        .hint_text(tr.t("icons.search"))
+                        .desired_width(240.0),
+                );
+                self.focus_search_if_requested(&search);
+                kit::segmented(ui, &mut self.gallery_category, &options);
+            });
+            ui.add_space(space::M);
+
+            let filtered = self
+                .gallery
+                .filter_names(&self.gallery_search_query, self.gallery_category);
+            if self.gallery.names().is_empty() {
+                let text = tr.t_args("icons.empty", &[&folder]);
+                if kit::empty_state(ui, kit::Icon::Icons, &text, Some(&import_label)) {
+                    import = true;
+                }
+            } else if filtered.is_empty() {
+                let text = tr.t_args("icons.no_match", &[&self.gallery_search_query]);
+                ui.label(
+                    RichText::new(text)
+                        .size(text_size::BODY)
+                        .color(p.text_secondary),
+                );
+            } else {
+                // This page only browses: choosing an icon is done from a
+                // rule, in the icon picker.
+                let _ = icon_grid(
+                    ui,
+                    ctx,
+                    &self.gallery,
+                    &filtered,
+                    None,
+                    "gallery_page",
+                    false,
+                );
+            }
+        });
+
+        if build {
+            self.start_build_pak(ctx);
+        }
+        if import {
+            self.import_icons();
+        }
+        if to_settings {
+            self.open_page(ActiveTab::Settings);
+        }
     }
 
     fn reload_gallery(&mut self) {
@@ -25,10 +124,8 @@ impl WinTuneApp {
             return;
         };
         if let Err(e) = fs::create_dir_all(&self.config.icon_source_folder) {
-            self.notify(
-                super::kit::ToastKind::Error,
-                format!("Cannot create the icon folder: {}", e),
-            );
+            let text = self.tr.t_args("icons.folder_error", &[&e.to_string()]);
+            self.notify(kit::ToastKind::Error, text);
             return;
         }
         let dest_dir = Path::new(&self.config.icon_source_folder);
@@ -38,102 +135,11 @@ impl WinTuneApp {
             .filter(|(src, dest)| fs::copy(src, dest).is_ok())
             .count();
         self.reload_gallery();
-        self.notify(
-            super::kit::ToastKind::Success,
-            format!(
-                "Imported {} of {} .ico files into the gallery.",
-                imported,
-                files.len()
-            ),
+        let text = self.tr.t_args(
+            "icons.imported",
+            &[&imported.to_string(), &files.len().to_string()],
         );
-    }
-
-    fn show_gallery_header(&mut self, ctx: &egui::Context) {
-        let palette = get_palette(self.ui_theme);
-        let busy = self.is_busy();
-
-        egui::TopBottomPanel::top("gallery_header")
-            .frame(
-                egui::Frame::none()
-                    .fill(palette.bg_base)
-                    .inner_margin(Margin::symmetric(16.0, 12.0)),
-            )
-            .show(ctx, |ui| {
-                card_frame(self.ui_theme).show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Icon Source Folder:").strong());
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.config.icon_source_folder)
-                                .desired_width(280.0),
-                        );
-                        if ui.button("Change Folder...").clicked() {
-                            if let Some(folder) = rfd::FileDialog::new().pick_folder() {
-                                self.config.icon_source_folder =
-                                    folder.to_string_lossy().to_string();
-                                self.reload_gallery();
-                            }
-                        }
-                        if ui.button("Import .ico Files...").clicked() {
-                            self.import_icons();
-                        }
-
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui
-                                .add_enabled(
-                                    !busy,
-                                    accent_button("Build Compressed gallery.pak", self.ui_theme),
-                                )
-                                .clicked()
-                            {
-                                self.start_build_pak(ctx);
-                            }
-                        });
-                    });
-
-                    ui.add_space(6.0);
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Search:").strong());
-                        let search = ui.add(
-                            egui::TextEdit::singleline(&mut self.gallery_search_query)
-                                .id(super::polish::search_box_id(ActiveTab::Gallery)
-                                    .expect("search box"))
-                                .hint_text("Filter icons (rust, react, folder-src, _light...)")
-                                .desired_width(240.0),
-                        );
-                        self.focus_search_if_requested(&search);
-
-                        ui.separator();
-                        for (category, label) in [
-                            (IconCategory::All, "All"),
-                            (IconCategory::FilesOnly, "Files"),
-                            (IconCategory::FoldersOnly, "Folders (folder-*)"),
-                            (IconCategory::LightVariants, "Light (*_light)"),
-                            (IconCategory::Clones, "Clones (*.clone)"),
-                        ] {
-                            ui.selectable_value(&mut self.gallery_category, category, label);
-                        }
-                    });
-                });
-            });
-    }
-
-    fn show_gallery_grid(&mut self, ctx: &egui::Context) {
-        let palette = get_palette(self.ui_theme);
-
-        egui::CentralPanel::default()
-            .frame(
-                egui::Frame::none()
-                    .fill(palette.bg_base)
-                    .inner_margin(Margin::symmetric(16.0, 4.0)),
-            )
-            .show(ctx, |ui| {
-                let filtered = self
-                    .gallery
-                    .filter_names(&self.gallery_search_query, self.gallery_category);
-                // This page only browses: choosing an icon is done from a
-                // rule, in the icon picker.
-                let _ = icon_grid(ui, ctx, &self.gallery, &filtered, None, "gallery_page");
-            });
+        self.notify(kit::ToastKind::Success, text);
     }
 }
 
@@ -224,5 +230,135 @@ mod tests {
         assert_eq!(app.config.extensions[0].icon_name, "foo");
         assert!(app.icon_picker.is_none());
         assert_eq!(app.active_tab, ActiveTab::Gallery);
+    }
+
+    fn input(events: Vec<egui::Event>) -> RawInput {
+        RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(1180.0, 760.0))),
+            events,
+            ..Default::default()
+        }
+    }
+
+    fn click_at(app: &mut WinTuneApp, ctx: &egui::Context, pos: Pos2) {
+        use egui::{Event, Modifiers, PointerButton};
+        let button = |pressed| Event::PointerButton {
+            pos,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::default(),
+        };
+        frame(app, ctx, input(vec![Event::PointerMoved(pos)]));
+        frame(app, ctx, input(vec![button(true)]));
+        frame(app, ctx, input(vec![button(false)]));
+    }
+
+    /// Rects of the size of an icon card that are drawn with a stroke
+    /// at least `min_width` wide.
+    fn stroked_cards(out: &egui::FullOutput, min_width: f32) -> usize {
+        fn walk(shape: &egui::epaint::Shape, min_width: f32, n: &mut usize) {
+            match shape {
+                egui::epaint::Shape::Rect(r)
+                    if (r.rect.size() - (GALLERY_CELL - egui::vec2(8.0, 8.0))).length() < 0.5
+                        && r.stroke.width >= min_width =>
+                {
+                    *n += 1
+                }
+                egui::epaint::Shape::Vec(v) => v.iter().for_each(|s| walk(s, min_width, n)),
+                _ => {}
+            }
+        }
+        let mut n = 0;
+        out.shapes
+            .iter()
+            .for_each(|c| walk(&c.shape, min_width, &mut n));
+        n
+    }
+
+    #[test]
+    fn icons_page_tiles_do_not_react() {
+        use egui::{Event, Key, Modifiers};
+        let fx = TempIcons::new(&["foo", "bar"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo"]);
+        app.open_page(ActiveTab::Gallery);
+        frame(&mut app, &ctx, input(vec![]));
+        let out = frame(&mut app, &ctx, input(vec![]));
+        let bar = text_center(&out, "bar").expect("bar tile drawn");
+
+        for events in [vec![Event::PointerMoved(bar)], vec![]] {
+            let out = frame(&mut app, &ctx, input(events));
+            assert_eq!(out.platform_output.cursor_icon, egui::CursorIcon::Default);
+        }
+
+        // Tab through the whole page: no tile ever takes focus.
+        for _ in 0..30 {
+            let out = frame(
+                &mut app,
+                &ctx,
+                input(vec![Event::Key {
+                    key: Key::Tab,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Modifiers::default(),
+                }]),
+            );
+            assert_eq!(stroked_cards(&out, 2.0), 0, "a tile drew a focus ring");
+        }
+
+        click_at(&mut app, &ctx, bar);
+        assert_eq!(app.config.extensions[0].icon_name, "foo");
+        assert!(app.icon_picker.is_none());
+        assert_eq!(app.active_tab, ActiveTab::Gallery);
+    }
+
+    #[test]
+    fn change_in_settings_opens_settings() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        app.open_page(ActiveTab::Gallery);
+        frame(&mut app, &ctx, input(vec![]));
+        let out = frame(&mut app, &ctx, input(vec![]));
+        let link = text_center(&out, "Change in Settings").expect("link drawn");
+        click_at(&mut app, &ctx, link);
+        assert_eq!(app.active_tab, ActiveTab::Settings);
+    }
+
+    #[test]
+    fn an_empty_folder_offers_import() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        app.open_page(ActiveTab::Gallery);
+        frame(&mut app, &ctx, input(vec![]));
+        let out = frame(&mut app, &ctx, input(vec![]));
+        let texts = drawn_texts(&out);
+        let expected = format!("No icons in {}", app.config.icon_source_folder);
+        assert!(texts.contains(&expected), "{texts:?}");
+        // The empty state's action, besides the header's own button.
+        assert!(
+            texts.iter().filter(|t| *t == "Import .ico").count() >= 2,
+            "{texts:?}"
+        );
+        assert!(texts.contains(&format!("Folder: {}", app.config.icon_source_folder)));
+    }
+
+    #[test]
+    fn a_search_without_match_says_so() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        app.open_page(ActiveTab::Gallery);
+        app.gallery_search_query = "zzz".into();
+        frame(&mut app, &ctx, input(vec![]));
+        let out = frame(&mut app, &ctx, input(vec![]));
+        let texts = drawn_texts(&out);
+        assert!(
+            texts.contains(&"No icon matches \"zzz\".".to_string()),
+            "{texts:?}"
+        );
+        assert!(!texts.iter().any(|t| t.starts_with("No icons in")));
     }
 }

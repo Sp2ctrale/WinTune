@@ -21,7 +21,8 @@ pub(super) fn gallery_cell_rect(row_min: egui::Pos2, col: usize) -> egui::Rect {
 /// visible rows are laid out, so only visible icons get queued for
 /// (background) decoding; every cell has the same rect, so long names or
 /// loading states cannot shift the columns. `id_salt` keeps the scroll state
-/// of two grids apart.
+/// of two grids apart. With `interactive` false the cards only browse: no
+/// hand cursor, hover fill or focus, and nothing is ever returned.
 pub(super) fn icon_grid(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
@@ -29,6 +30,7 @@ pub(super) fn icon_grid(
     names: &[String],
     current: Option<&str>,
     id_salt: &str,
+    interactive: bool,
 ) -> Option<String> {
     let cols = ((ui.available_width() / GALLERY_CELL.x).floor() as usize).max(1);
     let total_rows = names.len().div_ceil(cols);
@@ -49,7 +51,7 @@ pub(super) fn icon_grid(
                 for (col, name) in names[start..end].iter().enumerate() {
                     let cell = gallery_cell_rect(row_rect.min, col);
                     let is_current = current.is_some_and(|c| c == name);
-                    if icon_card(ui, ctx, gallery, cell, name, is_current) {
+                    if icon_card(ui, ctx, gallery, cell, name, is_current, interactive) {
                         chosen = Some(name.clone());
                     }
                 }
@@ -67,21 +69,29 @@ fn icon_card(
     cell: egui::Rect,
     name: &str,
     is_current: bool,
+    interactive: bool,
 ) -> bool {
     let p = kit::current_palette(ctx);
-    let response = ui
-        .interact(cell, ui.id().with(("icon_card", name)), Sense::click())
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .on_hover_text(name);
-    response
-        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
+    let id = ui.id().with(("icon_card", name));
+    let response = if interactive {
+        let response = ui
+            .interact(cell, id, Sense::click())
+            .on_hover_cursor(egui::CursorIcon::PointingHand)
+            .on_hover_text(name);
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name)
+        });
+        response
+    } else {
+        ui.interact(cell, id, Sense::hover()).on_hover_text(name)
+    };
 
-    let fill = if response.hovered() {
+    let fill = if interactive && response.hovered() {
         p.surface_hover
     } else {
         p.surface
     };
-    let stroke = if is_current || response.has_focus() {
+    let stroke = if is_current || (interactive && response.has_focus()) {
         Stroke::new(2.0_f32, p.accent)
     } else {
         Stroke::new(1.0_f32, p.border)
@@ -118,5 +128,5 @@ fn icon_card(
         .selectable(false)
         .truncate(),
     );
-    response.clicked()
+    interactive && response.clicked()
 }

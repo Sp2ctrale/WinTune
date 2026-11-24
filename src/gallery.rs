@@ -20,6 +20,27 @@ pub enum IconCategory {
     Clones,
 }
 
+impl IconCategory {
+    /// The category whose filter shows the icon `name` (see
+    /// [`IconLibrary::filter_names`]). A name that is in several categories
+    /// gets the narrowest one (Clones, then Light, then Folders, then
+    /// Files); an empty name has none, so it gets `All`.
+    pub fn of(name: &str) -> Self {
+        let lower = name.trim().to_lowercase();
+        if lower.is_empty() {
+            Self::All
+        } else if lower.ends_with(".clone") {
+            Self::Clones
+        } else if lower.contains("_light") {
+            Self::LightVariants
+        } else if lower.starts_with("folder-") || lower == "folder" {
+            Self::FoldersOnly
+        } else {
+            Self::FilesOnly
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PakEntry {
     pub name: String,
@@ -499,6 +520,30 @@ mod tests {
     use super::*;
     use std::cell::RefCell;
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn an_icon_name_has_the_category_that_shows_it() {
+        assert_eq!(IconCategory::of("folder-src"), IconCategory::FoldersOnly);
+        assert_eq!(IconCategory::of("folder"), IconCategory::FoldersOnly);
+        assert_eq!(IconCategory::of("Rust_Light"), IconCategory::LightVariants);
+        assert_eq!(IconCategory::of("rust.clone"), IconCategory::Clones);
+        assert_eq!(IconCategory::of("rust"), IconCategory::FilesOnly);
+        assert_eq!(IconCategory::of(""), IconCategory::All);
+        assert_eq!(IconCategory::of("  "), IconCategory::All);
+    }
+
+    #[test]
+    fn the_category_of_a_name_always_lists_that_name() {
+        let names = ["folder-src", "folder", "rust_light", "rust.clone", "rust"];
+        let lib = IconLibrary {
+            names: names.iter().map(|n| n.to_string()).collect(),
+            ..Default::default()
+        };
+        for name in names {
+            let shown = lib.filter_names("", IconCategory::of(name));
+            assert!(shown.iter().any(|n| n == name), "{name} not in {shown:?}");
+        }
+    }
 
     /// Temp folder with a few real multi-size .ico files, removed on drop.
     struct IconFixture {

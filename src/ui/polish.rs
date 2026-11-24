@@ -69,11 +69,15 @@ impl WinTuneApp {
     /// Why the action bar's Apply (this rule only) is disabled. Same reasons
     /// as `apply_disabled_reason`, except that other rules' problems do not
     /// count: only this rule's own.
-    pub(super) fn apply_rule_disabled_reason(&self, index: usize) -> Option<String> {
+    pub(super) fn apply_rule_disabled_reason(
+        &self,
+        index: usize,
+        problems: &[(usize, crate::associations::RuleProblem)],
+    ) -> Option<String> {
         if let Some(reason) = self.assoc_apply_blocked() {
             return Some(reason);
         }
-        crate::associations::find_rule_problems(&self.config.extensions)
+        problems
             .iter()
             .any(|(i, _)| *i == index)
             .then(|| self.tr.t("assoc.blocked.this_rule"))

@@ -52,6 +52,16 @@ impl WinTuneApp {
         }
         let mut extensions: Vec<String> = self.rollback_selection.iter().cloned().collect();
         extensions.sort();
+        self.confirm_rollback(extensions);
+    }
+
+    /// Asks before restoring the original of one rule (the associations
+    /// page's "Restore original").
+    pub(super) fn request_restore_rule(&mut self, extension: &str) {
+        self.confirm_rollback(vec![extension.to_string()]);
+    }
+
+    fn confirm_rollback(&mut self, extensions: Vec<String>) {
         let tr = self.tr;
         self.pending_confirm = Some(Confirm {
             title: tr.t("confirm.rollback.title"),

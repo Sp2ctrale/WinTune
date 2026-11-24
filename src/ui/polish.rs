@@ -22,7 +22,7 @@ impl WinTuneApp {
     /// Ctrl+F: remember to focus the current tab's search box this frame.
     /// (No shortcut changes the registry: those stay mouse + confirmation.)
     pub(super) fn handle_shortcuts(&mut self, ctx: &egui::Context) {
-        if self.pending_confirm.is_some() {
+        if self.pending_confirm.is_some() || self.icon_picker.is_some() {
             return;
         }
         let find = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::F);
@@ -39,19 +39,45 @@ impl WinTuneApp {
         }
     }
 
-    /// Why "Apply Checked Extensions" is disabled, or `None` if it is enabled.
+    /// Why "Apply all enabled" is disabled, or `None` if it is enabled.
     pub(super) fn apply_disabled_reason(&self) -> Option<String> {
-        if let Some(job) = &self.job {
-            return Some(format!("Wait: {} is still running.", job.title()));
-        }
-        if let Some(e) = &self.backup_store_error {
-            return Some(format!("Registry changes are blocked: {}", e));
-        }
-        if self.config.code_executable.trim().is_empty() {
-            return Some("Set the default code editor first.".to_string());
+        if let Some(reason) = self.assoc_apply_blocked() {
+            return Some(reason);
         }
         let blockers = self.apply_blockers();
-        (!blockers.is_empty()).then(|| format!("Fix these rules first:\n{}", blockers.join("\n")))
+        (!blockers.is_empty()).then(|| {
+            self.tr
+                .t_args("assoc.blocked.problems", &[&blockers.join("\n")])
+        })
+    }
+
+    /// Reasons that block any association apply: a running job, an
+    /// unreadable backups.json, no editor.
+    fn assoc_apply_blocked(&self) -> Option<String> {
+        if let Some(job) = &self.job {
+            let name = self.tr.t(job.name_key());
+            return Some(self.tr.t_args("notice.still_running", &[&name]));
+        }
+        if let Some(e) = &self.backup_store_error {
+            return Some(self.tr.t_args("notice.registry_blocked", &[e]));
+        }
+        if self.config.code_executable.trim().is_empty() {
+            return Some(self.tr.t("assoc.blocked.editor"));
+        }
+        None
+    }
+
+    /// Why the action bar's Apply (this rule only) is disabled. Same reasons
+    /// as `apply_disabled_reason`, except that other rules' problems do not
+    /// count: only this rule's own.
+    pub(super) fn apply_rule_disabled_reason(&self, index: usize) -> Option<String> {
+        if let Some(reason) = self.assoc_apply_blocked() {
+            return Some(reason);
+        }
+        crate::associations::find_rule_problems(&self.config.extensions)
+            .iter()
+            .any(|(i, _)| *i == index)
+            .then(|| self.tr.t("assoc.blocked.this_rule"))
     }
 
     /// Common reasons first: a running job, then an unreadable store.
@@ -157,16 +183,22 @@ mod tests {
         assert_eq!(app.apply_disabled_reason(), None);
 
         app.config.code_executable.clear();
-        assert!(app.apply_disabled_reason().unwrap().contains("editor"));
+        assert_eq!(
+            app.apply_disabled_reason().unwrap(),
+            app.tr.t("assoc.blocked.editor")
+        );
 
         let mut app = fx.app_with_rules(&ctx, &[".foo", ".FOO"]);
-        assert!(app
-            .apply_disabled_reason()
-            .unwrap()
-            .contains("more than once"));
+        let reason = app.apply_disabled_reason().unwrap();
+        assert!(reason.contains("more than once"), "{reason}");
+        assert!(reason.starts_with(&app.tr.t_args("assoc.blocked.problems", &[&""])));
 
         app.backup_store_error = Some("backups.json is unreadable".into());
-        assert!(app.apply_disabled_reason().unwrap().contains("unreadable"));
+        assert_eq!(
+            app.apply_disabled_reason().unwrap(),
+            app.tr
+                .t_args("notice.registry_blocked", &[&"backups.json is unreadable"])
+        );
     }
 
     #[test]

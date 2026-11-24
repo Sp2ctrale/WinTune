@@ -15,7 +15,7 @@ mod test_input;
 mod tokens;
 
 pub use chrome::{caption_bar, resize_edge, CaptionAction, CaptionLabels, CAPTION_HEIGHT};
-pub use controls::{disclosure, pill, segmented, toggle, toggle_enabled, PillKind};
+pub use controls::{disclosure, pill, segmented, status_dot, toggle, toggle_enabled, PillKind};
 pub use feedback::{
     action_bar, dialog, dialog_buttons, ActionBarState, ToastKind, Toasts, TOAST_SECONDS,
 };

@@ -11,6 +11,8 @@ mod confirm;
 mod gallery_tab;
 mod history_panel;
 mod home;
+mod icon_grid;
+mod icon_picker;
 mod jobs;
 pub mod kit;
 mod polish;
@@ -140,6 +142,12 @@ impl ActiveTab {
             }
         }
     }
+
+    /// Pages that draw their own action bar (with the job's progress while
+    /// one runs). The shell draws the progress bar for the others.
+    pub(super) fn owns_action_bar(self) -> bool {
+        matches!(self, ActiveTab::Associations)
+    }
 }
 
 /// What a finished job did, to word its toast.
@@ -161,7 +169,8 @@ pub struct WinTuneApp {
     ext_search_query: String,
     gallery_search_query: String,
     gallery_category: IconCategory,
-    assign_icon_to_selected_ext: bool,
+    /// The icon picker dialog, when open.
+    icon_picker: Option<icon_picker::IconPicker>,
     rollback_selection: HashSet<String>,
     /// Transient messages, drawn bottom-right.
     toasts: kit::Toasts,
@@ -257,7 +266,7 @@ impl WinTuneApp {
             ext_search_query: String::new(),
             gallery_search_query: String::new(),
             gallery_category: IconCategory::FilesOnly,
-            assign_icon_to_selected_ext: false,
+            icon_picker: None,
             rollback_selection: HashSet::new(),
             toasts: kit::Toasts::default(),
             backup_store_error: None,
@@ -295,25 +304,11 @@ impl WinTuneApp {
         // Before the nav: the dialog claims the keyboard first (it is an Area,
         // so the panel layout does not depend on the order).
         self.show_confirm_dialog(ctx);
+        self.show_icon_picker(ctx);
         self.show_caption(ctx);
         self.show_nav(ctx);
-        if let Some(job) = &self.job {
-            let p = job.progress();
-            let label = if p.total > 0 {
-                self.tr.t_args("job.progress", &[&p.done, &p.total])
-            } else {
-                String::new()
-            };
-            let status = self.tr.t(job.title_key());
-            kit::action_bar(
-                ctx,
-                &status,
-                kit::ActionBarState::Busy {
-                    label: &label,
-                    fraction: p.fraction(),
-                },
-                |_| {},
-            );
+        if !self.active_tab.owns_action_bar() {
+            self.job_progress_bar(ctx);
         }
         self.show_autosave_banner(ctx);
 

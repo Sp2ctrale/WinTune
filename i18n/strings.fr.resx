@@ -567,4 +567,231 @@
   <data name="window.close" xml:space="preserve">
     <value>Fermer</value>
   </data>
+  <data name="picker.title" xml:space="preserve">
+    <value>Choisir une icône</value>
+  </data>
+  <data name="picker.search" xml:space="preserve">
+    <value>Rechercher une icône</value>
+  </data>
+  <data name="picker.cat.all" xml:space="preserve">
+    <value>Toutes</value>
+  </data>
+  <data name="picker.cat.files" xml:space="preserve">
+    <value>Fichiers</value>
+  </data>
+  <data name="picker.cat.folders" xml:space="preserve">
+    <value>Dossiers</value>
+  </data>
+  <data name="picker.cat.light" xml:space="preserve">
+    <value>Claires</value>
+  </data>
+  <data name="picker.cat.clones" xml:space="preserve">
+    <value>Clones</value>
+  </data>
+  <data name="picker.empty" xml:space="preserve">
+    <value>Aucune icône ne correspond.</value>
+  </data>
+  <data name="picker.no_icons" xml:space="preserve">
+    <value>Aucune icône dans {0}</value>
+  </data>
+  <data name="picker.assigned" xml:space="preserve">
+    <value>{1} utilise maintenant l'icône {0}.</value>
+  </data>
+  <data name="picker.cancel" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
+  <data name="assoc.search" xml:space="preserve">
+    <value>Rechercher une règle (Ctrl+F)</value>
+  </data>
+  <data name="assoc.add_hint" xml:space="preserve">
+    <value>Nouvelle extension, ex. .zig</value>
+  </data>
+  <data name="assoc.add" xml:space="preserve">
+    <value>+ Ajouter</value>
+  </data>
+  <data name="assoc.empty" xml:space="preserve">
+    <value>Aucune règle pour l'instant. Ajoutez une extension ci-dessous.</value>
+  </data>
+  <data name="assoc.no_match" xml:space="preserve">
+    <value>Aucune règle ne correspond à « {0} ».</value>
+  </data>
+  <data name="assoc.subtitle" xml:space="preserve">
+    <value>Choisissez comment chaque type de fichier s'ouvre et s'affiche.</value>
+  </data>
+  <data name="assoc.apply_all" xml:space="preserve">
+    <value>Appliquer les règles cochées</value>
+  </data>
+  <data name="assoc.check_all" xml:space="preserve">
+    <value>Tout cocher</value>
+  </data>
+  <data name="assoc.uncheck_all" xml:space="preserve">
+    <value>Tout décocher</value>
+  </data>
+  <data name="assoc.refresh" xml:space="preserve">
+    <value>Actualiser</value>
+  </data>
+  <data name="assoc.refresh_hint" xml:space="preserve">
+    <value>Relit le registre pour voir quelles règles sont appliquées ou modifiées.</value>
+  </data>
+  <data name="assoc.exists" xml:space="preserve">
+    <value>{0} est déjà dans la liste.</value>
+  </data>
+  <data name="assoc.add_invalid" xml:space="preserve">
+    <value>Impossible d'ajouter {0} : {1}</value>
+  </data>
+  <data name="assoc.blocked.editor" xml:space="preserve">
+    <value>Choisissez d'abord l'éditeur de code par défaut.</value>
+  </data>
+  <data name="assoc.blocked.problems" xml:space="preserve">
+    <value>Corrigez d'abord ces règles :
+{0}</value>
+  </data>
+  <data name="assoc.state.checking" xml:space="preserve">
+    <value>Vérification en cours</value>
+  </data>
+  <data name="assoc.state.not_applied" xml:space="preserve">
+    <value>Non appliquée</value>
+  </data>
+  <data name="assoc.state.up_to_date" xml:space="preserve">
+    <value>À jour</value>
+  </data>
+  <data name="assoc.state.changed" xml:space="preserve">
+    <value>Modifiée</value>
+  </data>
+  <data name="assoc.state.invalid" xml:space="preserve">
+    <value>Non valide</value>
+  </data>
+  <data name="assoc.select" xml:space="preserve">
+    <value>Sélectionnez une règle à gauche, ou ajoutez-en une.</value>
+  </data>
+  <data name="assoc.opens_with" xml:space="preserve">
+    <value>S'ouvre avec {0}</value>
+  </data>
+  <data name="assoc.no_editor" xml:space="preserve">
+    <value>Aucun éditeur de code défini</value>
+  </data>
+  <data name="assoc.runs" xml:space="preserve">
+    <value>Exécute le fichier · Modifier l'ouvre dans {0}</value>
+  </data>
+  <data name="assoc.runs_no_editor" xml:space="preserve">
+    <value>Exécute le fichier</value>
+  </data>
+  <data name="assoc.original_saved" xml:space="preserve">
+    <value>Original enregistré</value>
+  </data>
+  <data name="assoc.double_click" xml:space="preserve">
+    <value>Au double-clic</value>
+  </data>
+  <data name="assoc.mode.editor" xml:space="preserve">
+    <value>Ouvrir dans l'éditeur</value>
+  </data>
+  <data name="assoc.mode.run" xml:space="preserve">
+    <value>Exécuter</value>
+  </data>
+  <data name="assoc.launch_command" xml:space="preserve">
+    <value>Commande de lancement</value>
+  </data>
+  <data name="assoc.appearance" xml:space="preserve">
+    <value>Apparence</value>
+  </data>
+  <data name="assoc.icon" xml:space="preserve">
+    <value>Icône</value>
+  </data>
+  <data name="assoc.change_icon" xml:space="preserve">
+    <value>Changer d'icône</value>
+  </data>
+  <data name="assoc.options" xml:space="preserve">
+    <value>Options</value>
+  </data>
+  <data name="assoc.clean_overrides" xml:space="preserve">
+    <value>Nettoyer les remplacements par utilisateur</value>
+  </data>
+  <data name="assoc.clean_overrides_desc" xml:space="preserve">
+    <value>Supprime les clés de cette extension sous HKCU\Software\Classes.</value>
+  </data>
+  <data name="assoc.ignore_open_with" xml:space="preserve">
+    <value>Ignorer le choix « Ouvrir avec »</value>
+  </data>
+  <data name="assoc.ignore_open_with_hint" xml:space="preserve">
+    <value>Supprime le choix « Ouvrir avec… / Toujours » de l'utilisateur, pour que l'association de WinTune s'applique.
+La restauration remet ce choix, mais Windows le protège par un hachage : il peut encore signaler « Une application par défaut a été réinitialisée » et revenir à son application par défaut.</value>
+  </data>
+  <data name="assoc.advanced" xml:space="preserve">
+    <value>Options avancées</value>
+  </data>
+  <data name="assoc.field.extension" xml:space="preserve">
+    <value>Extension</value>
+  </data>
+  <data name="assoc.field.prog_id" xml:space="preserve">
+    <value>ProgID</value>
+  </data>
+  <data name="assoc.field.description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="assoc.field.perceived_type" xml:space="preserve">
+    <value>PerceivedType</value>
+  </data>
+  <data name="assoc.field.content_type" xml:space="preserve">
+    <value>Type MIME</value>
+  </data>
+  <data name="assoc.preserve" xml:space="preserve">
+    <value>Conserver les autres propriétés de l'extension</value>
+  </data>
+  <data name="assoc.preserve_desc" xml:space="preserve">
+    <value>OpenWithProgids, ShellNew et Shellex restent inchangés.</value>
+  </data>
+  <data name="assoc.run_as_admin" xml:space="preserve">
+    <value>Entrée « Exécuter en tant qu'administrateur »</value>
+  </data>
+  <data name="assoc.admin_command" xml:space="preserve">
+    <value>Commande administrateur</value>
+  </data>
+  <data name="assoc.verbs" xml:space="preserve">
+    <value>Entrées du clic droit</value>
+  </data>
+  <data name="assoc.verbs.none" xml:space="preserve">
+    <value>Aucune entrée de clic droit en plus.</value>
+  </data>
+  <data name="assoc.verb.add" xml:space="preserve">
+    <value>Ajouter une entrée</value>
+  </data>
+  <data name="assoc.verb.remove" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="assoc.verb.key" xml:space="preserve">
+    <value>Clé de registre</value>
+  </data>
+  <data name="assoc.verb.label" xml:space="preserve">
+    <value>Libellé du menu</value>
+  </data>
+  <data name="assoc.verb.command" xml:space="preserve">
+    <value>Commande</value>
+  </data>
+  <data name="assoc.bar.checking" xml:space="preserve">
+    <value>Vérification de l'état…</value>
+  </data>
+  <data name="assoc.bar.not_applied" xml:space="preserve">
+    <value>Pas encore appliquée</value>
+  </data>
+  <data name="assoc.bar.up_to_date" xml:space="preserve">
+    <value>Appliquée et à jour</value>
+  </data>
+  <data name="assoc.bar.changed" xml:space="preserve">
+    <value>Modifiée depuis son application</value>
+  </data>
+  <data name="assoc.bar.invalid" xml:space="preserve">
+    <value>Ne peut pas être appliquée : {0}</value>
+  </data>
+  <data name="assoc.apply" xml:space="preserve">
+    <value>Appliquer</value>
+  </data>
+  <data name="assoc.restore" xml:space="preserve">
+    <value>Restaurer l'original</value>
+  </data>
+  <data name="assoc.remove" xml:space="preserve">
+    <value>Supprimer la règle</value>
+  </data>
+  <data name="assoc.blocked.this_rule" xml:space="preserve">
+    <value>Corrigez d'abord cette règle.</value>
+  </data>
 </root>

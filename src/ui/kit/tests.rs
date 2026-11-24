@@ -563,6 +563,7 @@ mod controls {
                             icon: Some(Icon::Home),
                             title: "Title",
                             description: Some("Description"),
+                            hover: None,
                         }
                         .show(ui, |ui| toggle(ui, &mut on));
                     });
@@ -702,6 +703,54 @@ mod layout {
         let _ = ctx3.run(frame_input(vec![]), |c| three.show(c, "Clear all"));
         let extra = five - height(&ctx3);
         assert!(extra > 0.0 && extra < 40.0, "overflow row height {extra}");
+    }
+
+    #[test]
+    fn toasts_sit_above_a_bottom_panel() {
+        const BAR_HEIGHT: f32 = 60.0;
+        let ctx = ctx_for(ThemeMode::Light);
+        let mut toasts = Toasts::default();
+        for i in 0..5 {
+            toasts.push(ToastKind::Error, format!("Toast {i}"));
+        }
+        let mut bar_top = f32::NAN;
+        let mut out = None;
+        // The first frames size the area; the last one is the settled layout.
+        for _ in 0..3 {
+            out = Some(ctx.run(frame_input(vec![]), |c| {
+                let bar = egui::TopBottomPanel::bottom("test_bar")
+                    .exact_height(BAR_HEIGHT)
+                    .show(c, |_| {});
+                bar_top = bar.response.rect.top();
+                toasts.show(c, "Clear all");
+            }));
+        }
+        fn text_bottom(shape: &egui::Shape, text: &str) -> Option<f32> {
+            match shape {
+                egui::Shape::Text(t) if t.galley.text() == text => {
+                    Some(t.pos.y + t.galley.rect.bottom())
+                }
+                egui::Shape::Vec(v) => v.iter().find_map(|s| text_bottom(s, text)),
+                _ => None,
+            }
+        }
+        let out = out.unwrap();
+        // The oldest shown toast is the lowest card; the overflow row is below it.
+        for text in ["Toast 2", "Toast 4", "Clear all"] {
+            let bottom = out
+                .shapes
+                .iter()
+                .find_map(|c| text_bottom(&c.shape, text))
+                .unwrap_or_else(|| panic!("{text:?} not drawn"));
+            assert!(
+                bottom <= bar_top,
+                "{text:?} ends at {bottom}, under the panel's top edge {bar_top}"
+            );
+        }
+        let area = ctx
+            .memory(|m| m.area_rect(egui::Id::new("wintune_toasts")))
+            .unwrap();
+        assert!(area.bottom() <= bar_top, "{area:?} overlaps the panel");
     }
 
     #[test]
@@ -1128,6 +1177,107 @@ mod shell_kit {
         let _ = ctx.run(key(Key::Tab, Modifiers::NONE), draw);
         let after = ctx.run(frame_input(vec![]), draw);
         assert!(has_ring(&after), "Tab focuses the row and it paints a ring");
+    }
+
+    fn has_two_px_ring(out: &egui::FullOutput) -> bool {
+        fn ring(shape: &Shape) -> bool {
+            match shape {
+                Shape::Rect(r) => r.stroke.width == 2.0,
+                Shape::Vec(v) => v.iter().any(ring),
+                _ => false,
+            }
+        }
+        out.shapes.iter().any(|c| ring(&c.shape))
+    }
+
+    #[test]
+    fn a_focused_segmented_option_paints_a_focus_ring() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                let mut v = 1_u8;
+                segmented(ui, &mut v, &[(1, "A"), (2, "B")]);
+            });
+        };
+        let _ = ctx.run(frame_input(vec![]), draw);
+        let before = ctx.run(frame_input(vec![]), draw);
+        assert!(!has_two_px_ring(&before), "no ring while unfocused");
+        let _ = ctx.run(key(Key::Tab, Modifiers::NONE), draw);
+        let after = ctx.run(frame_input(vec![]), draw);
+        assert!(has_two_px_ring(&after), "Tab focuses an option: ring");
+    }
+
+    #[test]
+    fn space_on_a_focused_segmented_option_selects_it() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let value = Cell::new(1_u8);
+        let changed = Cell::new(false);
+        let draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                let mut v = value.get();
+                let r = segmented(ui, &mut v, &[(1, "A"), (2, "B")]);
+                value.set(v);
+                changed.set(r.changed());
+            });
+        };
+        let _ = ctx.run(frame_input(vec![]), draw);
+        let _ = ctx.run(key(Key::Tab, Modifiers::NONE), draw);
+        let _ = ctx.run(key(Key::Tab, Modifiers::NONE), draw);
+        assert_eq!(value.get(), 1);
+        let _ = ctx.run(key(Key::Space, Modifiers::NONE), draw);
+        assert_eq!(value.get(), 2);
+        assert!(changed.get(), "changed() on the selecting frame");
+    }
+
+    #[test]
+    fn a_focused_disclosure_header_paints_a_focus_ring() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                disclosure(ui, "d", "Advanced", false, |_| {});
+            });
+        };
+        let _ = ctx.run(frame_input(vec![]), draw);
+        let before = ctx.run(frame_input(vec![]), draw);
+        assert!(!has_two_px_ring(&before), "no ring while unfocused");
+        let _ = ctx.run(key(Key::Tab, Modifiers::NONE), draw);
+        let after = ctx.run(frame_input(vec![]), draw);
+        assert!(has_two_px_ring(&after), "Tab focuses the header: ring");
+    }
+
+    #[test]
+    fn status_dot_draws_a_ring_when_not_applied() {
+        fn circles(shape: &Shape, out: &mut Vec<egui::epaint::CircleShape>) {
+            match shape {
+                Shape::Circle(c) => out.push(*c),
+                Shape::Vec(v) => v.iter().for_each(|s| circles(s, out)),
+                _ => {}
+            }
+        }
+        let ctx = ctx_for(ThemeMode::Light);
+        let dots = |kind: Option<PillKind>| {
+            let draw = |c: &Context| {
+                CentralPanel::default().show(c, |ui| {
+                    status_dot(ui, kind, None);
+                });
+            };
+            let _ = ctx.run(frame_input(vec![]), draw);
+            let out = ctx.run(frame_input(vec![]), draw);
+            let mut v = Vec::new();
+            out.shapes.iter().for_each(|c| circles(&c.shape, &mut v));
+            v
+        };
+        let none = dots(None);
+        assert!(
+            none.iter()
+                .any(|c| c.fill == egui::Color32::TRANSPARENT && c.stroke.width > 0.0),
+            "not applied draws a ring with no fill"
+        );
+        let ok = dots(Some(PillKind::Success));
+        assert!(
+            ok.iter().any(|c| c.fill != egui::Color32::TRANSPARENT),
+            "a kind draws a filled circle"
+        );
     }
 
     #[test]

@@ -179,6 +179,47 @@ impl WinTuneApp {
         }
     }
 
+    /// The action bar in its busy state while a job runs. Returns whether
+    /// it was drawn.
+    pub(super) fn job_progress_bar(&self, ctx: &egui::Context) -> bool {
+        let Some(job) = &self.job else {
+            return false;
+        };
+        let p = job.progress();
+        let label = if p.total > 0 {
+            self.tr.t_args("job.progress", &[&p.done, &p.total])
+        } else {
+            String::new()
+        };
+        let status = self.tr.t(job.title_key());
+        kit::action_bar(
+            ctx,
+            &status,
+            kit::ActionBarState::Busy {
+                label: &label,
+                fraction: p.fraction(),
+            },
+            |_| {},
+        );
+        true
+    }
+
+    /// The action bar of a page that owns it: the job's progress while one
+    /// runs (no actions), else `status` with `actions`, else nothing.
+    pub(super) fn page_action_bar(
+        &self,
+        ctx: &egui::Context,
+        status: Option<&str>,
+        actions: impl FnOnce(&mut egui::Ui),
+    ) {
+        if self.job_progress_bar(ctx) {
+            return;
+        }
+        if let Some(status) = status {
+            kit::action_bar(ctx, status, kit::ActionBarState::Idle, actions);
+        }
+    }
+
     /// Central panel with the kit's page margins.
     pub(super) fn page_panel(ctx: &egui::Context, body: impl FnOnce(&mut egui::Ui)) {
         egui::CentralPanel::default()
@@ -322,16 +363,50 @@ mod tests {
         app.open_page(ActiveTab::Tweaks);
         assert_eq!(app.backup_store_error.as_deref(), Some("sentinel"));
         assert_eq!(app.tweak_store_error.as_deref(), Some("sentinel"));
+        release_tx.send(()).unwrap();
+        run_until_idle(&mut app, &ctx);
+    }
+
+    #[test]
+    fn other_pages_still_show_the_shell_progress_bar() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo"]);
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        app.job = Some(RunningJob::BuildPak(BackgroundJob::spawn(
+            "Building gallery.pak",
+            || {},
+            move |_| {
+                release_rx.recv().unwrap();
+                Ok(PakStats {
+                    count: 0,
+                    bytes_before: 0,
+                    bytes_after: 0,
+                })
+            },
+        )));
 
         let busy_text = app.tr.t("job.build_pak");
         for tab in ActiveTab::ALL {
             app.active_tab = tab;
             let out = frame(&mut app, &ctx, RawInput::default());
-            assert!(
-                drawn_texts(&out).contains(&busy_text),
-                "{tab:?} lost the progress bar"
+            // Exactly one bar: the shell's, or the page's own.
+            assert_eq!(
+                drawn_texts(&out)
+                    .iter()
+                    .filter(|t| **t == busy_text)
+                    .count(),
+                1,
+                "{tab:?} lost the progress bar, or drew two"
             );
         }
+        // Without a rule selected, the page's bar still shows the job.
+        app.active_tab = ActiveTab::Associations;
+        app.config.extensions.clear();
+        let out = frame(&mut app, &ctx, RawInput::default());
+        assert!(drawn_texts(&out).contains(&busy_text));
+        assert!(ActiveTab::Associations.owns_action_bar());
+        assert!(!ActiveTab::Home.owns_action_bar());
         release_tx.send(()).unwrap();
         run_until_idle(&mut app, &ctx);
     }
@@ -446,8 +521,81 @@ mod tests {
             }
         }
         app.pending_confirm = None;
+        // A busy page is disabled, so let the job finish before clicking.
         release_tx.send(()).unwrap();
         run_until_idle(&mut app, &ctx);
+
+        // The associations page and the icon picker, in a tall window so the
+        // detail's Advanced options fit.
+        use crate::associations::{DriftReason, RuleStatus};
+        app.config.extensions = vec![rule(".a"), rule(".b"), rule(".x y")];
+        app.rule_statuses.clear();
+        app.rule_statuses.insert(
+            ".a".into(),
+            RuleStatus::Drifted(vec![DriftReason::ProgIdMissing {
+                prog_id: "CustomAFile".into(),
+            }]),
+        );
+        app.rule_statuses.insert(".b".into(), RuleStatus::Applied);
+        app.selected_ext_index = 0;
+        app.active_tab = ActiveTab::Associations;
+        let tall = |events: Vec<Event>| RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1180.0, 2400.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        let mut texts = Vec::new();
+        for _ in 0..3 {
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+        }
+        // Open Advanced options by clicking its header.
+        let advanced = app.tr.t("assoc.advanced");
+        // The page's entry animation moves the header, so settle first.
+        for _ in 0..4 {
+            let mut settle = tall(vec![]);
+            settle.time = Some(ctx.input(|i| i.time) + 1.0);
+            frame(&mut app, &ctx, settle);
+        }
+        let out = frame(&mut app, &ctx, tall(vec![]));
+        let pos = text_center(&out, &advanced).expect("Advanced options header not drawn");
+        let button = |pressed| Event::PointerButton {
+            pos,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        for events in [
+            vec![Event::PointerMoved(pos)],
+            vec![button(true)],
+            vec![button(false)],
+        ] {
+            frame(&mut app, &ctx, tall(events));
+        }
+        // Let the opening animation finish.
+        let mut later = tall(vec![]);
+        later.time = Some(ctx.input(|i| i.time) + 1.0);
+        frame(&mut app, &ctx, later);
+        for _ in 0..3 {
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+        }
+        app.open_icon_picker(0);
+        for _ in 0..3 {
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+        }
+        // The page, its opened Advanced options and the picker were drawn.
+        for key in ["assoc.preserve", "assoc.field.description", "picker.title"] {
+            let drawn = app.tr.t(key);
+            assert!(texts.contains(&drawn), "{key} ({drawn:?}) not drawn");
+        }
+        for (key, value) in &english_only {
+            assert!(
+                !texts.iter().any(|t| t == *value),
+                "associations page or icon picker draws English-only text {value:?} (key {key})"
+            );
+        }
     }
 
     fn key_press(key: egui::Key) -> Event {

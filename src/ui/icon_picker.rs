@@ -240,14 +240,7 @@ mod tests {
         assert!(drawn_texts(&out).contains(&text), "{:?}", drawn_texts(&out));
     }
 
-    #[test]
-    fn ctrl_f_does_nothing_while_the_picker_is_open() {
-        let fx = TempIcons::new(&["foo"]);
-        let ctx = egui::Context::default();
-        let mut app = fx.app_with_rules(&ctx, &[".foo"]);
-        app.open_page(super::super::ActiveTab::Associations);
-        app.open_icon_picker(".foo");
-
+    fn press_ctrl_f(app: &mut WinTuneApp, ctx: &egui::Context) {
         let ctrl_f = Event::Key {
             key: Key::F,
             physical_key: None,
@@ -255,8 +248,41 @@ mod tests {
             repeat: false,
             modifiers: Modifiers::COMMAND,
         };
-        frame(&mut app, &ctx, input(0.0, vec![ctrl_f]));
+        // Only the shortcut handler runs, so no search box resets the flag.
+        let _ = ctx.run(input(0.0, vec![ctrl_f]), |ctx| app.handle_shortcuts(ctx));
+    }
 
+    #[test]
+    fn ctrl_f_does_nothing_while_the_picker_is_open() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo"]);
+        app.open_page(super::super::ActiveTab::Associations);
+
+        // Control: with no picker, Ctrl+F asks for the search box.
+        press_ctrl_f(&mut app, &ctx);
+        assert!(app.focus_search);
+        app.focus_search = false;
+
+        app.open_icon_picker(".foo");
+        press_ctrl_f(&mut app, &ctx);
         assert!(!app.focus_search);
+    }
+
+    #[test]
+    fn a_query_with_no_match_shows_the_no_match_text() {
+        let fx = TempIcons::new(&["foo", "bar"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo"]);
+        app.open_icon_picker(".foo");
+        app.icon_picker.as_mut().unwrap().query = "zzz".into();
+
+        frame(&mut app, &ctx, input(0.0, vec![]));
+        let out = frame(&mut app, &ctx, input(0.01, vec![]));
+
+        let texts = drawn_texts(&out);
+        assert!(texts.contains(&app.tr.t("picker.empty")), "{texts:?}");
+        let folder = app.config.icon_source_folder.clone();
+        assert!(!texts.contains(&app.tr.t_args("picker.no_icons", &[&folder])));
     }
 }

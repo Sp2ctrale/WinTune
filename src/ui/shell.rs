@@ -732,6 +732,131 @@ mod tests {
                 "a tweak page draws English-only text {value:?} (key {key})"
             );
         }
+
+        // The Icons page, with icons and with a search that matches nothing.
+        app.env.is_windows_11 = true;
+        app.active_tab = ActiveTab::Gallery;
+        let mut texts = Vec::new();
+        for _ in 0..3 {
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+        }
+        app.gallery_search_query = "zzz".into();
+        for _ in 0..3 {
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+        }
+        app.gallery_search_query.clear();
+        for drawn in [
+            app.tr.t("icons.build"),
+            app.tr.t_args("icons.no_match", &[&"zzz"]),
+        ] {
+            assert!(texts.contains(&drawn), "{drawn:?} not drawn on Icons");
+        }
+        for (key, value) in &english_only {
+            assert!(
+                !texts.iter().any(|t| t == *value),
+                "the Icons page draws English-only text {value:?} (key {key})"
+            );
+        }
+
+        // The History page: saved originals in every group, one opened
+        // operation with an error and a `.reg` path, then a broken store.
+        app.config.extensions = vec![rule(".a"), rule(".b")];
+        let rules = app.config.extensions.clone();
+        app.start_apply(&ctx, rules);
+        run_until_idle(&mut app, &ctx);
+        assert!(app.backup_store.find(".a").is_some(), "no rule snapshot");
+        let mut entry = crate::history::HistoryEntry::from_report(
+            "File associations",
+            "Apply",
+            &crate::associations::OperationReport {
+                succeeded: vec![".a".into()],
+                errors: vec![".b: failed".into()],
+                ..Default::default()
+            },
+        );
+        entry.reg_backup = Some("C:\\backups\\x.reg".into());
+        let entry_time = entry.time.clone();
+        app.history = vec![entry];
+        app.open_page(ActiveTab::History);
+        // `open_page` reloaded the stores from disk, so put the unknown
+        // tweak back in memory.
+        app.tweak_store
+            .users
+            .entry("TEST\\user".to_string())
+            .or_default()
+            .insert(
+                "gone_tweak".to_string(),
+                crate::tweaks::TweakBackup {
+                    timestamp: "2026-01-02 03:04:05".into(),
+                    snapshot: crate::tweaks::TweakSnapshot::Value(Default::default()),
+                },
+            );
+        for _ in 0..4 {
+            let mut settle = tall(vec![]);
+            settle.time = Some(ctx.input(|i| i.time) + 1.0);
+            frame(&mut app, &ctx, settle);
+        }
+        let out = frame(&mut app, &ctx, tall(vec![]));
+        let title = drawn_texts(&out)
+            .into_iter()
+            .find(|t| t.starts_with(&entry_time))
+            .expect("operation row not drawn");
+        let pos = text_center(&out, &title).expect("operation title");
+        let button = |pressed| Event::PointerButton {
+            pos,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        for events in [
+            vec![Event::PointerMoved(pos)],
+            vec![button(true)],
+            vec![button(false)],
+        ] {
+            frame(&mut app, &ctx, tall(events));
+        }
+        let mut texts = Vec::new();
+        for _ in 0..3 {
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+        }
+        let all_groups = texts.clone();
+        // One store unreadable: the banner replaces its groups.
+        std::fs::write(fx.dir.join("tweaks-backups.json"), "{ broken").unwrap();
+        app.reload_tweak_store();
+        let error = app.tweak_store_error.clone().expect("store error");
+        for _ in 0..3 {
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+        }
+        for drawn in [
+            app.tr.t("history.operations"),
+            app.tr.t("originals.title"),
+            app.tr.t_args("originals.restore_all", &[&1]),
+            app.tr
+                .t_args("originals.unreadable", &[&"tweaks-backups.json", &error]),
+            app.tr.t("history.copy_reg"),
+            ".b: failed".to_string(),
+            "C:\\backups\\x.reg".to_string(),
+        ] {
+            assert!(texts.contains(&drawn), "{drawn:?} not drawn on History");
+        }
+        for key in [
+            "history.module.associations",
+            "history.module.explorer",
+            "history.module.start",
+            "originals.other",
+        ] {
+            let drawn = app.tr.t(key);
+            assert!(
+                all_groups.contains(&drawn),
+                "{key} ({drawn:?}) group not drawn"
+            );
+        }
+        for (key, value) in &english_only {
+            assert!(
+                !texts.iter().any(|t| t == *value),
+                "the History page draws English-only text {value:?} (key {key})"
+            );
+        }
     }
 
     fn key_press(key: egui::Key) -> Event {

@@ -149,10 +149,13 @@ still consider it tampered with, show "An app default was reset" and go back to
 its default app. Uncheck **Reset Explorer UserChoice override** on a rule to
 leave that key alone.
 
-The **Selective Rollback** tab restores chosen extensions to their exact
-pre-WinTune state. It also removes every ProgID that WinTune created, including
-ones you renamed since. A snapshot is deleted only once it has been fully
-restored; if the restore partly fails, the snapshot is kept so you can retry.
+The **History** page lists every operation and, under **Saved originals**,
+every snapshot WinTune holds. You can restore one item, or a whole group
+(File associations, Explorer & Taskbar, Start & Privacy). Each restore asks
+first. Restoring an extension puts it back to its exact pre-WinTune state. It
+also removes every ProgID that WinTune created, including ones you renamed
+since. A snapshot is deleted only once it has been fully restored; if the
+restore partly fails, the snapshot is kept so you can retry.
 
 ## Data files
 
@@ -185,7 +188,7 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `clock` | Local timestamps |
 | `theme` | Fluent-style dark and light theme (old screens; being replaced by `ui::kit`) |
 | `i18n` | Translations: `.resx` catalogs in `i18n/`, the `Tr` handle, and engine message codes turned into text |
-| `ui` | egui interface, one file per page (`home`, `settings`, `history_panel`, `associations_tab`, `tweaks_tab`, `gallery_tab`, `rollback_tab`), `icon_grid` (the shared icon grid), `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation), `autosave`, `confirm`, `rule_status` and `jobs` |
+| `ui` | egui interface, one file per page (`home`, `settings`, `history_panel`, `associations_tab`, `tweaks_tab`, `gallery_tab`), `originals` (History's saved originals), `icon_grid` (the shared icon grid), `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation), `autosave`, `confirm`, `rule_status` and `jobs` |
 | `main.rs` | Window setup only |
 
 Apply, rollback and pack building run on a background thread, a progress bar

@@ -162,7 +162,7 @@ impl WinTuneApp {
             return;
         }
         if let Some(err) = &self.tweak_store_error {
-            let msg = format!("Tweak changes are blocked: {}", err);
+            let msg = self.tr.t_args("tweaks.blocked", &[err]);
             self.notify(ToastKind::Error, msg);
             return;
         }
@@ -170,7 +170,8 @@ impl WinTuneApp {
         let changes = self.pending_tweak_changes_in(Self::tweak_groups_of(tab));
         let module = Self::tweaks_module_of(tab);
         if changes.is_empty() {
-            self.notify(ToastKind::Info, "No tweak change to apply.");
+            let msg = self.tr.t("tweaks.nothing_to_apply");
+            self.notify(ToastKind::Info, msg);
             return;
         }
 
@@ -230,7 +231,7 @@ impl WinTuneApp {
             return;
         }
         if let Some(err) = &self.tweak_store_error {
-            let msg = format!("Restore is blocked: {}", err);
+            let msg = self.tr.t_args("tweaks.blocked", &[err]);
             self.notify(ToastKind::Error, msg);
             return;
         }
@@ -689,10 +690,10 @@ mod tests {
         app.start_apply_tweaks(&ctx);
 
         assert!(!app.is_busy());
-        assert!(
-            app.last_notice().contains("blocked"),
-            "{}",
-            app.last_notice()
+        assert_eq!(
+            app.last_notice(),
+            app.tr
+                .t_args("tweaks.blocked", &[&app.tweak_store_error.clone().unwrap()])
         );
         assert_eq!(dword(&fx, ADVANCED, "HideFileExt"), None);
     }

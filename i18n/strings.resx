@@ -795,4 +795,16 @@ Rollback puts the choice back, but Windows protects it with a hash: it may still
   <data name="assoc.blocked.this_rule" xml:space="preserve">
     <value>Fix this rule first.</value>
   </data>
+  <data name="tweaks.blocked" xml:space="preserve">
+    <value>Changes are blocked: {0}</value>
+  </data>
+  <data name="tweaks.nothing_to_apply" xml:space="preserve">
+    <value>Nothing to apply: turn a setting on or off first.</value>
+  </data>
+  <data name="tweaks.nothing_to_restore" xml:space="preserve">
+    <value>Nothing to restore: WinTune hasn't changed these settings.</value>
+  </data>
+  <data name="rollback.tick_one" xml:space="preserve">
+    <value>Tick at least one extension to restore.</value>
+  </data>
 </root>

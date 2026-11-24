@@ -81,20 +81,21 @@ impl WinTuneApp {
     }
 
     /// Common reasons first: a running job, then an unreadable store.
-    fn busy_or_blocked(&self, store_error: &Option<String>) -> Option<String> {
+    pub(super) fn busy_or_blocked(&self, store_error: &Option<String>) -> Option<String> {
         if let Some(job) = &self.job {
-            return Some(format!("Wait: {} is still running.", job.title()));
+            let name = self.tr.t(job.name_key());
+            return Some(self.tr.t_args("notice.still_running", &[&name]));
         }
         store_error
             .as_ref()
-            .map(|e| format!("Changes are blocked: {}", e))
+            .map(|e| self.tr.t_args("tweaks.blocked", &[e]))
     }
 
     pub(super) fn rollback_disabled_reason(&self) -> Option<String> {
         self.busy_or_blocked(&self.backup_store_error).or_else(|| {
             self.rollback_selection
                 .is_empty()
-                .then(|| "Tick at least one extension to restore.".to_string())
+                .then(|| self.tr.t("rollback.tick_one"))
         })
     }
 
@@ -102,16 +103,13 @@ impl WinTuneApp {
         self.busy_or_blocked(&self.tweak_store_error).or_else(|| {
             self.pending_tweak_changes_in(Self::tweak_groups_of(self.active_tab))
                 .is_empty()
-                .then(|| "Nothing to apply: tick or untick a setting first.".to_string())
+                .then(|| self.tr.t("tweaks.nothing_to_apply"))
         })
     }
 
     pub(super) fn tweak_restore_all_disabled_reason(&self, backups: usize) -> Option<String> {
-        self.busy_or_blocked(&self.tweak_store_error).or_else(|| {
-            (backups == 0).then(|| {
-                "Nothing to restore: WinTune has not changed any of these settings.".to_string()
-            })
-        })
+        self.busy_or_blocked(&self.tweak_store_error)
+            .or_else(|| (backups == 0).then(|| self.tr.t("tweaks.nothing_to_restore")))
     }
 }
 
@@ -208,27 +206,31 @@ mod tests {
         let mut app = fx.app_with_rules(&ctx, &[".foo"]);
         app.refresh_tweak_statuses();
 
-        assert!(app.rollback_disabled_reason().unwrap().contains("Tick"));
+        assert_eq!(
+            app.rollback_disabled_reason().unwrap(),
+            app.tr.t("rollback.tick_one")
+        );
         app.rollback_selection.insert(".foo".into());
         assert_eq!(app.rollback_disabled_reason(), None);
 
-        assert!(app
-            .tweak_apply_disabled_reason()
-            .unwrap()
-            .contains("Nothing to apply"));
+        assert_eq!(
+            app.tweak_apply_disabled_reason().unwrap(),
+            app.tr.t("tweaks.nothing_to_apply")
+        );
         app.tweak_desired.insert("show_extensions", true);
         assert_eq!(app.tweak_apply_disabled_reason(), None);
         app.tweak_store_error = Some("tweaks-backups.json is unreadable".into());
-        assert!(app
-            .tweak_apply_disabled_reason()
-            .unwrap()
-            .contains("unreadable"));
+        assert_eq!(
+            app.tweak_apply_disabled_reason().unwrap(),
+            app.tr
+                .t_args("tweaks.blocked", &[&"tweaks-backups.json is unreadable"])
+        );
 
         app.tweak_store_error = None;
-        assert!(app
-            .tweak_restore_all_disabled_reason(0)
-            .unwrap()
-            .contains("Nothing to restore"));
+        assert_eq!(
+            app.tweak_restore_all_disabled_reason(0).unwrap(),
+            app.tr.t("tweaks.nothing_to_restore")
+        );
         assert_eq!(app.tweak_restore_all_disabled_reason(2), None);
     }
 }

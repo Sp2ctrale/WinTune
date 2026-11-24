@@ -468,6 +468,76 @@ mod controls {
         assert!(changed.get());
     }
 
+    /// Centre of the first drawn text equal to `text` in `out`.
+    fn text_center(out: &egui::FullOutput, text: &str) -> Option<egui::Pos2> {
+        fn find(shape: &egui::Shape, text: &str) -> Option<egui::Pos2> {
+            match shape {
+                egui::Shape::Text(t) if t.galley.text() == text => {
+                    Some(t.visual_bounding_rect().center())
+                }
+                egui::Shape::Vec(v) => v.iter().find_map(|s| find(s, text)),
+                _ => None,
+            }
+        }
+        out.shapes.iter().find_map(|s| find(&s.shape, text))
+    }
+
+    /// Click `…`, run a frame so the popup appears, then click the item
+    /// labelled `target`. Returns what the menu returned across all frames.
+    fn click_menu_item(items: &[MenuItem<'_>], target: &str) -> Vec<usize> {
+        let ctx = ctx_for(ThemeMode::Light);
+        let picked = RefCell::new(Vec::new());
+        let mut draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                if let Some(i) = overflow_menu(ui, "menu", "More actions", items) {
+                    picked.borrow_mut().push(i);
+                }
+            });
+        };
+        let out = ctx.run(frame_input(vec![]), |c| draw(c));
+        let at = text_center(&out, "\u{2026}").expect("the … button is drawn");
+        click_frames(&ctx, at, &mut draw);
+        let out = ctx.run(frame_input(vec![]), |c| draw(c));
+        let at = text_center(&out, target).expect("the menu item is drawn");
+        click_frames(&ctx, at, &mut draw);
+        let _ = ctx.run(frame_input(vec![]), |c| draw(c));
+        picked.into_inner()
+    }
+
+    #[test]
+    fn the_overflow_menu_returns_the_clicked_item() {
+        let items = [
+            MenuItem {
+                label: "First",
+                enabled: true,
+                disabled_hint: None,
+            },
+            MenuItem {
+                label: "Second",
+                enabled: true,
+                disabled_hint: None,
+            },
+        ];
+        assert_eq!(click_menu_item(&items, "Second"), vec![1]);
+    }
+
+    #[test]
+    fn a_disabled_menu_item_never_returns() {
+        let items = [
+            MenuItem {
+                label: "First",
+                enabled: false,
+                disabled_hint: Some("not now"),
+            },
+            MenuItem {
+                label: "Second",
+                enabled: true,
+                disabled_hint: None,
+            },
+        ];
+        assert!(click_menu_item(&items, "First").is_empty());
+    }
+
     #[test]
     fn banner_reports_its_action_click() {
         let ctx = ctx_for(ThemeMode::Light);

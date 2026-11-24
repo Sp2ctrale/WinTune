@@ -794,4 +794,16 @@ La restauration remet ce choix, mais Windows le protège par un hachage : il peu
   <data name="assoc.blocked.this_rule" xml:space="preserve">
     <value>Corrigez d'abord cette règle.</value>
   </data>
+  <data name="tweaks.blocked" xml:space="preserve">
+    <value>Les modifications sont bloquées : {0}</value>
+  </data>
+  <data name="tweaks.nothing_to_apply" xml:space="preserve">
+    <value>Rien à appliquer : activez ou désactivez d'abord un réglage.</value>
+  </data>
+  <data name="tweaks.nothing_to_restore" xml:space="preserve">
+    <value>Rien à restaurer : WinTune n'a modifié aucun de ces réglages.</value>
+  </data>
+  <data name="rollback.tick_one" xml:space="preserve">
+    <value>Cochez au moins une extension à restaurer.</value>
+  </data>
 </root>

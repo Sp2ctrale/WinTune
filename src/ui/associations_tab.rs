@@ -67,6 +67,7 @@ fn text_row(
         icon: None,
         title,
         description: None,
+        hover: None,
     }
     .show(ui, |ui| {
         let mut edit = egui::TextEdit::singleline(value).desired_width(FIELD_WIDTH);
@@ -88,6 +89,7 @@ fn toggle_row(
         icon: None,
         title,
         description,
+        hover: None,
     }
     .show(ui, |ui| kit::toggle(ui, on))
 }
@@ -227,7 +229,8 @@ impl WinTuneApp {
         let p = kit::current_palette(&ctx);
         let busy = self.is_busy();
         let disabled_reason = self.apply_disabled_reason();
-        let all_checked = self.config.extensions.iter().all(|r| r.enabled);
+        let all_checked =
+            !self.config.extensions.is_empty() && self.config.extensions.iter().all(|r| r.enabled);
         let name = tr.t("nav.associations");
         let subtitle = tr.t("assoc.subtitle");
         let toggle_label = if all_checked {
@@ -502,6 +505,7 @@ impl WinTuneApp {
         let behavior = match rule.mode {
             DoubleClickMode::OpenInEditor if editor.is_empty() => tr.t("assoc.no_editor"),
             DoubleClickMode::OpenInEditor => tr.t_args("assoc.opens_with", &[&editor]),
+            DoubleClickMode::ExecuteScript if editor.is_empty() => tr.t("assoc.runs_no_editor"),
             DoubleClickMode::ExecuteScript => tr.t_args("assoc.runs", &[&editor]),
         };
         let has_backup = self.backup_store.find(&rule.extension).is_some();
@@ -603,6 +607,7 @@ impl WinTuneApp {
                 icon: None,
                 title: &tr.t("assoc.icon"),
                 description,
+                hover: None,
             }
             .show(ui, |ui| {
                 open_picker = ui.add(secondary_button(&change)).clicked();
@@ -619,16 +624,13 @@ impl WinTuneApp {
             // Windows may still say "An app default was reset": the hint
             // covers the whole row.
             let hint = tr.t("assoc.ignore_open_with_hint");
-            ui.scope(|ui| {
-                toggle_row(
-                    ui,
-                    &tr.t("assoc.ignore_open_with"),
-                    None,
-                    &mut rule.reset_user_choice,
-                );
-            })
-            .response
-            .on_hover_text(hint);
+            kit::SettingRow {
+                icon: None,
+                title: &tr.t("assoc.ignore_open_with"),
+                description: None,
+                hover: Some(&hint),
+            }
+            .show(ui, |ui| kit::toggle(ui, &mut rule.reset_user_choice));
         });
 
         kit::disclosure(ui, "assoc_advanced", &tr.t("assoc.advanced"), false, |ui| {
@@ -677,8 +679,7 @@ impl WinTuneApp {
         });
 
         if open_picker {
-            let extension = self.config.extensions[index].extension.clone();
-            self.open_icon_picker(&extension);
+            self.open_icon_picker(index);
         }
         if extension_edited {
             // The status is keyed by extension: read it again for the new one.
@@ -696,6 +697,7 @@ fn verb_rows(ui: &mut egui::Ui, tr: crate::i18n::Tr, rule: &mut ExtensionConfig)
         icon: None,
         title: &tr.t("assoc.verbs"),
         description: None,
+        hover: None,
     }
     .show(ui, |ui| ui.add(secondary_button(&add_label)).clicked());
     if add {
@@ -1014,6 +1016,15 @@ mod tests {
     /// is more recent than the last move, and it only sees a move over a
     /// few closely spaced frames.
     fn hover_texts(app: &mut WinTuneApp, ctx: &egui::Context, pos: egui::Pos2) -> Vec<String> {
+        hover_texts_with(app, ctx, pos, page_input)
+    }
+
+    fn hover_texts_with(
+        app: &mut WinTuneApp,
+        ctx: &egui::Context,
+        pos: egui::Pos2,
+        page_input: fn(Vec<egui::Event>) -> egui::RawInput,
+    ) -> Vec<String> {
         let away = pos - egui::vec2(0.0, 200.0);
         let mut texts = Vec::new();
         for i in 0..20 {
@@ -1197,6 +1208,75 @@ mod tests {
         }
         release.send(()).unwrap();
         run_until_idle(&mut app, &ctx);
+    }
+
+    #[test]
+    fn the_ignore_open_with_hint_shows_over_the_row_title() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo"]);
+        app.active_tab = ActiveTab::Associations;
+        let out = frame(&mut app, &ctx, tall_input(vec![]));
+        let title = app.tr.t("assoc.ignore_open_with");
+        let at = text_center(&out, &title).expect("row title drawn");
+
+        let hint = app.tr.t("assoc.ignore_open_with_hint");
+        assert!(
+            hover_texts_with(&mut app, &ctx, at, tall_input).contains(&hint),
+            "no hint over the row title"
+        );
+    }
+
+    #[test]
+    fn the_bars_remove_asks_to_remove_the_selected_rule() {
+        use super::super::confirm::ConfirmAction;
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".a", ".b"]);
+        app.active_tab = ActiveTab::Associations;
+        app.selected_ext_index = 1;
+
+        let remove = app.tr.t("assoc.remove");
+        click_text(&mut app, &ctx, &remove);
+
+        assert_eq!(
+            app.pending_confirm.as_ref().map(|c| c.action.clone()),
+            Some(ConfirmAction::RemoveRule {
+                index: 1,
+                extension: ".b".to_string()
+            })
+        );
+        assert_eq!(app.config.extensions.len(), 2, "removed without asking");
+    }
+
+    #[test]
+    fn with_no_rules_the_header_offers_check_all_and_does_nothing() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[]);
+        app.active_tab = ActiveTab::Associations;
+
+        let texts = drawn_texts(&frame(&mut app, &ctx, page_input(vec![])));
+
+        assert!(texts.contains(&app.tr.t("assoc.check_all")), "{texts:?}");
+        assert!(!texts.contains(&app.tr.t("assoc.uncheck_all")));
+    }
+
+    #[test]
+    fn run_mode_without_an_editor_has_no_dangling_text() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo"]);
+        app.active_tab = ActiveTab::Associations;
+        app.config.code_executable.clear();
+        app.config.extensions[0].mode = DoubleClickMode::ExecuteScript;
+
+        let texts = drawn_texts(&frame(&mut app, &ctx, page_input(vec![])));
+
+        assert!(
+            texts.contains(&app.tr.t("assoc.runs_no_editor")),
+            "{texts:?}"
+        );
     }
 
     #[test]

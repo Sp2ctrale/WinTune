@@ -185,7 +185,7 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `clock` | Local timestamps |
 | `theme` | Fluent-style dark and light theme (old screens; being replaced by `ui::kit`) |
 | `i18n` | Translations: `.resx` catalogs in `i18n/`, the `Tr` handle, and engine message codes turned into text |
-| `ui` | egui interface, one file per page (`home`, `settings`, `history_panel`, `associations_tab`, `tweaks_tab`, `gallery_tab`, `rollback_tab`) plus `shell` (navigation), `autosave`, `confirm`, `rule_status` and `jobs` |
+| `ui` | egui interface, one file per page (`home`, `settings`, `history_panel`, `associations_tab`, `tweaks_tab`, `gallery_tab`, `rollback_tab`), `icon_grid` (the shared icon grid), `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation), `autosave`, `confirm`, `rule_status` and `jobs` |
 | `main.rs` | Window setup only |
 
 Apply, rollback and pack building run on a background thread, a progress bar

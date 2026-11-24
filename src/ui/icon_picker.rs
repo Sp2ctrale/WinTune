@@ -6,20 +6,41 @@ use super::{kit, WinTuneApp};
 use crate::gallery::IconCategory;
 use eframe::egui;
 
-/// Dialog state. It remembers the extension, not a rule index, so a rule
-/// that is renamed or removed meanwhile is never confused with another one.
+/// Dialog state. It remembers the extension, with the rule's index as a
+/// hint, so a rule that is renamed or removed meanwhile is never confused
+/// with another one, and duplicates of one extension stay apart.
 pub(super) struct IconPicker {
     pub extension: String,
+    /// Where the rule was when the picker opened.
+    index: usize,
     pub query: String,
     pub category: IconCategory,
     /// Put the cursor in the search box on the first frame.
     focus_search: bool,
 }
 
+impl IconPicker {
+    /// The rule this picker is for: the one at the remembered index while it
+    /// still has the extension, else the first with that extension.
+    fn rule_index(&self, rules: &[crate::models::ExtensionConfig]) -> Option<usize> {
+        let same = |r: &crate::models::ExtensionConfig| r.extension == self.extension;
+        if rules.get(self.index).is_some_and(same) {
+            return Some(self.index);
+        }
+        rules
+            .iter()
+            .position(|r| r.extension.eq_ignore_ascii_case(&self.extension))
+    }
+}
+
 impl WinTuneApp {
-    pub(super) fn open_icon_picker(&mut self, extension: &str) {
+    pub(super) fn open_icon_picker(&mut self, index: usize) {
+        let Some(rule) = self.config.extensions.get(index) else {
+            return;
+        };
         self.icon_picker = Some(IconPicker {
-            extension: extension.to_string(),
+            extension: rule.extension.clone(),
+            index,
             query: String::new(),
             category: IconCategory::FilesOnly,
             focus_search: true,
@@ -33,12 +54,9 @@ impl WinTuneApp {
         };
         let tr = self.tr;
         let names = self.gallery.filter_names(&picker.query, picker.category);
-        let current = self
-            .config
-            .extensions
-            .iter()
-            .find(|r| r.extension.eq_ignore_ascii_case(&picker.extension))
-            .map(|r| r.icon_name.clone());
+        let current = picker
+            .rule_index(&self.config.extensions)
+            .map(|i| self.config.extensions[i].icon_name.clone());
         let categories = [
             (IconCategory::All, tr.t("picker.cat.all")),
             (IconCategory::FilesOnly, tr.t("picker.cat.files")),
@@ -48,7 +66,6 @@ impl WinTuneApp {
         ];
         let options: Vec<(IconCategory, &str)> =
             categories.iter().map(|(c, l)| (*c, l.as_str())).collect();
-        let no_filter = picker.query.trim().is_empty();
         let folder = self.config.icon_source_folder.clone();
 
         let mut chosen: Option<String> = None;
@@ -69,7 +86,7 @@ impl WinTuneApp {
             ui.add_space(kit::space::M);
 
             if names.is_empty() {
-                let text = if no_filter && self.gallery.names().is_empty() {
+                let text = if self.gallery.names().is_empty() {
                     tr.t_args("picker.no_icons", &[&folder])
                 } else {
                     tr.t("picker.empty")
@@ -110,11 +127,9 @@ impl WinTuneApp {
         let Some(picker) = self.icon_picker.take() else {
             return;
         };
-        let rule = self
-            .config
-            .extensions
-            .iter_mut()
-            .find(|r| r.extension.eq_ignore_ascii_case(&picker.extension));
+        let rule = picker
+            .rule_index(&self.config.extensions)
+            .map(|i| &mut self.config.extensions[i]);
         match rule {
             Some(rule) => {
                 rule.icon_name = name.to_string();
@@ -165,7 +180,7 @@ mod tests {
         let fx = TempIcons::new(&["foo", "bar"]);
         let ctx = egui::Context::default();
         let mut app = fx.app_with_rules(&ctx, &[".foo"]);
-        app.open_icon_picker(".foo");
+        app.open_icon_picker(0);
 
         click_bar(&mut app, &ctx);
 
@@ -178,7 +193,7 @@ mod tests {
         let fx = TempIcons::new(&["foo", "bar"]);
         let ctx = egui::Context::default();
         let mut app = fx.app_with_rules(&ctx, &[".foo"]);
-        app.open_icon_picker(".foo");
+        app.open_icon_picker(0);
         click_bar(&mut app, &ctx);
 
         frame(&mut app, &ctx, input(0.05, vec![]));
@@ -193,7 +208,7 @@ mod tests {
         let fx = TempIcons::new(&["foo", "bar"]);
         let ctx = egui::Context::default();
         let mut app = fx.app_with_rules(&ctx, &[".foo"]);
-        app.open_icon_picker(".foo");
+        app.open_icon_picker(0);
         app.config.extensions[0].extension = ".baz".into();
 
         app.choose_icon("bar");
@@ -208,7 +223,7 @@ mod tests {
         let fx = TempIcons::new(&["foo", "bar"]);
         let ctx = egui::Context::default();
         let mut app = fx.app_with_rules(&ctx, &[".foo"]);
-        app.open_icon_picker(".foo");
+        app.open_icon_picker(0);
         frame(&mut app, &ctx, input(0.0, vec![]));
         assert!(app.icon_picker.is_some());
 
@@ -230,7 +245,7 @@ mod tests {
         let fx = TempIcons::new(&[]);
         let ctx = egui::Context::default();
         let mut app = fx.app_with_rules(&ctx, &[".foo"]);
-        app.open_icon_picker(".foo");
+        app.open_icon_picker(0);
 
         frame(&mut app, &ctx, input(0.0, vec![]));
         let out = frame(&mut app, &ctx, input(0.01, vec![]));
@@ -238,6 +253,50 @@ mod tests {
         let folder = app.config.icon_source_folder.clone();
         let text = app.tr.t_args("picker.no_icons", &[&folder]);
         assert!(drawn_texts(&out).contains(&text), "{:?}", drawn_texts(&out));
+    }
+
+    #[test]
+    fn an_empty_folder_shows_the_no_icons_text_even_with_a_query() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo"]);
+        app.open_icon_picker(0);
+        app.icon_picker.as_mut().unwrap().query = "zzz".into();
+
+        frame(&mut app, &ctx, input(0.0, vec![]));
+        let out = frame(&mut app, &ctx, input(0.01, vec![]));
+
+        let folder = app.config.icon_source_folder.clone();
+        let texts = drawn_texts(&out);
+        assert!(texts.contains(&app.tr.t_args("picker.no_icons", &[&folder])));
+        assert!(!texts.contains(&app.tr.t("picker.empty")));
+    }
+
+    #[test]
+    fn a_duplicate_extension_does_not_redirect_the_picker() {
+        let fx = TempIcons::new(&["foo", "bar"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo", ".bar"]);
+        app.active_tab = super::super::ActiveTab::Associations;
+        app.config.extensions[1].extension = ".foo".into();
+        app.selected_ext_index = 1;
+
+        assert_eq!(
+            app.rule_state(0),
+            super::super::associations_tab::RuleState::Invalid
+        );
+        assert_eq!(
+            app.rule_state(1),
+            super::super::associations_tab::RuleState::Invalid
+        );
+        let reason = app.tr.t("assoc.blocked.this_rule");
+        assert_eq!(app.apply_rule_disabled_reason(1), Some(reason));
+
+        app.open_icon_picker(1);
+        click_bar(&mut app, &ctx);
+
+        assert_eq!(app.config.extensions[1].icon_name, "bar");
+        assert_eq!(app.config.extensions[0].icon_name, "foo");
     }
 
     fn press_ctrl_f(app: &mut WinTuneApp, ctx: &egui::Context) {
@@ -264,7 +323,7 @@ mod tests {
         assert!(app.focus_search);
         app.focus_search = false;
 
-        app.open_icon_picker(".foo");
+        app.open_icon_picker(0);
         press_ctrl_f(&mut app, &ctx);
         assert!(!app.focus_search);
     }
@@ -274,7 +333,7 @@ mod tests {
         let fx = TempIcons::new(&["foo", "bar"]);
         let ctx = egui::Context::default();
         let mut app = fx.app_with_rules(&ctx, &[".foo"]);
-        app.open_icon_picker(".foo");
+        app.open_icon_picker(0);
         app.icon_picker.as_mut().unwrap().query = "zzz".into();
 
         frame(&mut app, &ctx, input(0.0, vec![]));

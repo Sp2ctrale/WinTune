@@ -46,13 +46,8 @@ impl WinTuneApp {
         }
         let blockers = self.apply_blockers();
         (!blockers.is_empty()).then(|| {
-            self.tr.t_args(
-                "assoc.blocked.problems",
-                &[&blockers.join(
-                    "
-",
-                )],
-            )
+            self.tr
+                .t_args("assoc.blocked.problems", &[&blockers.join("\n")])
         })
     }
 

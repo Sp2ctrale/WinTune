@@ -673,6 +673,9 @@
   <data name="assoc.runs" xml:space="preserve">
     <value>Exécute le fichier · Modifier l'ouvre dans {0}</value>
   </data>
+  <data name="assoc.runs_no_editor" xml:space="preserve">
+    <value>Exécute le fichier</value>
+  </data>
   <data name="assoc.original_saved" xml:space="preserve">
     <value>Original enregistré</value>
   </data>

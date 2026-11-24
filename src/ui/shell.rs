@@ -581,7 +581,7 @@ mod tests {
         for _ in 0..3 {
             texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
         }
-        app.open_icon_picker(".a");
+        app.open_icon_picker(0);
         for _ in 0..3 {
             texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
         }

@@ -563,6 +563,7 @@ mod controls {
                             icon: Some(Icon::Home),
                             title: "Title",
                             description: Some("Description"),
+                            hover: None,
                         }
                         .show(ui, |ui| toggle(ui, &mut on));
                     });

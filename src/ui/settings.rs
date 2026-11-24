@@ -64,6 +64,7 @@ impl WinTuneApp {
                         icon: Some(kit::Icon::Settings),
                         title: &tr.t("settings.language.title"),
                         description: Some(&tr.t("settings.language.desc")),
+                        hover: None,
                     }
                     .show(ui, |ui| {
                         if kit::segmented(ui, &mut language, &language_options).changed() {
@@ -74,6 +75,7 @@ impl WinTuneApp {
                         icon: Some(kit::Icon::Settings),
                         title: &tr.t("settings.theme.title"),
                         description: Some(&tr.t("settings.theme.desc")),
+                        hover: None,
                     }
                     .show(ui, |ui| {
                         if kit::segmented(ui, &mut theme, &theme_options).changed() {
@@ -88,6 +90,7 @@ impl WinTuneApp {
                         icon: Some(kit::Icon::Associations),
                         title: &tr.t("settings.editor.title"),
                         description: Some(&tr.t("settings.editor.desc")),
+                        hover: None,
                     }
                     .show(ui, |ui| {
                         if ui.button(tr.t("settings.browse")).clicked() {
@@ -109,6 +112,7 @@ impl WinTuneApp {
                         icon: Some(kit::Icon::Icons),
                         title: &tr.t("settings.icon_folder.title"),
                         description: Some(&tr.t("settings.icon_folder.desc")),
+                        hover: None,
                     }
                     .show(ui, |ui| {
                         if ui.button(tr.t("settings.change")).clicked() {
@@ -127,6 +131,7 @@ impl WinTuneApp {
                         icon: Some(kit::Icon::Associations),
                         title: &tr.t("settings.wsl.title"),
                         description: Some(&tr.t("settings.wsl.desc")),
+                        hover: None,
                     }
                     .show(ui, |ui| {
                         if self.wsl_detected {
@@ -139,6 +144,7 @@ impl WinTuneApp {
                         icon: Some(kit::Icon::Explorer),
                         title: &tr.t("settings.refresh_explorer.title"),
                         description: Some(&tr.t("settings.refresh_explorer.desc")),
+                        hover: None,
                     }
                     .show(ui, |ui| {
                         if ui.button(tr.t("settings.refresh_explorer")).clicked() {
@@ -153,6 +159,7 @@ impl WinTuneApp {
                         icon: Some(kit::Icon::History),
                         title: &tr.t("settings.data_folder.title"),
                         description: Some(&tr.t("settings.data_folder.desc")),
+                        hover: None,
                     }
                     .show(ui, |ui| {
                         if ui.button(tr.t("settings.open_data_folder")).clicked() {

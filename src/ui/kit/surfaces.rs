@@ -1,8 +1,8 @@
 //! Containers: card, section, setting row, banner and empty state.
 
 use egui::{
-    pos2, vec2, Align, CursorIcon, FontFamily, FontId, Frame, Layout, Margin, Response, RichText,
-    Rounding, Sense, Stroke, Ui, WidgetInfo, WidgetType,
+    pos2, vec2, Align, CursorIcon, FontFamily, FontId, Frame, Layout, Margin, Rect, Response,
+    RichText, Rounding, Sense, Stroke, Ui, WidgetInfo, WidgetType,
 };
 
 use super::controls::action_button;
@@ -67,6 +67,8 @@ pub struct SettingRow<'a> {
     pub icon: Option<Icon>,
     pub title: &'a str,
     pub description: Option<&'a str>,
+    /// A tooltip for the whole row, not only its control.
+    pub hover: Option<&'a str>,
 }
 
 impl SettingRow<'_> {
@@ -74,7 +76,8 @@ impl SettingRow<'_> {
     /// the far right edge.
     pub fn show<R>(self, ui: &mut Ui, trailing: impl FnOnce(&mut Ui) -> R) -> R {
         let p = current_palette(ui.ctx());
-        split_row(ui, 48.0, trailing, |ui| {
+        let row = Rect::from_min_size(ui.cursor().min, vec2(ui.available_width(), 48.0));
+        let result = split_row(ui, 48.0, trailing, |ui| {
             if let Some(icon) = self.icon.and_then(|i| icon_text(ui.ctx(), i, 20.0)) {
                 ui.label(icon.color(p.text));
                 ui.add_space(space::S);
@@ -94,7 +97,14 @@ impl SettingRow<'_> {
                     );
                 }
             });
-        })
+        });
+        if let Some(hover) = self.hover {
+            let id = ui
+                .id()
+                .with(("setting_row_hover", self.title, row.min.y as i32));
+            ui.interact(row, id, Sense::hover()).on_hover_text(hover);
+        }
+        result
     }
 }
 

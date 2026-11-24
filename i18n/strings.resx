@@ -674,6 +674,9 @@
   <data name="assoc.runs" xml:space="preserve">
     <value>Runs the file · Edit opens {0}</value>
   </data>
+  <data name="assoc.runs_no_editor" xml:space="preserve">
+    <value>Runs the file</value>
+  </data>
   <data name="assoc.original_saved" xml:space="preserve">
     <value>Original saved</value>
   </data>

@@ -240,19 +240,6 @@ mod tests {
         }
     }
 
-    fn click_at(app: &mut WinTuneApp, ctx: &egui::Context, pos: Pos2) {
-        use egui::{Event, Modifiers, PointerButton};
-        let button = |pressed| Event::PointerButton {
-            pos,
-            button: PointerButton::Primary,
-            pressed,
-            modifiers: Modifiers::default(),
-        };
-        frame(app, ctx, input(vec![Event::PointerMoved(pos)]));
-        frame(app, ctx, input(vec![button(true)]));
-        frame(app, ctx, input(vec![button(false)]));
-    }
-
     /// Rects of the size of an icon card that are drawn with a stroke
     /// at least `min_width` wide.
     fn stroked_cards(out: &egui::FullOutput, min_width: f32) -> usize {
@@ -307,7 +294,7 @@ mod tests {
             assert_eq!(stroked_cards(&out, 2.0), 0, "a tile drew a focus ring");
         }
 
-        click_at(&mut app, &ctx, bar);
+        click_at_with(&mut app, &ctx, input, bar);
         assert_eq!(app.config.extensions[0].icon_name, "foo");
         assert!(app.icon_picker.is_none());
         assert_eq!(app.active_tab, ActiveTab::Gallery);
@@ -322,7 +309,7 @@ mod tests {
         frame(&mut app, &ctx, input(vec![]));
         let out = frame(&mut app, &ctx, input(vec![]));
         let link = text_center(&out, "Change in Settings").expect("link drawn");
-        click_at(&mut app, &ctx, link);
+        click_at_with(&mut app, &ctx, input, link);
         assert_eq!(app.active_tab, ActiveTab::Settings);
     }
 

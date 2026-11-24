@@ -940,89 +940,12 @@ mod tests {
         assert!(drawn_texts(&out).contains(&app.tr.t_args("assoc.no_match", &[&"zzz"])));
     }
 
-    fn press_at(
-        app: &mut WinTuneApp,
-        ctx: &egui::Context,
-        input: fn(Vec<egui::Event>) -> egui::RawInput,
-        pos: egui::Pos2,
-    ) {
-        let button = |pressed| egui::Event::PointerButton {
-            pos,
-            button: egui::PointerButton::Primary,
-            pressed,
-            modifiers: Default::default(),
-        };
-        frame(app, ctx, input(vec![egui::Event::PointerMoved(pos)]));
-        frame(app, ctx, input(vec![button(true)]));
-        frame(app, ctx, input(vec![button(false)]));
-    }
-
-    /// A page tall enough to show the whole detail without scrolling.
-    fn tall_input(events: Vec<egui::Event>) -> egui::RawInput {
-        egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(
-                egui::Pos2::ZERO,
-                egui::vec2(1180.0, 1600.0),
-            )),
-            events,
-            ..Default::default()
-        }
-    }
-
-    /// Holds a pak build until the returned sender is used (or dropped).
-    fn hold_job(app: &mut WinTuneApp) -> std::sync::mpsc::Sender<()> {
-        use super::super::jobs::RunningJob;
-        use crate::gallery::PakStats;
-        use crate::tasks::BackgroundJob;
-        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
-        app.job = Some(RunningJob::BuildPak(BackgroundJob::spawn(
-            "Building gallery.pak",
-            || {},
-            move |_| {
-                let _ = release_rx.recv();
-                Ok(PakStats {
-                    count: 0,
-                    bytes_before: 0,
-                    bytes_after: 0,
-                })
-            },
-        )));
-        release_tx
-    }
-
     /// Draws one frame `seconds` after the previous one, so the next click
     /// is not taken as the second half of a double-click.
     fn wait(app: &mut WinTuneApp, ctx: &egui::Context, seconds: f64) {
         let mut input = page_input(vec![]);
         input.time = Some(ctx.input(|i| i.time) + seconds);
         frame(app, ctx, input);
-    }
-
-    /// Moves onto `pos` and rests there long enough for a tooltip, and
-    /// returns the texts drawn. egui shows no tooltip while the last click
-    /// is more recent than the last move, and it only sees a move over a
-    /// few closely spaced frames.
-    fn hover_texts(app: &mut WinTuneApp, ctx: &egui::Context, pos: egui::Pos2) -> Vec<String> {
-        hover_texts_with(app, ctx, pos, page_input)
-    }
-
-    fn hover_texts_with(
-        app: &mut WinTuneApp,
-        ctx: &egui::Context,
-        pos: egui::Pos2,
-        page_input: fn(Vec<egui::Event>) -> egui::RawInput,
-    ) -> Vec<String> {
-        let away = pos - egui::vec2(0.0, 200.0);
-        let mut texts = Vec::new();
-        for i in 0..20 {
-            let at = if i < 2 { away } else { pos };
-            let mut input = page_input(vec![egui::Event::PointerMoved(at)]);
-            if i >= 6 {
-                input.time = Some(ctx.input(|i| i.time) + 0.1);
-            }
-            texts = drawn_texts(&frame(app, ctx, input));
-        }
-        texts
     }
 
     #[test]
@@ -1067,7 +990,7 @@ mod tests {
         let out = frame(&mut app, &ctx, page_input(vec![]));
         let at = text_center(&out, &apply).expect("Apply drawn");
         assert!(
-            hover_texts(&mut app, &ctx, at).contains(&reason),
+            hover_texts_with(&mut app, &ctx, page_input, at).contains(&reason),
             "the disabled Apply does not say why"
         );
         click_text(&mut app, &ctx, &apply);
@@ -1121,14 +1044,14 @@ mod tests {
         let out = frame(&mut app, &ctx, tall_input(vec![]));
         let advanced = app.tr.t("assoc.advanced");
         let at = text_center(&out, &advanced).expect("Advanced options drawn");
-        press_at(&mut app, &ctx, tall_input, at);
+        click_at_with(&mut app, &ctx, tall_input, at);
         wait(&mut app, &ctx, 1.0);
         frame(&mut app, &ctx, tall_input(vec![]));
         let rect = ctx
             .read_response(advanced_extension_id())
             .expect("extension box drawn")
             .rect;
-        press_at(&mut app, &ctx, tall_input, rect.center());
+        click_at_with(&mut app, &ctx, tall_input, rect.center());
         assert!(!app.status_refresh_needed, "focusing is not an edit");
 
         frame(
@@ -1209,7 +1132,7 @@ mod tests {
 
         let hint = app.tr.t("assoc.ignore_open_with_hint");
         assert!(
-            hover_texts_with(&mut app, &ctx, at, tall_input).contains(&hint),
+            hover_texts_with(&mut app, &ctx, tall_input, at).contains(&hint),
             "no hint over the row title"
         );
     }

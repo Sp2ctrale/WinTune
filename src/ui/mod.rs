@@ -206,6 +206,10 @@ pub struct WinTuneApp {
     ui_theme: ThemeMode,
     /// Ctrl+F was pressed: focus the current tab's search box.
     focus_search: bool,
+    /// Set when the page changes: the next frame closes open popups (egui
+    /// keeps one popup id, so a `…` menu would reappear when its page comes
+    /// back). `open_page` has no `ctx`, so the frame does it.
+    close_popups_next_frame: bool,
     /// Recent operations, newest first.
     history: Vec<crate::history::HistoryEntry>,
     /// Module filter of the History page.
@@ -288,6 +292,7 @@ impl WinTuneApp {
             tr,
             ui_theme,
             focus_search: false,
+            close_popups_next_frame: false,
             history: Vec::new(),
             history_filter: history_panel::HistoryFilter::All,
             history_show_all: false,
@@ -299,6 +304,9 @@ impl WinTuneApp {
     /// One frame of the whole UI.
     fn ui(&mut self, ctx: &egui::Context) {
         self.ui_theme = kit::resolved(self.config.theme, ctx);
+        if std::mem::take(&mut self.close_popups_next_frame) {
+            ctx.memory_mut(|m| m.close_popup());
+        }
         self.poll_job();
         self.handle_shortcuts(ctx);
         self.pump_status_refresh(ctx);

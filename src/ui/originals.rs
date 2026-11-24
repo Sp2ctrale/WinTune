@@ -253,48 +253,15 @@ mod tests {
     use super::super::test_support::*;
     use super::super::ActiveTab;
     use super::*;
-    use crate::tasks::BackgroundJob;
-    use egui::{Event, FullOutput, Pos2, RawInput};
-
-    /// A page tall enough to show every row without scrolling.
-    fn tall(events: Vec<Event>) -> RawInput {
-        RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(
-                Pos2::ZERO,
-                egui::vec2(1180.0, 2400.0),
-            )),
-            events,
-            ..Default::default()
-        }
-    }
-
-    /// Centers of every text drawn as exactly `text`.
-    fn centers(out: &FullOutput, text: &str) -> Vec<Pos2> {
-        fn walk(shape: &egui::epaint::Shape, text: &str, found: &mut Vec<Pos2>) {
-            match shape {
-                egui::epaint::Shape::Text(t) if t.galley.text() == text => {
-                    found.push(t.pos + t.galley.rect.center().to_vec2());
-                }
-                egui::epaint::Shape::Vec(shapes) => {
-                    shapes.iter().for_each(|s| walk(s, text, found));
-                }
-                _ => {}
-            }
-        }
-        let mut found = Vec::new();
-        out.shapes
-            .iter()
-            .for_each(|c| walk(&c.shape, text, &mut found));
-        found
-    }
+    use egui::{FullOutput, Pos2};
 
     /// Draws the page a few times (so it settles) and returns the last
     /// frame.
     fn settle(app: &mut WinTuneApp, ctx: &egui::Context) -> FullOutput {
         for _ in 0..2 {
-            frame(app, ctx, tall(vec![]));
+            frame(app, ctx, tall_input(vec![]));
         }
-        frame(app, ctx, tall(vec![]))
+        frame(app, ctx, tall_input(vec![]))
     }
 
     /// Right edge of the sidebar, whose entries share the modules' names.
@@ -305,7 +272,7 @@ mod tests {
     fn in_originals(app: &WinTuneApp, out: &FullOutput, text: &str) -> Option<Pos2> {
         let heading = text_center(out, &app.tr.t("originals.title"))?;
         let end = text_center(out, &app.tr.t("history.operations"))?;
-        centers(out, text)
+        text_centers(out, text)
             .into_iter()
             .find(|c| c.x > SIDEBAR_RIGHT && c.y > heading.y && c.y < end.y)
     }
@@ -315,39 +282,11 @@ mod tests {
     fn button_on_row(app: &mut WinTuneApp, ctx: &egui::Context, row: &str, label: &str) -> Pos2 {
         let out = settle(app, ctx);
         let at = in_originals(app, &out, row).unwrap_or_else(|| panic!("{row:?} not drawn"));
-        centers(&out, label)
+        text_centers(&out, label)
             .into_iter()
             .filter(|c| c.x > at.x && (c.y - at.y).abs() < 24.0)
             .min_by(|a, b| (a.y - at.y).abs().total_cmp(&(b.y - at.y).abs()))
             .unwrap_or_else(|| panic!("no {label:?} on the line of {row:?}"))
-    }
-
-    fn click_at(app: &mut WinTuneApp, ctx: &egui::Context, pos: Pos2) {
-        let button = |pressed| Event::PointerButton {
-            pos,
-            button: egui::PointerButton::Primary,
-            pressed,
-            modifiers: Default::default(),
-        };
-        frame(app, ctx, tall(vec![Event::PointerMoved(pos)]));
-        frame(app, ctx, tall(vec![button(true)]));
-        frame(app, ctx, tall(vec![button(false)]));
-    }
-
-    /// Moves onto `pos` and rests there long enough for a tooltip, and
-    /// returns the texts drawn.
-    fn hover_texts(app: &mut WinTuneApp, ctx: &egui::Context, pos: Pos2) -> Vec<String> {
-        let away = pos - egui::vec2(0.0, 300.0);
-        let mut texts = Vec::new();
-        for i in 0..20 {
-            let at = if i < 2 { away } else { pos };
-            let mut input = tall(vec![Event::PointerMoved(at)]);
-            if i >= 6 {
-                input.time = Some(ctx.input(|i| i.time) + 0.1);
-            }
-            texts = drawn_texts(&frame(app, ctx, input));
-        }
-        texts
     }
 
     fn apply_rules(app: &mut WinTuneApp, ctx: &egui::Context) {
@@ -560,8 +499,8 @@ mod tests {
         assert!(in_originals(&app, &out, &assoc).is_none());
         assert!(!texts.contains(&".foo".to_string()));
         // Only the two tweak groups have buttons left.
-        assert_eq!(centers(&out, &restore_all(&app, 1)).len(), 2);
-        assert_eq!(centers(&out, &restore_label(&app)).len(), 2);
+        assert_eq!(text_centers(&out, &restore_all(&app, 1)).len(), 2);
+        assert_eq!(text_centers(&out, &restore_label(&app)).len(), 2);
 
         let title = messages::tweak_title(app.tr, "show_hidden");
         let label = restore_label(&app);
@@ -600,7 +539,7 @@ mod tests {
         let title = messages::tweak_title(app.tr, "show_hidden");
         assert!(!texts.contains(&title));
         // Only the associations group has buttons left.
-        assert_eq!(centers(&out, &restore_label(&app)).len(), 1);
+        assert_eq!(text_centers(&out, &restore_label(&app)).len(), 1);
 
         let label = restore_label(&app);
         let at = button_on_row(&mut app, &ctx, ".foo", &label);
@@ -675,25 +614,6 @@ mod tests {
                 tweak.id
             );
         }
-    }
-
-    /// Holds a pak build until the returned sender is used (or dropped).
-    fn hold_job(app: &mut WinTuneApp) -> std::sync::mpsc::Sender<()> {
-        use super::super::jobs::RunningJob;
-        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
-        app.job = Some(RunningJob::BuildPak(BackgroundJob::spawn(
-            "Building gallery.pak",
-            || {},
-            move |_| {
-                let _ = release_rx.recv();
-                Ok(crate::gallery::PakStats {
-                    count: 0,
-                    bytes_before: 0,
-                    bytes_after: 0,
-                })
-            },
-        )));
-        release_tx
     }
 
     #[test]

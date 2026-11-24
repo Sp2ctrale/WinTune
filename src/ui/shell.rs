@@ -93,6 +93,7 @@ impl WinTuneApp {
         }
         if self.active_tab != page {
             self.focus_search = false;
+            self.close_popups_next_frame = true;
         }
         self.active_tab = page;
     }
@@ -253,29 +254,6 @@ mod tests {
         "Settings",
     ];
 
-    fn click_at(app: &mut WinTuneApp, ctx: &egui::Context, pos: egui::Pos2) {
-        let ev = |pressed| Event::PointerButton {
-            pos,
-            button: PointerButton::Primary,
-            pressed,
-            modifiers: Default::default(),
-        };
-        for events in [
-            vec![Event::PointerMoved(pos)],
-            vec![ev(true)],
-            vec![ev(false)],
-        ] {
-            frame(
-                app,
-                ctx,
-                RawInput {
-                    events,
-                    ..Default::default()
-                },
-            );
-        }
-    }
-
     #[test]
     fn the_app_opens_on_home() {
         let fx = TempIcons::new(&[]);
@@ -327,13 +305,13 @@ mod tests {
 
         // Control: a live row does open.
         let history = text_center(&out, "History").expect("History row");
-        click_at(&mut app, &ctx, history);
+        click_at_with(&mut app, &ctx, input_with, history);
         assert_eq!(app.active_tab, ActiveTab::History);
 
         app.active_tab = ActiveTab::Home;
         let out = frame(&mut app, &ctx, RawInput::default());
         let disabled = text_center(&out, "Context menu").expect("Context menu row");
-        click_at(&mut app, &ctx, disabled);
+        click_at_with(&mut app, &ctx, input_with, disabled);
         assert_eq!(app.active_tab, ActiveTab::Home);
     }
 
@@ -345,6 +323,52 @@ mod tests {
         app.open_page(ActiveTab::History);
         app.open_page(ActiveTab::ContextMenu);
         assert_eq!(app.active_tab, ActiveTab::History);
+    }
+
+    #[test]
+    fn an_open_menu_closes_when_a_home_tile_opens_another_page() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo"]);
+        app.refresh_tweak_statuses();
+        app.active_tab = ActiveTab::Tweaks;
+        app.tweak_desired.insert("show_hidden", true);
+        app.start_apply_tweaks(&ctx);
+        run_until_idle(&mut app, &ctx);
+
+        // Open the row's `…` menu on Explorer & Taskbar.
+        let restore = app.tr.t("tweaks.restore_original");
+        let menu = row_widget(&mut app, &ctx, "show_hidden", kit::OVERFLOW_BUTTON).expect("…");
+        click_at(&mut app, &ctx, menu);
+        let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+        assert!(texts.contains(&restore), "the menu did not open");
+
+        // Home, without the nav click (which closes popups by itself).
+        app.active_tab = ActiveTab::Home;
+        frame(&mut app, &ctx, tall_input(vec![]));
+        frame(&mut app, &ctx, tall_input(vec![]));
+
+        // Home's tiles repeat the nav's labels; the sidebar is leftmost.
+        for key in ["nav.start", "nav.explorer"] {
+            let out = frame(&mut app, &ctx, tall_input(vec![]));
+            let tile = text_centers(&out, &app.tr.t(key))
+                .into_iter()
+                .find(|c| c.x > 220.0)
+                .unwrap_or_else(|| panic!("no {key} tile"));
+            click_at(&mut app, &ctx, tile);
+            for _ in 0..3 {
+                let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+                assert!(
+                    !texts.contains(&restore),
+                    "the menu is open again after the {key} tile"
+                );
+            }
+            if key == "nav.start" {
+                assert_eq!(app.active_tab, ActiveTab::StartPrivacy);
+                app.active_tab = ActiveTab::Home;
+            }
+        }
+        assert_eq!(app.active_tab, ActiveTab::Tweaks);
     }
 
     #[test]
@@ -638,27 +662,19 @@ mod tests {
         app.rule_statuses.insert(".b".into(), RuleStatus::Applied);
         app.selected_ext_index = 0;
         app.active_tab = ActiveTab::Associations;
-        let tall = |events: Vec<Event>| RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(
-                egui::Pos2::ZERO,
-                egui::vec2(1180.0, 2400.0),
-            )),
-            events,
-            ..Default::default()
-        };
         let mut texts = Vec::new();
         for _ in 0..3 {
-            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
         }
         // Open Advanced options by clicking its header.
         let advanced = app.tr.t("assoc.advanced");
         // The page's entry animation moves the header, so settle first.
         for _ in 0..4 {
-            let mut settle = tall(vec![]);
+            let mut settle = tall_input(vec![]);
             settle.time = Some(ctx.input(|i| i.time) + 1.0);
             frame(&mut app, &ctx, settle);
         }
-        let out = frame(&mut app, &ctx, tall(vec![]));
+        let out = frame(&mut app, &ctx, tall_input(vec![]));
         let pos = text_center(&out, &advanced).expect("Advanced options header not drawn");
         let button = |pressed| Event::PointerButton {
             pos,
@@ -671,18 +687,18 @@ mod tests {
             vec![button(true)],
             vec![button(false)],
         ] {
-            frame(&mut app, &ctx, tall(events));
+            frame(&mut app, &ctx, tall_input(events));
         }
         // Let the opening animation finish.
-        let mut later = tall(vec![]);
+        let mut later = tall_input(vec![]);
         later.time = Some(ctx.input(|i| i.time) + 1.0);
         frame(&mut app, &ctx, later);
         for _ in 0..3 {
-            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
         }
         app.open_icon_picker(0);
         for _ in 0..3 {
-            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
         }
         // The page, its opened Advanced options and the picker were drawn.
         for key in ["assoc.preserve", "assoc.field.description", "picker.title"] {
@@ -736,31 +752,15 @@ mod tests {
             crate::tweaks::TweakStatus::Custom(crate::tweaks::CustomReason::Unreadable("x".into())),
         );
 
-        // Center of the widget of exactly `size` on the row of tweak `tweak`.
-        let widget_on_row = |app: &mut WinTuneApp, tweak: &str, size: egui::Vec2| {
-            let out = frame(app, &ctx, tall(vec![]));
-            let description = crate::i18n::messages::tweak_description(app.tr, tweak);
-            let at = text_center(&out, &description)?;
-            ctx.viewport_for(egui::ViewportId::ROOT, |v| {
-                v.prev_pass
-                    .widgets
-                    .layers()
-                    .flat_map(|(_, widgets)| widgets.iter())
-                    .filter(|w| w.rect.size() == size && w.rect.center().x > at.x)
-                    .map(|w| w.rect.center())
-                    .filter(|c| (c.y - at.y).abs() < 24.0)
-                    .min_by(|a, b| (a.y - at.y).abs().total_cmp(&(b.y - at.y).abs()))
-            })
-        };
         let mut texts = Vec::new();
         let applied_tweaks = pending_tweaks.clone();
         for (tab, tweak) in pending_tweaks {
             app.active_tab = tab;
             for _ in 0..3 {
-                texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+                texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
             }
             // Open the row's `…` menu; it opens the frame after the click.
-            let menu = widget_on_row(&mut app, tweak, kit::OVERFLOW_BUTTON)
+            let menu = row_widget(&mut app, &ctx, tweak, kit::OVERFLOW_BUTTON)
                 .unwrap_or_else(|| panic!("{tab:?}: no … on row {tweak}"));
             let button = |pressed| Event::PointerButton {
                 pos: menu,
@@ -773,19 +773,23 @@ mod tests {
                 vec![button(true)],
                 vec![button(false)],
             ] {
-                frame(&mut app, &ctx, tall(events));
+                frame(&mut app, &ctx, tall_input(events));
             }
             for _ in 0..3 {
-                texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+                texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
             }
             // Close the menu again before the next page.
-            frame(&mut app, &ctx, tall(vec![key_press(egui::Key::Escape)]));
+            frame(
+                &mut app,
+                &ctx,
+                tall_input(vec![key_press(egui::Key::Escape)]),
+            );
         }
         app.env.is_windows_11 = false;
         for tab in [ActiveTab::Tweaks, ActiveTab::StartPrivacy] {
             app.active_tab = tab;
             for _ in 0..3 {
-                texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+                texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
             }
         }
         // The pages, the pending bar, the Custom pill, the menu and the
@@ -820,11 +824,11 @@ mod tests {
         app.active_tab = ActiveTab::Gallery;
         let mut texts = Vec::new();
         for _ in 0..3 {
-            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
         }
         app.gallery_search_query = "zzz".into();
         for _ in 0..3 {
-            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
         }
         app.gallery_search_query.clear();
         for drawn in [
@@ -874,11 +878,11 @@ mod tests {
                 },
             );
         for _ in 0..4 {
-            let mut settle = tall(vec![]);
+            let mut settle = tall_input(vec![]);
             settle.time = Some(ctx.input(|i| i.time) + 1.0);
             frame(&mut app, &ctx, settle);
         }
-        let out = frame(&mut app, &ctx, tall(vec![]));
+        let out = frame(&mut app, &ctx, tall_input(vec![]));
         let title = drawn_texts(&out)
             .into_iter()
             .find(|t| t.starts_with(&entry_time))
@@ -895,11 +899,11 @@ mod tests {
             vec![button(true)],
             vec![button(false)],
         ] {
-            frame(&mut app, &ctx, tall(events));
+            frame(&mut app, &ctx, tall_input(events));
         }
         let mut texts = Vec::new();
         for _ in 0..3 {
-            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
         }
         let all_groups = texts.clone();
         // One store unreadable: the banner replaces its groups.
@@ -907,7 +911,7 @@ mod tests {
         app.reload_tweak_store();
         let error = app.tweak_store_error.clone().expect("store error");
         for _ in 0..3 {
-            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall(vec![]))));
+            texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
         }
         for drawn in [
             app.tr.t("history.operations"),

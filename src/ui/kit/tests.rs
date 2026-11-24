@@ -1130,6 +1130,107 @@ mod shell_kit {
         assert!(has_ring(&after), "Tab focuses the row and it paints a ring");
     }
 
+    fn has_two_px_ring(out: &egui::FullOutput) -> bool {
+        fn ring(shape: &Shape) -> bool {
+            match shape {
+                Shape::Rect(r) => r.stroke.width == 2.0,
+                Shape::Vec(v) => v.iter().any(ring),
+                _ => false,
+            }
+        }
+        out.shapes.iter().any(|c| ring(&c.shape))
+    }
+
+    #[test]
+    fn a_focused_segmented_option_paints_a_focus_ring() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                let mut v = 1_u8;
+                segmented(ui, &mut v, &[(1, "A"), (2, "B")]);
+            });
+        };
+        let _ = ctx.run(frame_input(vec![]), draw);
+        let before = ctx.run(frame_input(vec![]), draw);
+        assert!(!has_two_px_ring(&before), "no ring while unfocused");
+        let _ = ctx.run(key(Key::Tab, Modifiers::NONE), draw);
+        let after = ctx.run(frame_input(vec![]), draw);
+        assert!(has_two_px_ring(&after), "Tab focuses an option: ring");
+    }
+
+    #[test]
+    fn space_on_a_focused_segmented_option_selects_it() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let value = Cell::new(1_u8);
+        let changed = Cell::new(false);
+        let draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                let mut v = value.get();
+                let r = segmented(ui, &mut v, &[(1, "A"), (2, "B")]);
+                value.set(v);
+                changed.set(r.changed());
+            });
+        };
+        let _ = ctx.run(frame_input(vec![]), draw);
+        let _ = ctx.run(key(Key::Tab, Modifiers::NONE), draw);
+        let _ = ctx.run(key(Key::Tab, Modifiers::NONE), draw);
+        assert_eq!(value.get(), 1);
+        let _ = ctx.run(key(Key::Space, Modifiers::NONE), draw);
+        assert_eq!(value.get(), 2);
+        assert!(changed.get(), "changed() on the selecting frame");
+    }
+
+    #[test]
+    fn a_focused_disclosure_header_paints_a_focus_ring() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                disclosure(ui, "d", "Advanced", false, |_| {});
+            });
+        };
+        let _ = ctx.run(frame_input(vec![]), draw);
+        let before = ctx.run(frame_input(vec![]), draw);
+        assert!(!has_two_px_ring(&before), "no ring while unfocused");
+        let _ = ctx.run(key(Key::Tab, Modifiers::NONE), draw);
+        let after = ctx.run(frame_input(vec![]), draw);
+        assert!(has_two_px_ring(&after), "Tab focuses the header: ring");
+    }
+
+    #[test]
+    fn status_dot_draws_a_ring_when_not_applied() {
+        fn circles(shape: &Shape, out: &mut Vec<egui::epaint::CircleShape>) {
+            match shape {
+                Shape::Circle(c) => out.push(*c),
+                Shape::Vec(v) => v.iter().for_each(|s| circles(s, out)),
+                _ => {}
+            }
+        }
+        let ctx = ctx_for(ThemeMode::Light);
+        let dots = |kind: Option<PillKind>| {
+            let draw = |c: &Context| {
+                CentralPanel::default().show(c, |ui| {
+                    status_dot(ui, kind, None);
+                });
+            };
+            let _ = ctx.run(frame_input(vec![]), draw);
+            let out = ctx.run(frame_input(vec![]), draw);
+            let mut v = Vec::new();
+            out.shapes.iter().for_each(|c| circles(&c.shape, &mut v));
+            v
+        };
+        let none = dots(None);
+        assert!(
+            none.iter()
+                .any(|c| c.fill == egui::Color32::TRANSPARENT && c.stroke.width > 0.0),
+            "not applied draws a ring with no fill"
+        );
+        let ok = dots(Some(PillKind::Success));
+        assert!(
+            ok.iter().any(|c| c.fill != egui::Color32::TRANSPARENT),
+            "a kind draws a filled circle"
+        );
+    }
+
     #[test]
     fn a_disabled_tile_does_not_click() {
         assert!(!tile_clicked(false));

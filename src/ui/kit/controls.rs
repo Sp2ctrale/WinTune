@@ -111,6 +111,35 @@ pub fn pill(ui: &mut Ui, text: &str, kind: PillKind) -> Response {
     response
 }
 
+/// An 8 px status dot in a 16x16 slot: filled with the kind's color, or a
+/// 1 px ring when `kind` is `None` (not applied). `hover` is the hover text.
+pub fn status_dot(ui: &mut Ui, kind: Option<PillKind>, hover: Option<&str>) -> Response {
+    let p = current_palette(ui.ctx());
+    let (rect, mut response) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
+    if ui.is_rect_visible(rect) {
+        let painter = ui.painter();
+        match kind {
+            Some(kind) => {
+                let color = match kind {
+                    PillKind::Success => p.success,
+                    PillKind::Warning => p.warning,
+                    PillKind::Accent => p.accent,
+                    PillKind::Neutral => p.neutral,
+                    PillKind::Danger => p.danger,
+                };
+                painter.circle_filled(rect.center(), 4.0, color);
+            }
+            None => {
+                painter.circle_stroke(rect.center(), 3.5, Stroke::new(1.0_f32, p.border));
+            }
+        }
+    }
+    if let Some(text) = hover {
+        response = response.on_hover_text(text);
+    }
+    response
+}
+
 /// Joined buttons of which exactly one is selected. The response reports
 /// `changed()` when the user picked another option.
 pub fn segmented<T: PartialEq + Copy>(
@@ -147,7 +176,10 @@ pub fn segmented<T: PartialEq + Copy>(
             *value = options[i].0;
             response.mark_changed();
         }
-        cells.push((cell, r.hovered()));
+        let selected = *value == options[i].0;
+        let label = options[i].1;
+        r.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, true, selected, label));
+        cells.push((cell, r.hovered(), r.has_focus()));
         x += w;
     }
     if ui.is_rect_visible(rect) {
@@ -158,7 +190,7 @@ pub fn segmented<T: PartialEq + Copy>(
             p.control,
             Stroke::new(1.0_f32, p.border),
         );
-        for (i, ((cell, hovered), galley)) in cells.into_iter().zip(galleys).enumerate() {
+        for (i, ((cell, hovered, focused), galley)) in cells.into_iter().zip(galleys).enumerate() {
             let selected = *value == options[i].0;
             let (fill, text) = if selected {
                 (Some(p.accent), p.on_accent)
@@ -171,6 +203,13 @@ pub fn segmented<T: PartialEq + Copy>(
                 painter.rect_filled(cell, Rounding::same(radius::CONTROL - 1.0), fill);
             }
             painter.galley(cell.center() - galley.size() / 2.0, galley, text);
+            if focused {
+                painter.rect_stroke(
+                    cell,
+                    Rounding::same(radius::CONTROL - 1.0),
+                    Stroke::new(2.0_f32, p.accent),
+                );
+            }
         }
     }
     response
@@ -199,11 +238,19 @@ pub fn disclosure<R>(
         ui.ctx().data_mut(|d| d.insert_persisted(id, open));
     }
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
+    response.widget_info(|| WidgetInfo::labeled(WidgetType::CollapsingHeader, true, title));
     if ui.is_rect_visible(rect) {
         let t = ui.ctx().animate_bool_responsive(id, open);
         let painter = ui.painter();
         if response.hovered() {
             painter.rect_filled(rect, Rounding::same(radius::CONTROL), p.surface_hover);
+        }
+        if response.has_focus() {
+            painter.rect_stroke(
+                rect,
+                Rounding::same(radius::CONTROL),
+                Stroke::new(2.0_f32, p.accent),
+            );
         }
         // Chevron: points right when closed, down when open.
         let c = pos2(rect.left() + space::M + 4.0, rect.center().y);

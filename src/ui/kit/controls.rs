@@ -2,12 +2,27 @@
 //! the action button. They return `Response`s or values and never act.
 
 use egui::{
-    pos2, vec2, Align2, CursorIcon, FontId, Galley, Id, Rect, Response, Rounding, Sense, Shape,
-    Stroke, Ui, WidgetInfo, WidgetType,
+    pos2, vec2, Align2, CursorIcon, FontId, Galley, Id, Rect, Response, RichText, Rounding, Sense,
+    Shape, Stroke, Ui, WidgetInfo, WidgetType,
 };
 use std::sync::Arc;
 
-use super::{current_palette, radius, space, text_size};
+use super::{current_palette, radius, space, text_size, Palette};
+
+/// Height of the buttons of the page header and the action bar.
+pub const BUTTON_HEIGHT: f32 = 32.0;
+
+/// The page's main action: accent fill.
+pub fn primary_button(p: &Palette, text: &str) -> egui::Button<'static> {
+    egui::Button::new(RichText::new(text).size(text_size::BODY).color(p.on_accent))
+        .fill(p.accent)
+        .min_size(vec2(0.0, BUTTON_HEIGHT))
+}
+
+/// A page button that is not the main action.
+pub fn secondary_button(text: &str) -> egui::Button<'static> {
+    egui::Button::new(RichText::new(text).size(text_size::BODY)).min_size(vec2(0.0, BUTTON_HEIGHT))
+}
 
 /// Windows 11 style on/off switch, 40x20, accent when on.
 pub fn toggle(ui: &mut Ui, on: &mut bool) -> Response {

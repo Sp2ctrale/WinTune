@@ -3,12 +3,10 @@ use crate::associations::{find_rule_problems, validate_extension, RuleProblem, R
 use crate::i18n::messages;
 use crate::models::{CustomContextCommand, DoubleClickMode, ExtensionConfig};
 use eframe::egui::{self, Margin, RichText};
-use kit::{space, text_size, PillKind};
+use kit::{primary_button, secondary_button, space, text_size, PillKind};
 
 /// Height of a row of the rule list.
 const ROW_HEIGHT: f32 = 36.0;
-/// Height of the buttons of the page header and the action bar.
-const BUTTON_HEIGHT: f32 = 32.0;
 /// Size of the rule's icon in the detail header.
 const ICON_SIZE: f32 = 48.0;
 /// Width of the text boxes of the rule detail.
@@ -35,17 +33,6 @@ fn editor_display_name(path: &str) -> String {
         "code - insiders" => "VS Code Insiders".to_string(),
         _ => stem,
     }
-}
-
-fn primary_button(p: &kit::Palette, text: &str) -> egui::Button<'static> {
-    egui::Button::new(RichText::new(text).size(text_size::BODY).color(p.on_accent))
-        .fill(p.accent)
-        .min_size(egui::vec2(0.0, BUTTON_HEIGHT))
-}
-
-fn secondary_button(text: &str) -> egui::Button<'static> {
-    egui::Button::new(RichText::new(text).size(text_size::BODY))
-        .min_size(egui::vec2(0.0, BUTTON_HEIGHT))
 }
 
 fn secondary_line(ui: &mut egui::Ui, p: &kit::Palette, text: &str) {

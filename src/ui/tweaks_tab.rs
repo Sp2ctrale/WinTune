@@ -16,8 +16,6 @@ use crate::tweaks::{
 };
 use eframe::egui::{self, RichText};
 
-/// Height of the page header's button.
-const BUTTON_HEIGHT: f32 = 32.0;
 /// Width of the search box.
 const SEARCH_WIDTH: f32 = 280.0;
 
@@ -364,9 +362,10 @@ impl WinTuneApp {
 
         let mut restore_all = false;
         kit::page_header(ui, &["WinTune", &name], &name, Some(&subtitle), |ui| {
-            let button = egui::Button::new(RichText::new(&restore_label).size(text_size::BODY))
-                .min_size(egui::vec2(0.0, BUTTON_HEIGHT));
-            let resp = ui.add_enabled(restore_reason.is_none(), button);
+            let resp = ui.add_enabled(
+                restore_reason.is_none(),
+                kit::secondary_button(&restore_label),
+            );
             let resp = match &restore_reason {
                 Some(reason) => resp.on_disabled_hover_text(reason),
                 None => resp,

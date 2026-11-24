@@ -5,19 +5,48 @@
 
 use super::confirm::{Confirm, ConfirmAction};
 use super::jobs::{RunningJob, TweakOutcome};
-use super::kit::ToastKind;
+use super::kit::{self, space, text_size, PillKind, ToastKind};
 use super::ReportKind;
 use super::{ActiveTab, WinTuneApp};
-use crate::i18n::messages;
+use crate::i18n::{messages, Tr};
 use crate::tasks::BackgroundJob;
-use crate::theme::{accent_button, card_frame, draw_badge, get_palette};
 use crate::tweaks::{
     apply_tweaks, catalog, load_tweak_store, restore_tweaks, tweak_status, CustomReason,
     OsRequirement, Refresh, Tweak, TweakBackupStore, TweakGroup, TweakOptions, TweakStatus,
 };
-use eframe::egui::{self, Margin, RichText};
+use eframe::egui::{self, RichText};
+
+/// Height of the page header's button.
+const BUTTON_HEIGHT: f32 = 32.0;
+/// Width of the search box.
+const SEARCH_WIDTH: f32 = 280.0;
+
+/// When a tweak's change becomes visible, as a row's small secondary line.
+pub(super) fn refresh_label(tr: Tr, r: Refresh) -> String {
+    match r {
+        Refresh::Live => tr.t("refresh.live"),
+        Refresh::NewWindows => tr.t("refresh.new_windows"),
+        Refresh::ExplorerRestart => tr.t("refresh.explorer_restart"),
+    }
+}
+
+/// The hover text of `refresh_label`: how to see the change.
+pub(super) fn refresh_hint(tr: Tr, r: Refresh) -> String {
+    match r {
+        Refresh::Live => tr.t("refresh.live_hint"),
+        Refresh::NewWindows => tr.t("refresh.new_windows_hint"),
+        Refresh::ExplorerRestart => tr.t("refresh.explorer_restart_hint"),
+    }
+}
 
 impl WinTuneApp {
+    /// Why a tweak's toggle is disabled: a running job, an unreadable
+    /// `tweaks-backups.json`, then a Windows 11-only tweak on Windows 10.
+    pub(super) fn tweak_toggle_disabled_reason(&self, tweak: &Tweak) -> Option<String> {
+        self.busy_or_blocked(&self.tweak_store_error)
+            .or_else(|| (!self.tweak_available(tweak)).then(|| self.tr.t("tweaks.win11_only")))
+    }
+
     pub(super) fn reload_tweak_store(&mut self) {
         match load_tweak_store(&self.env.tweak_store_path) {
             Ok(store) => {
@@ -112,6 +141,10 @@ impl WinTuneApp {
     }
 
     /// "Discard changes" of one tab: the other tab keeps its ticks.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "the page's action bar calls it (next commit)")
+    )]
     pub(super) fn discard_tweak_changes(&mut self, tab: ActiveTab) {
         let groups = Self::tweak_groups_of(tab);
         self.tweak_desired.retain(|id, _| {
@@ -157,6 +190,10 @@ impl WinTuneApp {
         )
     }
 
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "the page's action bar calls it (next commit)")
+    )]
     pub(super) fn start_apply_tweaks(&mut self, ctx: &egui::Context) {
         if self.refuse_if_busy() {
             return;
@@ -288,128 +325,100 @@ impl WinTuneApp {
     }
 
     pub(super) fn show_tweaks_tab(&mut self, ctx: &egui::Context) {
-        let palette = get_palette(self.ui_theme);
-        let busy = self.is_busy();
-        let pending = self
-            .pending_tweak_changes_in(Self::tweak_groups_of(self.active_tab))
-            .len();
-        let tab = self.active_tab;
-        let groups = Self::tweak_groups_of(tab);
-        let backups = self.user_backups_in(groups);
-        let blocked = self.tweak_store_error.is_some();
-
-        egui::TopBottomPanel::top("tweaks_header")
-            .frame(
-                egui::Frame::none()
-                    .fill(palette.bg_base)
-                    .inner_margin(Margin::symmetric(16.0, 12.0)),
-            )
-            .show(ctx, |ui| {
-                card_frame(self.ui_theme).show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.vertical(|ui| {
-                            ui.heading(tab.title());
-                            ui.label(
-                                RichText::new(format!(
-                                    "Per-user settings of {}. The first change of each setting records its original state, so it can be restored exactly.",
-                                    self.env.user_label
-                                ))
-                                .color(palette.text_secondary),
-                            );
-                        });
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let apply_reason = self.tweak_apply_disabled_reason();
-                            let apply = ui.add_enabled(
-                                apply_reason.is_none(),
-                                accent_button(format!("Apply ({})", pending), self.ui_theme),
-                            );
-                            let apply = match &apply_reason {
-                                Some(r) => apply.on_disabled_hover_text(r),
-                                None => apply,
-                            };
-                            if apply.clicked() {
-                                self.start_apply_tweaks(ctx);
-                            }
-                            let restore_reason = self.tweak_restore_all_disabled_reason(backups.len());
-                            let restore = ui.add_enabled(
-                                restore_reason.is_none(),
-                                egui::Button::new(format!(
-                                    "Restore all originals ({})",
-                                    backups.len()
-                                )),
-                            );
-                            let restore = match &restore_reason {
-                                Some(r) => restore.on_disabled_hover_text(r),
-                                None => restore,
-                            };
-                            if restore.clicked() {
-                                self.request_restore_all_tweaks(tab);
-                            }
-                            if pending > 0 && ui.add_enabled(!busy, egui::Button::new("Discard changes")).clicked() {
-                                self.discard_tweak_changes(self.active_tab);
-                            }
-                        });
-                    });
-                });
-            });
-
-        egui::CentralPanel::default()
-            .frame(
-                egui::Frame::none()
-                    .fill(palette.bg_base)
-                    .inner_margin(Margin::symmetric(16.0, 4.0)),
-            )
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Search:").strong());
-                    let search = ui.add(
-                        egui::TextEdit::singleline(&mut self.tweak_search)
-                            .id(super::polish::search_box_id(ActiveTab::Tweaks)
-                                .expect("search box"))
-                            .hint_text("extensions, taskbar, quick access…  Ctrl+F")
-                            .desired_width(280.0),
-                    );
-                    self.focus_search_if_requested(&search);
-                    if !self.tweak_search.is_empty() && ui.small_button("Clear").clicked() {
-                        self.tweak_search.clear();
-                    }
-                });
-                ui.add_space(6.0);
-
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    let mut shown = 0;
-                    for &group in groups {
-                        let title = messages::group_title(self.tr, group);
-                        let tweaks = self.visible_tweaks(group);
-                        if tweaks.is_empty() {
-                            continue;
-                        }
-                        shown += tweaks.len();
-                        card_frame(self.ui_theme).show(ui, |ui| {
-                            ui.set_min_width(ui.available_width());
-                            ui.label(RichText::new(title).size(15.0).strong());
-                            for tweak in tweaks {
-                                ui.separator();
-                                self.tweak_row(ui, tweak, busy || blocked);
-                            }
-                        });
-                        ui.add_space(10.0);
-                    }
-                    if shown == 0 {
-                        ui.label(
-                            RichText::new(format!(
-                                "No tweak matches \"{}\".",
-                                self.tweak_search.trim()
-                            ))
-                            .color(palette.text_secondary),
-                        );
-                    }
-                });
-            });
+        Self::page_panel(ctx, |ui| {
+            self.tweaks_header(ui);
+            self.tweaks_search(ui);
+            if let Some(e) = &self.tweak_store_error {
+                let text = self.tr.t_args("tweaks.store_unreadable", &[e]);
+                kit::banner(ui, kit::BannerKind::Error, &text, None);
+                ui.add_space(space::S);
+            }
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| self.tweak_sections(ui));
+        });
     }
 
-    fn tweak_row(&mut self, ui: &mut egui::Ui, tweak: &'static Tweak, locked: bool) {
-        let palette = get_palette(self.ui_theme);
+    /// Breadcrumb, title, whose settings these are, and "Restore all
+    /// originals" of this tab.
+    fn tweaks_header(&mut self, ui: &mut egui::Ui) {
+        let tr = self.tr;
+        let tab = self.active_tab;
+        let backups = self.user_backups_in(Self::tweak_groups_of(tab)).len();
+        let name = match tab {
+            ActiveTab::StartPrivacy => tr.t("nav.start"),
+            _ => tr.t("nav.explorer"),
+        };
+        let subtitle = tr.t_args("tweaks.subtitle", &[&self.env.user_label]);
+        let restore_label = tr.t_args("tweaks.restore_all", &[&backups]);
+        let restore_reason = self.tweak_restore_all_disabled_reason(backups);
+
+        let mut restore_all = false;
+        kit::page_header(ui, &["WinTune", &name], &name, Some(&subtitle), |ui| {
+            let button = egui::Button::new(RichText::new(&restore_label).size(text_size::BODY))
+                .min_size(egui::vec2(0.0, BUTTON_HEIGHT));
+            let resp = ui.add_enabled(restore_reason.is_none(), button);
+            let resp = match &restore_reason {
+                Some(reason) => resp.on_disabled_hover_text(reason),
+                None => resp,
+            };
+            restore_all = resp.clicked();
+        });
+        if restore_all {
+            self.request_restore_all_tweaks(tab);
+        }
+    }
+
+    /// The search box (Ctrl+F) and its Clear button.
+    fn tweaks_search(&mut self, ui: &mut egui::Ui) {
+        let tr = self.tr;
+        ui.horizontal(|ui| {
+            let search = ui.add(
+                egui::TextEdit::singleline(&mut self.tweak_search)
+                    .id(super::polish::search_box_id(ActiveTab::Tweaks).expect("search box"))
+                    .hint_text(tr.t("tweaks.search"))
+                    .desired_width(SEARCH_WIDTH),
+            );
+            self.focus_search_if_requested(&search);
+            if !self.tweak_search.is_empty() && ui.button(tr.t("tweaks.clear")).clicked() {
+                self.tweak_search.clear();
+            }
+        });
+        ui.add_space(space::L);
+    }
+
+    /// One section per group of this tab with a visible tweak, or what to
+    /// show when the search matches nothing.
+    fn tweak_sections(&mut self, ui: &mut egui::Ui) {
+        let tr = self.tr;
+        let mut shown = 0;
+        for &group in Self::tweak_groups_of(self.active_tab) {
+            let tweaks = self.visible_tweaks(group);
+            if tweaks.is_empty() {
+                continue;
+            }
+            shown += tweaks.len();
+            kit::section(ui, &messages::group_title(tr, group), |ui| {
+                for tweak in tweaks {
+                    self.tweak_row(ui, tweak);
+                }
+            });
+        }
+        if shown == 0 {
+            let p = kit::current_palette(ui.ctx());
+            let text = tr.t_args("tweaks.no_match", &[&self.tweak_search.trim()]);
+            ui.label(
+                RichText::new(text)
+                    .size(text_size::BODY)
+                    .color(p.text_secondary),
+            );
+        }
+    }
+
+    /// One tweak: title, description and when the change shows; then, right
+    /// to left, the toggle, the `…` menu and the pills.
+    fn tweak_row(&mut self, ui: &mut egui::Ui, tweak: &'static Tweak) {
+        let tr = self.tr;
         let available = self.tweak_available(tweak);
         let current_on = self.tweak_is_on(tweak.id);
         let mut wanted = self
@@ -417,69 +426,88 @@ impl WinTuneApp {
             .get(tweak.id)
             .copied()
             .unwrap_or(current_on);
-        let custom = self.tweak_is_custom(tweak.id);
-        let is_pending = available
-            && (wanted != current_on || (custom && self.tweak_desired.contains_key(tweak.id)));
+        let custom_hint = match self.tweak_statuses.get(tweak.id) {
+            Some(TweakStatus::Custom(reason)) => Some(tr.t_args(
+                "tweaks.custom_hint",
+                &[&messages::custom_reason(tr, reason)],
+            )),
+            _ => None,
+        };
+        let custom = custom_hint.is_some();
+        let desired = self.tweak_desired.contains_key(tweak.id);
         let has_backup = self.tweak_store.has_backup(&self.env.user_label, tweak.id);
+        let toggle_reason = self.tweak_toggle_disabled_reason(tweak);
+        let menu_reason = self.busy_or_blocked(&self.tweak_store_error);
+        let title = messages::tweak_title(tr, tweak.id);
+        let description = messages::tweak_description(tr, tweak.id);
+        let more = tr.t("tweaks.more");
+        let restore_label = tr.t("tweaks.restore_original");
+        let win11_hint = if available {
+            tr.t("tweaks.win11_hint")
+        } else {
+            tr.t("tweaks.win11_only")
+        };
 
-        ui.horizontal(|ui| {
-            let checkbox = ui.add_enabled(available && !locked, egui::Checkbox::without_text(&mut wanted));
-            if checkbox.changed() {
-                if wanted == current_on && !custom {
-                    self.tweak_desired.remove(tweak.id);
-                } else {
-                    self.tweak_desired.insert(tweak.id, wanted);
+        let mut changed = false;
+        let mut restore = false;
+        kit::SettingRow {
+            icon: None,
+            title: &title,
+            description: Some(&description),
+            hover: None,
+        }
+        .show_with_note(
+            ui,
+            &refresh_label(tr, tweak.refresh),
+            &refresh_hint(tr, tweak.refresh),
+            |ui| {
+                changed = kit::toggle_enabled(ui, &mut wanted, toggle_reason.as_deref()).changed();
+                if has_backup {
+                    let items = [kit::MenuItem {
+                        label: &restore_label,
+                        enabled: menu_reason.is_none(),
+                        disabled_hint: menu_reason.as_deref(),
+                    }];
+                    let salt = format!("tweak_menu_{}", tweak.id);
+                    restore = kit::overflow_menu(ui, &salt, &more, &items) == Some(0);
                 }
-            }
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    let title = RichText::new(messages::tweak_title(self.tr, tweak.id)).strong();
-                    ui.label(if available { title } else { title.color(palette.text_secondary) });
-                    match self.tweak_statuses.get(tweak.id) {
-                        Some(TweakStatus::On) => {
-                            draw_badge(ui, "On", palette.success);
-                        }
-                        Some(TweakStatus::Custom(detail)) => {
-                            draw_badge(ui, "Custom", palette.warning)
-                                .on_hover_text(format!("Set to a value WinTune does not write ({}).", detail));
-                        }
-                        Some(TweakStatus::Off) | None => {}
-                    }
-                    if is_pending {
-                        draw_badge(ui, if wanted { "Will turn on" } else { "Will turn off" }, palette.accent);
-                    }
-                    let refresh = match tweak.refresh {
-                        Refresh::Live => "Instant",
-                        Refresh::NewWindows => "New windows",
-                        Refresh::ExplorerRestart => "Explorer restart",
+                if let Some(hint) = &custom_hint {
+                    kit::pill(ui, &tr.t("tweaks.pill.custom"), PillKind::Warning)
+                        .on_hover_text(hint);
+                }
+                if tweak.os == OsRequirement::Windows11 {
+                    kit::pill(ui, &tr.t("tweaks.pill.win11"), PillKind::Neutral)
+                        .on_hover_text(&win11_hint);
+                }
+                if tweak.unofficial {
+                    kit::pill(ui, &tr.t("tweaks.pill.unofficial"), PillKind::Warning)
+                        .on_hover_text(tr.t("tweaks.unofficial_hint"));
+                }
+                // After the toggle, so the pill follows this frame's click. A
+                // Custom value is neither on nor off: either choice is a change.
+                let pending =
+                    available && (wanted != current_on || (custom && (desired || changed)));
+                if pending {
+                    let label = if wanted {
+                        tr.t("tweaks.pill.will_on")
+                    } else {
+                        tr.t("tweaks.pill.will_off")
                     };
-                    draw_badge(ui, refresh, palette.text_secondary).on_hover_text(match tweak.refresh {
-                        Refresh::Live => "Visible immediately.",
-                        Refresh::NewWindows => "Visible in newly opened Explorer windows (or press F5).",
-                        Refresh::ExplorerRestart => "Visible after restarting Explorer (Task Manager > Windows Explorer > Restart) or signing out.",
-                    });
-                    if tweak.os == OsRequirement::Windows11 {
-                        draw_badge(ui, "Windows 11", palette.text_secondary)
-                            .on_hover_text(if available { "Windows 11 only." } else { "Not available on this version of Windows." });
-                    }
-                    if tweak.unofficial {
-                        draw_badge(ui, "Unofficial", palette.warning)
-                            .on_hover_text("Relies on undocumented Windows behaviour that an update could change.");
-                    }
-                });
-                ui.label(RichText::new(messages::tweak_description(self.tr, tweak.id)).size(12.0).color(palette.text_secondary));
-            });
-            if has_backup {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .add_enabled(!locked, egui::Button::new("Restore original"))
-                        .clicked()
-                    {
-                        self.request_restore_tweaks(vec![tweak.id.to_string()]);
-                    }
-                });
+                    kit::pill(ui, &label, PillKind::Accent);
+                }
+            },
+        );
+
+        if changed {
+            if wanted == current_on && !custom {
+                self.tweak_desired.remove(tweak.id);
+            } else {
+                self.tweak_desired.insert(tweak.id, wanted);
             }
-        });
+        }
+        if restore {
+            self.request_restore_tweaks(vec![tweak.id.to_string()]);
+        }
     }
 }
 
@@ -488,9 +516,13 @@ mod tests {
     use super::super::test_support::*;
     use super::super::ActiveTab;
     use super::*;
-    use egui::RawInput;
+    use egui::{Pos2, RawInput, Vec2, ViewportId};
 
     const ADVANCED: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced";
+    /// Size of a toggle and of a `…` button: no other widget of the tweak
+    /// pages has these sizes.
+    const TOGGLE: Vec2 = egui::vec2(40.0, 20.0);
+    const MENU: Vec2 = egui::vec2(28.0, 28.0);
 
     fn dword(fx: &TempIcons, rel: &str, name: &str) -> Option<u32> {
         fx.sandbox
@@ -501,11 +533,94 @@ mod tests {
             .ok()
     }
 
+    fn set_dword(fx: &TempIcons, rel: &str, name: &str, value: u32) {
+        let (key, _) = fx
+            .sandbox
+            .root
+            .create_subkey(fx.hkcu(rel))
+            .expect("create sandbox key");
+        key.set_value(name, &value).expect("write sandbox value");
+    }
+
     fn tweaks_app(fx: &TempIcons, ctx: &egui::Context) -> WinTuneApp {
         let mut app = fx.app_with_rules(ctx, &[".foo"]);
         app.refresh_tweak_statuses();
         app.active_tab = ActiveTab::Tweaks;
         app
+    }
+
+    /// A page tall enough to show every row without scrolling.
+    fn tall_input(events: Vec<egui::Event>) -> RawInput {
+        RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                Pos2::ZERO,
+                egui::vec2(1180.0, 1600.0),
+            )),
+            events,
+            ..Default::default()
+        }
+    }
+
+    /// Hover, press, release at `pos`.
+    fn click_at(app: &mut WinTuneApp, ctx: &egui::Context, pos: Pos2) {
+        let button = |pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        frame(app, ctx, tall_input(vec![egui::Event::PointerMoved(pos)]));
+        frame(app, ctx, tall_input(vec![button(true)]));
+        frame(app, ctx, tall_input(vec![button(false)]));
+    }
+
+    fn click_text(app: &mut WinTuneApp, ctx: &egui::Context, text: &str) {
+        let out = frame(app, ctx, tall_input(vec![]));
+        let pos = text_center(&out, text).unwrap_or_else(|| panic!("no text {text:?} drawn"));
+        click_at(app, ctx, pos);
+    }
+
+    /// Center of the widget of exactly `size` on the row of tweak `id`, or
+    /// `None` when the row has none. The row's description sits on the row's
+    /// middle line, as do its trailing widgets; rows are at least 48 px apart.
+    fn row_widget(app: &mut WinTuneApp, ctx: &egui::Context, id: &str, size: Vec2) -> Option<Pos2> {
+        let out = frame(app, ctx, tall_input(vec![]));
+        let description = messages::tweak_description(app.tr, id);
+        let at = text_center(&out, &description).unwrap_or_else(|| panic!("row {id} not drawn"));
+        ctx.viewport_for(ViewportId::ROOT, |v| {
+            v.prev_pass
+                .widgets
+                .layers()
+                .flat_map(|(_, widgets)| widgets.iter())
+                .filter(|w| w.rect.size() == size && w.rect.center().x > at.x)
+                .map(|w| w.rect.center())
+                .filter(|c| (c.y - at.y).abs() < 24.0)
+                .min_by(|a, b| (a.y - at.y).abs().total_cmp(&(b.y - at.y).abs()))
+        })
+    }
+
+    fn toggle_of(app: &mut WinTuneApp, ctx: &egui::Context, id: &str) -> Pos2 {
+        row_widget(app, ctx, id, TOGGLE).unwrap_or_else(|| panic!("no toggle on row {id}"))
+    }
+
+    /// Moves onto `pos` and rests there long enough for a tooltip, and
+    /// returns the texts drawn.
+    fn hover_texts(app: &mut WinTuneApp, ctx: &egui::Context, pos: Pos2) -> Vec<String> {
+        let away = pos - egui::vec2(0.0, 200.0);
+        let mut texts = Vec::new();
+        for i in 0..20 {
+            let at = if i < 2 { away } else { pos };
+            let mut input = tall_input(vec![egui::Event::PointerMoved(at)]);
+            if i >= 6 {
+                input.time = Some(ctx.input(|i| i.time) + 0.1);
+            }
+            texts = drawn_texts(&frame(app, ctx, input));
+        }
+        texts
+    }
+
+    fn explorer_groups() -> &'static [TweakGroup] {
+        WinTuneApp::tweak_groups_of(ActiveTab::Tweaks)
     }
 
     #[test]
@@ -516,7 +631,12 @@ mod tests {
             let mut app = tweaks_app(&fx, &ctx);
             app.env.is_windows_11 = win11;
             app.tweak_desired.insert("show_extensions", true);
-            frame(&mut app, &ctx, RawInput::default());
+            let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+            for key in ["nav.explorer", "tweaks.pill.win11"] {
+                assert!(texts.contains(&app.tr.t(key)), "{key} not drawn");
+            }
+            let title = messages::tweak_title(app.tr, "taskbar_left");
+            assert!(texts.contains(&title), "a row is missing");
         }
     }
 
@@ -536,6 +656,191 @@ mod tests {
         assert!(
             app.pending_tweak_changes().is_empty(),
             "same as the registry: nothing to do"
+        );
+    }
+
+    #[test]
+    fn clicking_a_toggle_marks_the_change_pending() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+
+        let toggle = toggle_of(&mut app, &ctx, "show_extensions");
+        click_at(&mut app, &ctx, toggle);
+
+        assert_eq!(
+            app.pending_tweak_changes_in(explorer_groups()),
+            vec![("show_extensions".to_string(), true)]
+        );
+        let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+        assert!(texts.contains(&app.tr.t("tweaks.pill.will_on")));
+
+        // Flipping back to the registry value drops the change.
+        click_at(&mut app, &ctx, toggle);
+        assert!(app.tweak_desired.is_empty());
+    }
+
+    #[test]
+    fn a_custom_tweak_shows_its_reason_and_either_choice_is_pending() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        set_dword(&fx, ADVANCED, "HideFileExt", 7);
+        app.refresh_tweak_statuses();
+        let Some(TweakStatus::Custom(reason)) = app.tweak_statuses.get("show_extensions").cloned()
+        else {
+            panic!("show_extensions is not Custom");
+        };
+
+        let custom = app.tr.t("tweaks.pill.custom");
+        let out = frame(&mut app, &ctx, tall_input(vec![]));
+        let pill = text_center(&out, &custom).expect("Custom pill drawn");
+        let why = messages::custom_reason(app.tr, &reason);
+        let hint = app.tr.t_args("tweaks.custom_hint", &[&why]);
+        assert!(
+            hover_texts(&mut app, &ctx, pill).contains(&hint),
+            "no translated reason over the Custom pill"
+        );
+
+        app.tweak_desired.insert("show_extensions", false);
+        assert_eq!(app.pending_tweak_changes_in(explorer_groups()).len(), 1);
+        app.tweak_desired.insert("show_extensions", true);
+        assert_eq!(app.pending_tweak_changes_in(explorer_groups()).len(), 1);
+    }
+
+    #[test]
+    fn windows_11_only_toggles_are_disabled_on_windows_10() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        app.env.is_windows_11 = false;
+
+        let toggle = toggle_of(&mut app, &ctx, "taskbar_left");
+        let only = app.tr.t("tweaks.win11_only");
+        assert!(
+            hover_texts(&mut app, &ctx, toggle).contains(&only),
+            "no reason over the disabled toggle"
+        );
+        click_at(&mut app, &ctx, toggle);
+        assert!(app.tweak_desired.is_empty());
+    }
+
+    #[test]
+    fn an_unreadable_store_shows_a_banner_and_locks_the_toggles() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        std::fs::write(fx.dir.join("tweaks-backups.json"), "{ broken").unwrap();
+        let mut app = tweaks_app(&fx, &ctx);
+        app.reload_tweak_store();
+        let error = app.tweak_store_error.clone().expect("store error");
+
+        let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+        let banner = app.tr.t_args("tweaks.store_unreadable", &[&error]);
+        assert!(texts.contains(&banner), "no banner: {texts:?}");
+
+        let toggle = toggle_of(&mut app, &ctx, "show_extensions");
+        click_at(&mut app, &ctx, toggle);
+        assert!(app.tweak_desired.is_empty());
+    }
+
+    #[test]
+    fn the_toggle_reason_is_busy_then_blocked_then_windows_11() {
+        use super::super::jobs::RunningJob;
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        app.env.is_windows_11 = false;
+        let left = crate::tweaks::find_tweak("taskbar_left").unwrap();
+        let ext = crate::tweaks::find_tweak("show_extensions").unwrap();
+        assert_eq!(app.tweak_toggle_disabled_reason(ext), None);
+        assert_eq!(
+            app.tweak_toggle_disabled_reason(left),
+            Some(app.tr.t("tweaks.win11_only"))
+        );
+
+        app.tweak_store_error = Some("bad json".into());
+        let blocked = app.tr.t_args("tweaks.blocked", &[&"bad json"]);
+        assert_eq!(app.tweak_toggle_disabled_reason(left), Some(blocked));
+
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        app.job = Some(RunningJob::BuildPak(BackgroundJob::spawn(
+            "Building gallery.pak",
+            || {},
+            move |_| {
+                let _ = release_rx.recv();
+                Ok(crate::gallery::PakStats {
+                    count: 0,
+                    bytes_before: 0,
+                    bytes_after: 0,
+                })
+            },
+        )));
+        let busy = app.busy_or_blocked(&None).expect("busy reason");
+        assert_eq!(app.tweak_toggle_disabled_reason(left), Some(busy));
+        release_tx.send(()).unwrap();
+        run_until_idle(&mut app, &ctx);
+    }
+
+    #[test]
+    fn restore_original_in_the_menu_asks_first() {
+        use super::super::confirm::ConfirmAction;
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        app.tweak_desired.insert("show_hidden", true);
+        app.start_apply_tweaks(&ctx);
+        run_until_idle(&mut app, &ctx);
+
+        let menu = row_widget(&mut app, &ctx, "show_hidden", MENU).expect("… drawn");
+        click_at(&mut app, &ctx, menu);
+        let restore = app.tr.t("tweaks.restore_original");
+        click_text(&mut app, &ctx, &restore);
+
+        assert_eq!(
+            app.pending_confirm.as_ref().map(|c| c.action.clone()),
+            Some(ConfirmAction::RestoreTweaks(
+                vec!["show_hidden".to_string()]
+            ))
+        );
+    }
+
+    #[test]
+    fn the_menu_is_absent_without_a_snapshot() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+
+        let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+        assert!(!texts.contains(&"\u{2026}".to_string()), "… drawn");
+        for tweak in catalog()
+            .iter()
+            .filter(|t| explorer_groups().contains(&t.group))
+        {
+            assert_eq!(
+                row_widget(&mut app, &ctx, tweak.id, MENU),
+                None,
+                "{}",
+                tweak.id
+            );
+        }
+    }
+
+    #[test]
+    fn refresh_labels_cover_every_variant() {
+        let ctx = egui::Context::default();
+        let fx = TempIcons::new(&["foo"]);
+        let tr = tweaks_app(&fx, &ctx).tr;
+        let all = [Refresh::Live, Refresh::NewWindows, Refresh::ExplorerRestart];
+        let labels: std::collections::HashSet<String> =
+            all.iter().map(|r| refresh_label(tr, *r)).collect();
+        let hints: std::collections::HashSet<String> =
+            all.iter().map(|r| refresh_hint(tr, *r)).collect();
+        assert_eq!(labels.len(), 3);
+        assert_eq!(hints.len(), 3);
+        assert!(labels.iter().chain(&hints).all(|t| !t.is_empty()));
+        assert_eq!(
+            refresh_label(tr, Refresh::NewWindows),
+            "Visible: in new windows"
         );
     }
 
@@ -603,6 +908,14 @@ mod tests {
 
         app.tweak_search = "TASK VIEW".into();
         assert_eq!(visible_ids(&app), ["hide_task_view"]);
+        let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+        let shown = messages::tweak_title(app.tr, "hide_task_view");
+        let hidden = messages::tweak_title(app.tr, "show_extensions");
+        assert!(texts.contains(&shown) && !texts.contains(&hidden));
+        assert!(
+            !texts.contains(&messages::group_title(app.tr, TweakGroup::FileExplorer)),
+            "a group without a match is skipped"
+        );
 
         app.tweak_search = "quick access".into(); // matched in descriptions
         let ids = visible_ids(&app);
@@ -614,6 +927,20 @@ mod tests {
 
         app.tweak_search = "   ".into();
         assert_eq!(visible_ids(&app).len(), crate::tweaks::catalog().len());
+    }
+
+    #[test]
+    fn the_clear_button_empties_the_search() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        let clear = app.tr.t("tweaks.clear");
+        let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+        assert!(!texts.contains(&clear), "Clear shown with an empty search");
+
+        app.tweak_search = "task".into();
+        click_text(&mut app, &ctx, &clear);
+        assert!(app.tweak_search.is_empty());
     }
 
     #[test]
@@ -630,7 +957,10 @@ mod tests {
         let ctx = egui::Context::default();
         let mut app = tweaks_app(&fx, &ctx);
         app.active_tab = ActiveTab::StartPrivacy;
-        frame(&mut app, &ctx, RawInput::default());
+        let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+        assert!(texts.contains(&app.tr.t("nav.start")));
+        assert!(texts.contains(&messages::group_title(app.tr, TweakGroup::Privacy)));
+        assert!(!texts.contains(&messages::group_title(app.tr, TweakGroup::Taskbar)));
     }
 
     #[test]
@@ -646,7 +976,8 @@ mod tests {
         app.start_apply_tweaks(&ctx);
         run_until_idle(&mut app, &ctx);
 
-        app.request_restore_all_tweaks(ActiveTab::StartPrivacy);
+        let restore_all = app.tr.t_args("tweaks.restore_all", &[&1]);
+        click_text(&mut app, &ctx, &restore_all);
 
         match app.pending_confirm.as_ref().map(|c| c.action.clone()) {
             Some(super::super::confirm::ConfirmAction::RestoreTweaks(ids)) => {
@@ -657,6 +988,21 @@ mod tests {
     }
 
     #[test]
+    fn restore_all_is_disabled_with_its_reason_without_a_snapshot() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = tweaks_app(&fx, &ctx);
+        let restore_all = app.tr.t_args("tweaks.restore_all", &[&0]);
+
+        let out = frame(&mut app, &ctx, tall_input(vec![]));
+        let at = text_center(&out, &restore_all).expect("Restore all drawn");
+        let reason = app.tr.t("tweaks.nothing_to_restore");
+        assert!(hover_texts(&mut app, &ctx, at).contains(&reason));
+        click_at(&mut app, &ctx, at);
+        assert!(app.pending_confirm.is_none());
+    }
+
+    #[test]
     fn a_search_without_match_shows_nothing_and_still_renders() {
         let fx = TempIcons::new(&["foo"]);
         let ctx = egui::Context::default();
@@ -664,7 +1010,9 @@ mod tests {
         app.tweak_search = "zzz-no-such-tweak".into();
 
         assert!(visible_ids(&app).is_empty());
-        frame(&mut app, &ctx, RawInput::default());
+        let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+        let none = app.tr.t_args("tweaks.no_match", &[&"zzz-no-such-tweak"]);
+        assert!(texts.contains(&none), "{texts:?}");
     }
 
     #[test]
@@ -676,6 +1024,9 @@ mod tests {
         app.tweak_desired.insert("taskbar_left", true);
 
         assert!(app.pending_tweak_changes().is_empty());
+        // Nor shown as pending on the page.
+        let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
+        assert!(!texts.contains(&app.tr.t("tweaks.pill.will_on")));
     }
 
     #[test]

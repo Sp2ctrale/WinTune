@@ -99,6 +99,13 @@ impl WinTuneApp {
         })
     }
 
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the tweak pages' action bar uses it (next commit)"
+        )
+    )]
     pub(super) fn tweak_apply_disabled_reason(&self) -> Option<String> {
         self.busy_or_blocked(&self.tweak_store_error).or_else(|| {
             self.pending_tweak_changes_in(Self::tweak_groups_of(self.active_tab))

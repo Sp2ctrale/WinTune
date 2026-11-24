@@ -68,7 +68,7 @@
     <value>{0} has an unexpected type</value>
   </data>
   <data name="custom.unreadable" xml:space="preserve">
-    <value>unreadable: {0}</value>
+    <value>Can't read this setting: {0}</value>
   </data>
   <data name="group.file_explorer" xml:space="preserve">
     <value>File Explorer</value>
@@ -806,5 +806,74 @@ Rollback puts the choice back, but Windows protects it with a hash: it may still
   </data>
   <data name="rollback.tick_one" xml:space="preserve">
     <value>Tick at least one extension to restore.</value>
+  </data>
+  <data name="tweaks.subtitle" xml:space="preserve">
+    <value>Settings of {0}. The first change of each one saves the original, so it can be restored.</value>
+  </data>
+  <data name="tweaks.restore_all" xml:space="preserve">
+    <value>Restore all originals ({0})</value>
+  </data>
+  <data name="tweaks.search" xml:space="preserve">
+    <value>Search settings</value>
+  </data>
+  <data name="tweaks.clear" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="tweaks.no_match" xml:space="preserve">
+    <value>No setting matches "{0}".</value>
+  </data>
+  <data name="tweaks.store_unreadable" xml:space="preserve">
+    <value>The saved originals can't be read, so changes are blocked: {0}</value>
+  </data>
+  <data name="tweaks.restore_original" xml:space="preserve">
+    <value>Restore original</value>
+  </data>
+  <data name="tweaks.more" xml:space="preserve">
+    <value>More</value>
+  </data>
+  <data name="tweaks.pill.custom" xml:space="preserve">
+    <value>Custom</value>
+  </data>
+  <data name="tweaks.custom_hint" xml:space="preserve">
+    <value>Set to a value WinTune doesn't write ({0})</value>
+  </data>
+  <data name="tweaks.pill.win11" xml:space="preserve">
+    <value>Windows 11</value>
+  </data>
+  <data name="tweaks.win11_hint" xml:space="preserve">
+    <value>Windows 11 only.</value>
+  </data>
+  <data name="tweaks.win11_only" xml:space="preserve">
+    <value>Not available on this version of Windows.</value>
+  </data>
+  <data name="tweaks.pill.unofficial" xml:space="preserve">
+    <value>Unofficial</value>
+  </data>
+  <data name="tweaks.unofficial_hint" xml:space="preserve">
+    <value>Relies on undocumented Windows behaviour that an update could change.</value>
+  </data>
+  <data name="tweaks.pill.will_on" xml:space="preserve">
+    <value>Will turn on</value>
+  </data>
+  <data name="tweaks.pill.will_off" xml:space="preserve">
+    <value>Will turn off</value>
+  </data>
+  <data name="refresh.live" xml:space="preserve">
+    <value>Visible: now</value>
+  </data>
+  <data name="refresh.new_windows" xml:space="preserve">
+    <value>Visible: in new windows</value>
+  </data>
+  <data name="refresh.explorer_restart" xml:space="preserve">
+    <value>Visible: after an Explorer restart</value>
+  </data>
+  <data name="refresh.live_hint" xml:space="preserve">
+    <value>Visible immediately.</value>
+  </data>
+  <data name="refresh.new_windows_hint" xml:space="preserve">
+    <value>Visible in newly opened Explorer windows, or press F5.</value>
+  </data>
+  <data name="refresh.explorer_restart_hint" xml:space="preserve">
+    <value>Visible after restarting Explorer (Task Manager › Windows Explorer › Restart) or signing out.</value>
   </data>
 </root>

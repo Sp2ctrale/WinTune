@@ -539,6 +539,53 @@ mod controls {
     }
 
     #[test]
+    fn a_setting_rows_note_shows_its_own_hover_text() {
+        let ctx = ctx_for(ThemeMode::Light);
+        let draw = |c: &Context| {
+            CentralPanel::default().show(c, |ui| {
+                SettingRow {
+                    icon: None,
+                    title: "Title",
+                    description: Some("Description"),
+                    hover: None,
+                }
+                .show_with_note(ui, "Note", "Why the note", |ui| {
+                    let mut on = false;
+                    toggle(ui, &mut on);
+                });
+            });
+        };
+        let texts = |out: &egui::FullOutput| {
+            let mut found = Vec::new();
+            for t in ["Description", "Note", "Why the note"] {
+                if text_center(out, t).is_some() {
+                    found.push(t);
+                }
+            }
+            found
+        };
+        let out = ctx.run(frame_input(vec![]), draw);
+        assert_eq!(texts(&out), ["Description", "Note"]);
+        let note = text_center(&out, "Note").unwrap();
+        let description = text_center(&out, "Description").unwrap();
+        assert!(
+            note.y > description.y,
+            "the note sits under the description"
+        );
+
+        // Rest on the note long enough for the tooltip.
+        let mut out = out;
+        for i in 0..20 {
+            let mut input = frame_input(vec![egui::Event::PointerMoved(note)]);
+            if i >= 4 {
+                input.time = Some(ctx.input(|i| i.time) + 0.1);
+            }
+            out = ctx.run(input, draw);
+        }
+        assert_eq!(texts(&out), ["Description", "Note", "Why the note"]);
+    }
+
+    #[test]
     fn banner_reports_its_action_click() {
         let ctx = ctx_for(ThemeMode::Light);
         let clicks = Cell::new(0);

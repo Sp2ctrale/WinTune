@@ -992,10 +992,58 @@ mod tests {
             // The confirmation, with the Sharing tab side effect.
             app.start_menu_apply(&ctx);
             assert!(app.pending_confirm.is_some(), "no confirmation");
+            let message = app.pending_confirm.as_ref().unwrap().message.clone();
+            let mut dialog = Vec::new();
             for _ in 0..3 {
-                texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
+                dialog.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
             }
+            // Only the dialog draws its title and its message (the entry's
+            // name with the side effect).
+            assert!(
+                dialog.contains(&app.tr.t("menu.apply_title")),
+                "confirmation title not drawn: {dialog:?}"
+            );
+            let first = message.lines().last().unwrap().to_string();
+            assert!(
+                first.contains(&app.tr.t("menu.also.sharing_tab")),
+                "{message:?}"
+            );
+            assert!(
+                dialog.iter().any(|t| t.contains(&first)),
+                "confirmation message not drawn: {dialog:?}"
+            );
+            texts.extend(dialog);
             app.resolve_confirm(&ctx, false);
+            // The locked row's toggle is disabled; its tooltip gives the
+            // reason in French.
+            let locked_title = app.existing_name(&locked);
+            frame(&mut app, &ctx, tall_input(vec![]));
+            let out = frame(&mut app, &ctx, tall_input(vec![]));
+            let at = text_center(&out, &locked_title).expect("locked row not drawn");
+            let toggle = ctx
+                .viewport_for(egui::ViewportId::ROOT, |v| {
+                    v.prev_pass
+                        .widgets
+                        .layers()
+                        .flat_map(|(_, widgets)| widgets.iter())
+                        .filter(|w| w.rect.size() == egui::vec2(40.0, 20.0))
+                        .filter(|w| w.rect.center().x > at.x)
+                        .filter(|w| {
+                            w.rect.center().y > at.y - 8.0 && w.rect.center().y - at.y < 48.0
+                        })
+                        .map(|w| (w.rect.center(), w.enabled))
+                        .min_by(|a, b| (a.0.y - at.y).total_cmp(&(b.0.y - at.y)))
+                })
+                .expect("locked toggle not found");
+            let before = app.menu_pending.clone();
+            click_at(&mut app, &ctx, toggle.0);
+            assert_eq!(app.menu_pending, before, "a locked toggle changed");
+            let reason = crate::i18n::messages::locked(app.tr, &Locked::MachineWide);
+            assert!(
+                !english_only.iter().any(|(_, v)| **v == reason),
+                "English lock reason"
+            );
+            texts.extend(hover_texts(&mut app, &ctx, toggle.0));
             let item = crate::context_menu::find_catalog("give_access").expect("catalog item");
             let mut positive = vec![
                 app.tr.t("menu.windows"),
@@ -1015,6 +1063,7 @@ mod tests {
                 ),
                 "Other thing".to_string(),
                 app.existing_name(&locked),
+                reason.clone(),
             ];
             positive.extend(item.also_affects_key.map(|key| app.tr.t(key)));
             for drawn in positive {

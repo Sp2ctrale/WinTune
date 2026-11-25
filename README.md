@@ -153,7 +153,8 @@ Under "My entries", two more sections list what the menu already holds.
 - **Other programs.** Entries added by installed programs (verbs and
   shell extensions). Each row names the program that added it. A search box
   (Ctrl+F) filters by name or program. Entries that live in the Windows folder,
-  and entries whose program file cannot be found, are not listed.
+  entries whose program file cannot be found, and verbs the installer already
+  hides are not listed (unless WinTune hid them).
 - **Hide and show.** Each row has a toggle. Changes stay pending until you
   press Apply (Discard drops them). Hiding is per account: nothing is written
   under `HKLM`, and another account still sees the entry. A pill shows what
@@ -167,7 +168,8 @@ Under "My entries", two more sections list what the menu already holds.
   entries of other programs only (not for Windows entries or shell
   extensions). Names are 1 to 80 characters and cannot start with `@`.
 - **Side effects.** Before Apply, a confirmation lists what else a hide
-  takes away: the Sharing or Previous Versions tab for the Windows entries,
+  takes away, such as the Sharing or Previous Versions tab or Pin to Start on
+  programs for the Windows entries,
   and, for a program's shell extension, that it is hidden everywhere the
   program adds it.
 - **Undo.** Hidden and renamed entries appear by name in **History**, **Saved

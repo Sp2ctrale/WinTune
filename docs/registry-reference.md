@@ -269,7 +269,9 @@ each step, check the open Explorer first, then again after an Explorer restart.
 6. In History, Saved originals, Context menu: **Restore original** for each
    entry changed above. Each is back as it was, and its `HKCU` copy or
    `Blocked` value is gone.
-7. Check that a CLSID blocked in `HKLM` shows locked with its toggle disabled.
+7. Check that a CLSID blocked in `HKLM` shows locked with its toggle
+   disabled. Creating that `Blocked` value needs an elevated prompt; skip this
+   step if the PC has none.
 
 Record anything that differs, with the entry, the place and the Windows
 version, before merging.

@@ -40,7 +40,7 @@ the library, so it can be tested without the GUI and without elevation.
 | `config.json` | `ui` | Saved atomically. If it is unreadable, defaults are used in memory and **saving is refused** (the file is never overwritten) |
 | `backups.json` | `associations` | Missing means empty. Unreadable means an error, and all association changes are blocked |
 | `tweaks-backups.json` | `tweaks` | Same rule as `backups.json`. Entries are keyed by user (HKCU is per user), then by tweak id |
-| `context-menu-backups.json` | `context_menu` | Same rule as `backups.json`. Snapshots are keyed by user, then by slot id: a key path (`Software\Classes\<place>\shell\WinTune.<id>`), a verb's `ProgrammaticAccessOnly` or `MUIVerb` value, or a `Blocked` CLSID value. Stores written by the first Context menu release (bare key snapshots) still load |
+| `context-menu-backups.json` | `context_menu` | Same rule as `backups.json`. Snapshots are keyed by user, then by slot id: a key path (a `WinTune.<id>` verb key, or a verb's HKCU copy, snapshotted whole) or a `Blocked` CLSID value. Stores written by the first Context menu release (bare key snapshots) still load |
 | `history.jsonl` | `history` | Append-only. A damaged line is skipped, never fatal |
 | `reg-backups\*.reg` | engines | A `.reg` safety net written before each apply |
 
@@ -107,7 +107,9 @@ keyed by account, so an account only ever sees and edits its own entries.
   `Folder`, `Directory`, `Directory\Background` and `Drive`, in HKCU and HKLM
   `Classes`. It skips `WinTune.*` verbs, the canonical verbs (open, opennew,
   explore, find, print, printto, runas, runasuser, openas, properties),
-  catalog entries and anything run from the Windows folder. An entry whose
+  catalog entries and anything run from the Windows folder. A verb the
+  installer already hides (`ProgrammaticAccessOnly` in the machine copy, or
+  `LegacyDisable`) is skipped unless WinTune holds a snapshot of it. An entry whose
   program file cannot be found is skipped too (fail closed) unless WinTune
   holds a snapshot of it. Verbs are grouped by verb name and origin file,
   handlers by CLSID. The origin is the product name from the file's version

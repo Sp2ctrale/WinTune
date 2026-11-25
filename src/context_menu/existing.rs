@@ -11,7 +11,7 @@ use super::catalog::{catalog, catalog_clsid, CatalogItem, CatalogMechanism, Pres
 use super::origin::{
     clsid_server, command_program, is_braced_guid, resolve, resource_file, under_dir,
 };
-use super::{MenuTarget, Place, KEY_PREFIX};
+use super::{MenuTarget, Place, KEY_PREFIX, MAX_LABEL_CHARS};
 use crate::backups::{RegTarget, Slot, Snapshot, UserBackups};
 use crate::regsnap::RegistryKeySnapshot;
 use crate::tweaks::OsRequirement;
@@ -78,10 +78,70 @@ impl Mechanism {
         }
     }
 
+    /// How report lines name it: the first verb's key name, or the CLSID.
+    pub fn name(&self) -> String {
+        match self {
+            Mechanism::Verbs(refs) => refs.first().map(|r| r.verb.clone()).unwrap_or_default(),
+            Mechanism::Clsid(clsid) => clsid.clone(),
+        }
+    }
+
     /// Only a verb has a label of its own to change.
     pub fn renamable(&self) -> bool {
         matches!(self, Mechanism::Verbs(_))
     }
+}
+
+/// The state the user wants for an existing entry; Apply writes it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExistingChange {
+    pub mechanism: Mechanism,
+    pub hidden: bool,
+    /// `None` means the original name.
+    pub label: Option<String>,
+}
+
+impl ExistingChange {
+    /// How a report names the change: the new label, else the first verb
+    /// name, else the CLSID.
+    pub fn report_name(&self) -> String {
+        match &self.label {
+            Some(label) => label.trim().to_string(),
+            None => self.mechanism.name(),
+        }
+    }
+}
+
+/// Why a label cannot be shown in the menu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RenameProblem {
+    Empty,
+    /// Over [`MAX_LABEL_CHARS`] once trimmed.
+    TooLong,
+    /// The verb text reads a leading `@` as an indirect string (`@file,-id`).
+    LeadingAt,
+}
+
+/// Every rule a menu label breaks, length first. Shared with
+/// [`super::entry_problems`].
+pub(super) fn label_problems(label: &str) -> Vec<RenameProblem> {
+    let label = label.trim();
+    let length = label.chars().count();
+    let mut problems = Vec::new();
+    if length == 0 {
+        problems.push(RenameProblem::Empty);
+    } else if length > MAX_LABEL_CHARS {
+        problems.push(RenameProblem::TooLong);
+    }
+    if label.starts_with('@') {
+        problems.push(RenameProblem::LeadingAt);
+    }
+    problems
+}
+
+/// What stops `label` from becoming an entry's new name, if anything.
+pub fn rename_problem(label: &str) -> Option<RenameProblem> {
+    label_problems(label).into_iter().next()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -195,7 +255,8 @@ const CANONICAL_VERBS: [&str; 10] = [
     "properties",
 ];
 
-const PROGRAMMATIC_ACCESS_ONLY: &str = "ProgrammaticAccessOnly";
+/// How a verb is hidden from the menu (still runnable by programs).
+pub(super) const PROGRAMMATIC_ACCESS_ONLY: &str = "ProgrammaticAccessOnly";
 const LEGACY_DISABLE: &str = "LegacyDisable";
 
 // ---- Registry reading ------------------------------------------------------

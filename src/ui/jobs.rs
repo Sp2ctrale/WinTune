@@ -6,9 +6,7 @@ use crate::associations::{
     apply_extensions, find_rule_problems, rollback_extensions, save_backup_store, ApplyOptions,
     OperationReport,
 };
-use crate::context_menu::{
-    apply_entries, entry_problems, restore_keys, MenuBackupStore, MenuOptions,
-};
+use crate::context_menu::{apply_menu, entry_problems, restore_keys, MenuBackupStore, MenuOptions};
 use crate::detector::{build_editor_command, editor_display_name};
 use crate::gallery::{build_compressed_pak, PakStats};
 use crate::models::{BackupStore, ExtensionConfig};
@@ -302,7 +300,14 @@ impl WinTuneApp {
             false,
             "Applying context menu entries",
             move |env, store, opts| {
-                apply_entries(&(env.menu_target)(), store, &entries, &env.programs, opts)
+                apply_menu(
+                    &(env.menu_target)(),
+                    store,
+                    &entries,
+                    &[],
+                    &env.programs,
+                    opts,
+                )
             },
         );
     }

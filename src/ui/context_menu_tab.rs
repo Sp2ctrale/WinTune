@@ -108,6 +108,8 @@ impl WinTuneApp {
                     if let Some(id) = self.selected_menu_entry.clone() {
                         self.menu_entry_editor(ui, &id);
                     }
+                    self.show_menu_windows_section(ui);
+                    self.show_menu_others_section(ui);
                 });
         });
         if use_classic {
@@ -130,18 +132,19 @@ impl WinTuneApp {
             })
     }
 
-    /// Entries not applied yet, and keys of removed entries still to delete.
+    /// Entries not applied yet, keys of removed entries still to delete, and
+    /// pending hides and renames of existing entries.
     fn menu_pending_count(&self) -> usize {
         let unapplied = self
             .menu_entries()
             .iter()
             .filter(|e| self.menu_statuses.get(&e.id) != Some(&EntryStatus::Applied))
             .count();
-        unapplied + self.menu_orphans.len()
+        unapplied + self.menu_orphans.len() + self.menu_existing_pending_count()
     }
 
-    /// The page's bar: how much is not applied, and Apply; or the job's
-    /// progress while one runs.
+    /// The page's bar: how much is not applied, Discard (pending hides and
+    /// renames) and Apply; or the job's progress while one runs.
     fn menu_action_bar(&mut self, ctx: &egui::Context, problems: &[(String, EntryProblem)]) {
         let tr = self.tr;
         let pending = self.menu_pending_count();
@@ -153,8 +156,11 @@ impl WinTuneApp {
         let disabled_reason = self.menu_apply_disabled_reason(problems);
         let p = kit::current_palette(ctx);
         let apply_label = tr.t("tweaks.apply");
+        let discard_label = tr.t("tweaks.discard");
+        let can_discard = !self.menu_pending.is_empty();
 
-        let mut apply = false;
+        let (mut apply, mut discard) = (false, false);
+        // Right to left: Apply sits at the far right.
         self.page_action_bar(ctx, Some(&status), |ui| {
             let resp = ui.add_enabled(disabled_reason.is_none(), primary_button(p, &apply_label));
             let resp = match &disabled_reason {
@@ -162,9 +168,15 @@ impl WinTuneApp {
                 None => resp,
             };
             apply = resp.clicked();
+            if can_discard {
+                discard = ui.add(secondary_button(&discard_label)).clicked();
+            }
         });
         if apply {
             self.start_menu_apply(ctx);
+        }
+        if discard {
+            self.discard_menu_changes();
         }
     }
 

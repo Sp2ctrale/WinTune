@@ -40,7 +40,7 @@ the library, so it can be tested without the GUI and without elevation.
 | `config.json` | `ui` | Saved atomically. If it is unreadable, defaults are used in memory and **saving is refused** (the file is never overwritten) |
 | `backups.json` | `associations` | Missing means empty. Unreadable means an error, and all association changes are blocked |
 | `tweaks-backups.json` | `tweaks` | Same rule as `backups.json`. Entries are keyed by user (HKCU is per user), then by tweak id |
-| `context-menu-backups.json` | `context_menu` | Same rule as `backups.json`. Snapshots are keyed by user, then by registry key path (`Software\Classes\<place>\shell\WinTune.<id>`), so one entry in one place is one snapshot |
+| `context-menu-backups.json` | `context_menu` | Same rule as `backups.json`. Snapshots are keyed by user, then by slot id: a key path (a `WinTune.<id>` verb key, or a verb's HKCU copy, snapshotted whole) or a `Blocked` CLSID value. Stores written by the first Context menu release (bare key snapshots) still load |
 | `history.jsonl` | `history` | Append-only. A damaged line is skipped, never fatal |
 | `reg-backups\*.reg` | engines | A `.reg` safety net written before each apply |
 
@@ -92,6 +92,56 @@ keyed by account, so an account only ever sees and edits its own entries.
   History's Saved originals has a Context menu group that restores through
   `restore_keys`, and the operations filter has a matching chip.
 - **Windows 11.** Entries written this way appear under "Show more options".
+- **Shared snapshots** (`src/backups.rs`): used by tweaks and the Context
+  menu. A `RegTarget` is the hive (or test sandbox) to work on, a `Slot` is one
+  whole key or one value of a key, a `Snapshot` is its original state, a `Backup` adds a timestamp, and
+  `UserBackups` holds them per user and slot id. `take_snapshot` and
+  `restore_snapshot` read and put back one slot; `save_then_export` stores the
+  snapshots, then writes the `.reg`, before any write; `restore_ids` restores
+  a set of slots.
+- **Catalog** (`catalog.rs`): 11 curated Windows entries, each a Clsid (hidden
+  through `Blocked`) or a Verbs entry (hidden through a
+  `ProgrammaticAccessOnly` copy), with the text of what else it affects.
+- **Scan** (`existing.rs`, `origin.rs`, `fileinfo.rs`): a read-only pass over
+  `shell` and `shellex\ContextMenuHandlers` under `*`, `AllFilesystemObjects`,
+  `Folder`, `Directory`, `Directory\Background` and `Drive`, in HKCU and HKLM
+  `Classes`. It skips `WinTune.*` verbs, the canonical verbs (open, opennew,
+  explore, find, print, printto, runas, runasuser, openas, properties),
+  catalog entries and anything run from the Windows folder. A verb the
+  installer already hides (`ProgrammaticAccessOnly` in the machine copy, or
+  `LegacyDisable`) is skipped unless WinTune holds a snapshot of it. An entry whose
+  program file cannot be found is skipped too (fail closed) unless WinTune
+  holds a snapshot of it. Verbs are grouped by verb name and origin file,
+  handlers by CLSID. The origin is the product name from the file's version
+  info, else the file name without extension (`fileinfo.rs`).
+- **Scan job** (`ui/menu_existing_state.rs`): the scan runs as a background job
+  at startup, when the page opens and after every other job, and never while
+  a job runs, so a page never reads half-written keys. Rows are drawn only
+  when no scan is running.
+- **Hide and rename writes** (`engine.rs`, `apply_menu`, one pass together
+  with the added entries): hide a verb writes `ProgrammaticAccessOnly` on an
+  HKCU copy of the verb key; show removes it and deletes the copy if WinTune
+  created it and it is empty. Rename writes `MUIVerb` on the HKCU copy. Hide a
+  shell extension or modern entry writes its CLSID under HKCU
+  `...\Shell Extensions\Blocked`. A CLSID blocked in HKLM `Blocked` is shown
+  locked. Nothing is written under HKLM. When an Apply brings a slot back to
+  its snapshot (the copy WinTune created is gone, or `ProgrammaticAccessOnly`
+  and `MUIVerb` equal the snapshot's, or the `Blocked` value is present or
+  absent as before), the snapshot is forgotten and the store saved again.
+- **Restore of existing entries** (`engine.rs`, `restore_keys`): a verb's
+  HKCU copy is not replayed as a whole key. Only `ProgrammaticAccessOnly` and
+  `MUIVerb` return to the snapshot (removed when it had none); the copy is
+  deleted (`delete_subkey`, never a tree delete) only if WinTune created it and
+  it is now empty, and is never recreated once gone. Everything else in it is
+  the program's and stays. `WinTune.*` keys and `Blocked` values are restored
+  exactly. `restore_ids` (`backups.rs`) stays generic: it takes the per-slot
+  restore as a closure.
+- **Catalog presence**: a Clsid row shows when `CLSID\<clsid>` exists, Open in
+  Terminal when its packaged COM class (`PackagedCom\ClassIndex\<clsid>`)
+  exists, a Verbs row when one of its verb keys exists (HKCU or HKLM).
+- **Page** (`ui/context_menu_existing.rs`, `ui/menu_existing_state.rs`): the
+  Windows and Other programs sections. Toggles and renames stay pending
+  (`menu_pending`) until Apply; the confirmation lists side effects.
 
 ## Safety model (every module that writes to the registry)
 

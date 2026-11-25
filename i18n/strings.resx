@@ -967,7 +967,7 @@ Restoring the original puts the choice back, but Windows protects it with a hash
     <value>For {0}. Right-click entries you add, per account.</value>
   </data>
   <data name="home.menu_status" xml:space="preserve">
-    <value>{0} entries, {1} changed</value>
+    <value>{0} entries, {1} hidden</value>
   </data>
   <data name="job.apply_menu" xml:space="preserve">
     <value>Applying context menu entries…</value>
@@ -1149,5 +1149,156 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   </data>
   <data name="menu.up_to_date" xml:space="preserve">
     <value>Everything is applied</value>
+  </data>
+  <data name="menu.win.open_in_terminal" xml:space="preserve">
+    <value>Open in Terminal</value>
+  </data>
+  <data name="menu.win.open_in_terminal.desc" xml:space="preserve">
+    <value>Adds Windows Terminal to the folder menu.</value>
+  </data>
+  <data name="menu.win.share" xml:space="preserve">
+    <value>Share</value>
+  </data>
+  <data name="menu.win.share.desc" xml:space="preserve">
+    <value>Lets you send a file or folder through Windows sharing.</value>
+  </data>
+  <data name="menu.win.give_access" xml:space="preserve">
+    <value>Give access to</value>
+  </data>
+  <data name="menu.win.give_access.desc" xml:space="preserve">
+    <value>Shares a file, folder or drive with other people on the network.</value>
+  </data>
+  <data name="menu.win.previous_versions" xml:space="preserve">
+    <value>Restore previous versions</value>
+  </data>
+  <data name="menu.win.previous_versions.desc" xml:space="preserve">
+    <value>Brings back an older copy of a file or folder.</value>
+  </data>
+  <data name="menu.win.include_in_library" xml:space="preserve">
+    <value>Include in library</value>
+  </data>
+  <data name="menu.win.include_in_library.desc" xml:space="preserve">
+    <value>Adds a folder to a Windows library.</value>
+  </data>
+  <data name="menu.win.pin_to_start" xml:space="preserve">
+    <value>Pin to Start</value>
+  </data>
+  <data name="menu.win.pin_to_start.desc" xml:space="preserve">
+    <value>Puts a folder on the Start menu.</value>
+  </data>
+  <data name="menu.win.send_to" xml:space="preserve">
+    <value>Send to</value>
+  </data>
+  <data name="menu.win.send_to.desc" xml:space="preserve">
+    <value>Copies the item to a place such as Desktop or a USB drive.</value>
+  </data>
+  <data name="menu.win.cast_to_device" xml:space="preserve">
+    <value>Cast to device</value>
+  </data>
+  <data name="menu.win.cast_to_device.desc" xml:space="preserve">
+    <value>Plays a file on a TV or another device nearby.</value>
+  </data>
+  <data name="menu.win.scan_with_defender" xml:space="preserve">
+    <value>Scan with Microsoft Defender</value>
+  </data>
+  <data name="menu.win.scan_with_defender.desc" xml:space="preserve">
+    <value>Checks the item for threats with Microsoft Defender.</value>
+  </data>
+  <data name="menu.win.pin_to_quick_access" xml:space="preserve">
+    <value>Pin to Quick access</value>
+  </data>
+  <data name="menu.win.pin_to_quick_access.desc" xml:space="preserve">
+    <value>Keeps a folder or drive in the Quick access list.</value>
+  </data>
+  <data name="menu.win.add_to_favorites" xml:space="preserve">
+    <value>Add to Favorites</value>
+  </data>
+  <data name="menu.win.add_to_favorites.desc" xml:space="preserve">
+    <value>Keeps a file in the Favorites list of File Explorer.</value>
+  </data>
+  <data name="menu.also.sharing_tab" xml:space="preserve">
+    <value>Also removes the Sharing tab from folder and drive Properties.</value>
+  </data>
+  <data name="menu.also.previous_versions_tab" xml:space="preserve">
+    <value>Also removes the Previous Versions tab from Properties.</value>
+  </data>
+  <data name="menu.also.pin_to_start_apps" xml:space="preserve">
+    <value>Also removes Pin to Start from programs and shortcuts.</value>
+  </data>
+  <data name="menu.scan_failed" xml:space="preserve">
+    <value>Could not read the right-click menu: {0}</value>
+  </data>
+  <data name="menu.also.handler" xml:space="preserve">
+    <value>{0} is hidden everywhere its program adds it, not only in the places listed.</value>
+  </data>
+  <data name="menu.apply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="menu.apply_title" xml:space="preserve">
+    <value>Apply these changes?</value>
+  </data>
+  <data name="menu.apply_message" xml:space="preserve">
+    <value>Hiding these entries has side effects:
+{0}</value>
+  </data>
+  <data name="menu.state.shown" xml:space="preserve">
+    <value>Shown</value>
+  </data>
+  <data name="menu.state.hidden" xml:space="preserve">
+    <value>Hidden</value>
+  </data>
+  <data name="menu.state.hidden_elsewhere" xml:space="preserve">
+    <value>Hidden by another program</value>
+  </data>
+  <data name="menu.locked.machine" xml:space="preserve">
+    <value>Hidden for every account on this PC. WinTune changes only your account.</value>
+  </data>
+  <data name="menu.locked.unreadable" xml:space="preserve">
+    <value>Cannot read this entry: {0}</value>
+  </data>
+  <data name="menu.windows" xml:space="preserve">
+    <value>Windows</value>
+  </data>
+  <data name="menu.others" xml:space="preserve">
+    <value>Other programs</value>
+  </data>
+  <data name="menu.scanning" xml:space="preserve">
+    <value>Reading the right-click menu…</value>
+  </data>
+  <data name="menu.others_empty" xml:space="preserve">
+    <value>No other program adds entries here.</value>
+  </data>
+  <data name="menu.restart_hint" xml:space="preserve">
+    <value>May need an Explorer restart to show.</value>
+  </data>
+  <data name="menu.pill.will_hide" xml:space="preserve">
+    <value>Will be hidden</value>
+  </data>
+  <data name="menu.pill.will_show" xml:space="preserve">
+    <value>Will be shown</value>
+  </data>
+  <data name="menu.pill.will_rename" xml:space="preserve">
+    <value>Will be renamed</value>
+  </data>
+  <data name="menu.search" xml:space="preserve">
+    <value>Search by name or program</value>
+  </data>
+  <data name="menu.no_match" xml:space="preserve">
+    <value>No entry matches "{0}".</value>
+  </data>
+  <data name="menu.added_by" xml:space="preserve">
+    <value>Added by {0}</value>
+  </data>
+  <data name="menu.rename" xml:space="preserve">
+    <value>Rename…</value>
+  </data>
+  <data name="menu.reset_name" xml:space="preserve">
+    <value>Reset name</value>
+  </data>
+  <data name="menu.rename_title" xml:space="preserve">
+    <value>Rename entry</value>
+  </data>
+  <data name="menu.rename_ok" xml:space="preserve">
+    <value>Rename</value>
   </data>
 </root>

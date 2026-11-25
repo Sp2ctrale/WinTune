@@ -1,16 +1,25 @@
 //! Context menu module: entries a user adds to the Explorer right-click menu.
 
+pub mod catalog;
 pub mod engine;
+pub mod existing;
+pub mod fileinfo;
+mod origin;
 pub mod programs;
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+pub use catalog::{catalog, catalog_clsid, find_catalog, CatalogItem, CatalogMechanism, Presence};
 pub use engine::{
-    apply_entries, default_menu_store_path, entry_key, entry_status, key_place, load_menu_store,
+    apply_menu, default_menu_store_path, entry_key, entry_status, key_place, load_menu_store,
     orphan_keys, restore_keys, save_menu_store, EntryStatus, MenuBackup, MenuBackupStore,
     MenuOptions, MenuTarget,
+};
+pub use existing::{
+    class_places, rename_problem, scan, ExistingChange, ExistingEntry, ExistingState, Locked,
+    Mechanism, Rename, RenameProblem, Scan, ScanOptions, VerbRef, BLOCKED_KEY, SCAN_CLASSES,
 };
 pub use programs::{command_line, icon_value, Programs};
 
@@ -135,17 +144,16 @@ pub fn entry_problems(entries: &[MenuEntry], programs: &Programs) -> Vec<(String
     for (index, entry) in entries.iter().enumerate() {
         let id = || entry.id.clone();
         let label = entry.label.trim();
-        let length = label.chars().count();
-        if length == 0 {
-            problems.push((id(), EntryProblem::EmptyLabel));
-        } else if length > MAX_LABEL_CHARS {
-            problems.push((id(), EntryProblem::LabelTooLong));
+        for problem in existing::label_problems(label) {
+            let problem = match problem {
+                RenameProblem::Empty => EntryProblem::EmptyLabel,
+                RenameProblem::TooLong => EntryProblem::LabelTooLong,
+                RenameProblem::LeadingAt => EntryProblem::LeadingAt,
+            };
+            problems.push((id(), problem));
         }
         if entry.places.is_empty() {
             problems.push((id(), EntryProblem::NoPlace));
-        }
-        if label.starts_with('@') {
-            problems.push((id(), EntryProblem::LeadingAt));
         }
         let not_an_exe = match &entry.program {
             ProgramChoice::Custom(path) => {
@@ -174,7 +182,7 @@ pub fn entry_problems(entries: &[MenuEntry], programs: &Programs) -> Vec<(String
                 problems.push((id(), EntryProblem::IconNotFound));
             }
         }
-        if length > 0 {
+        if !label.is_empty() {
             for place in &entry.places {
                 let duplicated = entries[..index].iter().any(|earlier| {
                     earlier.places.contains(place)

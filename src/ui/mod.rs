@@ -8,6 +8,7 @@
 mod associations_tab;
 mod autosave;
 mod confirm;
+mod context_menu_existing;
 mod context_menu_tab;
 mod gallery_tab;
 mod history_panel;
@@ -16,6 +17,7 @@ mod icon_grid;
 mod icon_picker;
 mod jobs;
 pub mod kit;
+mod menu_existing_state;
 mod originals;
 mod polish;
 #[cfg(test)]
@@ -34,8 +36,8 @@ use crate::associations::{
     notify_shell_associations, AssocTarget, OperationReport,
 };
 use crate::context_menu::{
-    default_menu_store_path, entry_status, load_menu_store, orphan_keys, EntryStatus,
-    MenuBackupStore, MenuEntry, MenuTarget, Programs,
+    default_menu_store_path, entry_status, fileinfo, load_menu_store, orphan_keys, EntryStatus,
+    MenuBackupStore, MenuEntry, MenuTarget, Programs, Scan,
 };
 use crate::detector::{
     has_wsl_distribution, is_windows_11_build, resolve_vscode_executable, windows_build,
@@ -51,7 +53,7 @@ use crate::tweaks::{
 };
 use eframe::egui::{self, ColorImage, TextureHandle, TextureOptions};
 use jobs::RunningJob;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -86,6 +88,13 @@ pub(crate) struct AppEnv {
     pub menu_store_path: PathBuf,
     /// Where each preset program of the context menu lives.
     pub programs: Programs,
+    /// `%SystemRoot%`: menu entries whose program is under it are Windows'
+    /// own and never listed.
+    pub windows_dir: PathBuf,
+    /// Resolves an `@file,-id` menu label (`fileinfo::resolve_indirect`).
+    pub resolve_indirect: fn(&str) -> Option<String>,
+    /// A program's product name (`fileinfo::product_name`).
+    pub product_name: fn(&Path) -> Option<String>,
 }
 
 impl AppEnv {
@@ -110,6 +119,11 @@ impl AppEnv {
             menu_target: Arc::new(MenuTarget::current_user),
             menu_store_path: default_menu_store_path(),
             programs: Programs::detect(),
+            windows_dir: std::env::var_os("SystemRoot")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from(r"C:\Windows")),
+            resolve_indirect: fileinfo::resolve_indirect,
+            product_name: fileinfo::product_name,
         }
     }
 }
@@ -225,6 +239,18 @@ pub struct WinTuneApp {
     menu_orphans: Vec<String>,
     /// Entry open in the editor, by id.
     selected_menu_entry: Option<String>,
+    /// Entries already in the right-click menu, as last read; `None` until
+    /// the first scan ends. Kept while a new scan runs.
+    menu_scan: Option<Scan>,
+    /// The scan running now, if any (the page shows it as loading).
+    menu_scan_job: Option<menu_existing_state::ScanJob>,
+    menu_scan_needed: bool,
+    /// Hide / rename changes not applied yet, by `ExistingEntry::id`.
+    menu_pending: BTreeMap<String, menu_existing_state::PendingExisting>,
+    /// The rename dialog, while open: entry id and the text being edited.
+    menu_rename: Option<(String, String)>,
+    /// Filter typed in the Other programs section (label / origin).
+    menu_search: String,
     tr: Tr,
     /// The theme actually shown this frame (Light or Dark, never System):
     /// what the old palette helpers receive.
@@ -270,6 +296,7 @@ impl WinTuneApp {
         app.refresh_menu_statuses();
         app.reload_history();
         app.request_status_refresh();
+        app.request_menu_scan();
         app
     }
 
@@ -321,6 +348,12 @@ impl WinTuneApp {
             menu_statuses: HashMap::new(),
             menu_orphans: Vec::new(),
             selected_menu_entry: None,
+            menu_scan: None,
+            menu_scan_job: None,
+            menu_scan_needed: false,
+            menu_pending: BTreeMap::new(),
+            menu_rename: None,
+            menu_search: String::new(),
             tr,
             ui_theme,
             focus_search: false,
@@ -342,12 +375,14 @@ impl WinTuneApp {
         self.poll_job();
         self.handle_shortcuts(ctx);
         self.pump_status_refresh(ctx);
+        self.pump_menu_scan(ctx);
         self.guard_close_while_busy(ctx);
 
         // Before the nav: the dialog claims the keyboard first (it is an Area,
         // so the panel layout does not depend on the order).
         self.show_confirm_dialog(ctx);
         self.show_icon_picker(ctx);
+        self.show_menu_rename_dialog(ctx);
         self.show_caption(ctx);
         self.show_nav(ctx);
         if !self.active_tab.owns_action_bar() {

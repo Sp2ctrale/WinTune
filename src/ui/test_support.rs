@@ -58,14 +58,24 @@ impl TempIcons {
                 Arc::new(move |path: &Path| opened.lock().unwrap().push(path.to_path_buf()))
             },
             menu_target: {
-                let base = format!("{}\\HKCU", self.sandbox.path);
-                Arc::new(move || crate::context_menu::MenuTarget {
-                    root: RegKey::predef(HKEY_CURRENT_USER),
-                    root_name: "HKEY_CURRENT_USER".into(),
-                    base: base.clone(),
+                let sandbox = self.sandbox.path.clone();
+                Arc::new(move || {
+                    let at = |hive: &str| crate::backups::RegTarget {
+                        root: RegKey::predef(HKEY_CURRENT_USER),
+                        root_name: "HKEY_CURRENT_USER".into(),
+                        base: format!("{}\\{}", sandbox, hive),
+                    };
+                    crate::context_menu::MenuTarget {
+                        user: at("HKCU"),
+                        machine: at("HKLM"),
+                    }
                 })
             },
             menu_store_path: self.dir.join("context-menu-backups.json"),
+            // Never created: programs under it would count as Windows' own.
+            windows_dir: self.dir.join("Windows"),
+            resolve_indirect: |_| None,
+            product_name: |_| None,
             programs: {
                 let exe = |name: &str| Some(self.dir.join("programs").join(name));
                 crate::context_menu::Programs {
@@ -213,6 +223,54 @@ impl TempIcons {
     pub(super) fn key_exists(&self, path: &str) -> bool {
         self.sandbox.root.open_subkey(path).is_ok()
     }
+
+    /// The sandbox's machine side (`{sandbox}\HKLM`): the app only reads it,
+    /// tests seed HKLM-like keys there.
+    pub(super) fn machine_key(&self) -> RegKey {
+        let (key, _) = self
+            .sandbox
+            .root
+            .create_subkey(format!("{}\\HKLM", self.sandbox.path))
+            .expect("create sandbox HKLM");
+        key
+    }
+
+    /// A third-party machine verb on `class` (e.g. `Directory`), labelled
+    /// `label`, run by a program outside the Windows folder.
+    pub(super) fn seed_machine_verb(&self, class: &str, verb: &str, label: &str) {
+        let key = format!(r"Software\Classes\{class}\shell\{verb}");
+        let (k, _) = self.machine_key().create_subkey(&key).unwrap();
+        k.set_value("MUIVerb", &label).unwrap();
+        let (command, _) = k.create_subkey("command").unwrap();
+        let exe = format!(r#""C:\Apps\{verb}.exe" "%1""#);
+        command.set_value("", &exe).unwrap();
+    }
+
+    /// Registers a CLSID on the machine side (enough for a catalog entry).
+    pub(super) fn seed_machine_clsid(&self, clsid: &str) {
+        let key = format!(r"Software\Classes\CLSID\{clsid}");
+        let (k, _) = self.machine_key().create_subkey(&key).unwrap();
+        k.set_value("", &"Seeded").unwrap();
+    }
+}
+
+/// Runs frames until no scan of the right-click menu is pending or running.
+pub(super) fn run_until_scanned(app: &mut WinTuneApp, ctx: &egui::Context) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while (app.menu_scan_needed || app.menu_scan_job.is_some()) && Instant::now() < deadline {
+        frame(app, ctx, RawInput::default());
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(
+        !app.menu_scan_needed && app.menu_scan_job.is_none(),
+        "the scan never finished"
+    );
+}
+
+/// Asks for a scan and waits for its result.
+pub(super) fn scan_now(app: &mut WinTuneApp, ctx: &egui::Context) {
+    app.request_menu_scan();
+    run_until_scanned(app, ctx);
 }
 
 pub(super) fn run_until_idle(app: &mut WinTuneApp, ctx: &egui::Context) {

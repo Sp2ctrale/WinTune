@@ -6,9 +6,7 @@ use crate::associations::{
     apply_extensions, find_rule_problems, rollback_extensions, save_backup_store, ApplyOptions,
     OperationReport,
 };
-use crate::context_menu::{
-    apply_entries, entry_problems, restore_keys, MenuBackupStore, MenuOptions,
-};
+use crate::context_menu::{apply_menu, entry_problems, restore_keys, MenuBackupStore, MenuOptions};
 use crate::detector::{build_editor_command, editor_display_name};
 use crate::gallery::{build_compressed_pak, PakStats};
 use crate::models::{BackupStore, ExtensionConfig};
@@ -260,7 +258,7 @@ impl WinTuneApp {
             return None;
         }
         let entries = self.menu_entries();
-        let lines: Vec<String> = entry_problems(entries, &self.env.programs)
+        let mut lines: Vec<String> = entry_problems(entries, &self.env.programs)
             .iter()
             .map(|(id, problem)| {
                 let name = entries
@@ -275,6 +273,7 @@ impl WinTuneApp {
                 )
             })
             .collect();
+        lines.extend(self.menu_rename_problems());
         (!lines.is_empty()).then(|| tr.t_args("menu.blocked.problems", &[&lines.join("\n")]))
     }
 
@@ -287,7 +286,9 @@ impl WinTuneApp {
         })
     }
 
-    /// Writes the list of this account to the registry on a background thread.
+    /// Writes the list of this account and the pending hides and renames to
+    /// the registry in one background job. A hide with side effects asks
+    /// first (`ConfirmAction::ApplyMenu`).
     pub(super) fn start_menu_apply(&mut self, ctx: &egui::Context) {
         if self.refuse_if_busy() {
             return;
@@ -296,13 +297,39 @@ impl WinTuneApp {
             self.notify(ToastKind::Error, reason);
             return;
         }
+        let warnings = self.menu_apply_warnings();
+        if !warnings.is_empty() {
+            self.request_apply_menu(&warnings);
+            return;
+        }
+        self.run_menu_apply(ctx);
+    }
+
+    /// Apply without asking (the side effects were confirmed, or there are
+    /// none). Re-checks what may have changed while the question was open.
+    pub(super) fn run_menu_apply(&mut self, ctx: &egui::Context) {
+        if self.refuse_if_busy() {
+            return;
+        }
+        if let Some(reason) = self.menu_blocked_reason(true) {
+            self.notify(ToastKind::Error, reason);
+            return;
+        }
         let entries = self.menu_entries().to_vec();
+        let changes = self.menu_existing_changes();
         self.spawn_menu_job(
             ctx,
             false,
             "Applying context menu entries",
             move |env, store, opts| {
-                apply_entries(&(env.menu_target)(), store, &entries, &env.programs, opts)
+                apply_menu(
+                    &(env.menu_target)(),
+                    store,
+                    &entries,
+                    &changes,
+                    &env.programs,
+                    opts,
+                )
             },
         );
     }
@@ -394,7 +421,12 @@ impl WinTuneApp {
         let title = job.title().to_string();
         let title_text = self.tr.t(job.name_key());
         let history_label = job.history_label();
+        let menu_apply = matches!(job, RunningJob::ContextMenu { restore: false, .. });
         self.job = None;
+        // Applied or not, the next scan shows what the registry holds.
+        if menu_apply {
+            self.menu_pending.clear();
+        }
 
         match finished {
             Finished::Apply(outcome) => {
@@ -454,6 +486,8 @@ impl WinTuneApp {
                 self.refresh_menu_statuses();
             }
         }
+        // Any job may have changed the menu (or the snapshots behind it).
+        self.request_menu_scan();
     }
 
     fn finish_menu_job(&mut self, outcome: MenuOutcome) {
@@ -859,6 +893,78 @@ mod tests {
             ("Context menu", "Apply")
         );
         assert!(app.last_notice().contains("failed unexpectedly"));
+    }
+
+    #[test]
+    fn one_apply_writes_entries_and_hides() {
+        use super::super::menu_existing_state::PendingExisting;
+        use crate::context_menu::{entry_key, ExistingState, Place};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_machine_verb("Directory", "AppVerb", "Open with App");
+        let mut app = two_menu_entries(&fx, &ctx);
+        app.menu_entries_mut().retain(|e| e.id == "e1");
+        scan_now(&mut app, &ctx);
+        let id = app.menu_scan.as_ref().unwrap().others[0].id.clone();
+        app.menu_pending.insert(
+            id.clone(),
+            PendingExisting {
+                hidden: Some(true),
+                label: None,
+            },
+        );
+        let history_before = app.history.len();
+
+        app.start_menu_apply(&ctx);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+
+        assert!(fx.key_exists(&fx.hkcu(&entry_key(Place::Folder, "e1"))));
+        let copy = fx.hkcu(r"Software\Classes\Directory\shell\AppVerb");
+        let hidden = fx
+            .sandbox
+            .root
+            .open_subkey(&copy)
+            .is_ok_and(|k| k.get_raw_value("ProgrammaticAccessOnly").is_ok());
+        assert!(hidden, "{}", app.last_notice());
+        assert_eq!(app.history.len(), history_before + 1);
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Context menu", "Apply")
+        );
+        assert!(last.errors.is_empty(), "{:?}", last.errors);
+        assert!(app.menu_pending.is_empty());
+
+        run_until_scanned(&mut app, &ctx);
+        let row = app.menu_scan.as_ref().unwrap().find(&id).expect("row");
+        assert_eq!(row.state, ExistingState::HiddenByWinTune);
+        assert!(row.has_snapshot);
+    }
+
+    #[test]
+    fn a_failed_menu_apply_still_clears_pending() {
+        use super::super::menu_existing_state::PendingExisting;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = two_menu_entries(&fx, &ctx);
+        app.menu_pending.insert(
+            "verb:x|y".into(),
+            PendingExisting {
+                hidden: Some(true),
+                label: None,
+            },
+        );
+        app.job = Some(RunningJob::ContextMenu {
+            job: BackgroundJob::spawn(
+                "Applying context menu entries",
+                || {},
+                |_| -> MenuOutcome { panic!("boom") },
+            ),
+            restore: false,
+        });
+        run_until_idle(&mut app, &ctx);
+        assert!(app.menu_pending.is_empty());
     }
 
     #[test]

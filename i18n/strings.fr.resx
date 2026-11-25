@@ -966,7 +966,7 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
     <value>Pour {0}. Les entrées de clic droit que vous ajoutez, par compte.</value>
   </data>
   <data name="home.menu_status" xml:space="preserve">
-    <value>{0} entrée(s), {1} modifiée(s)</value>
+    <value>{0} entrée(s), {1} masquée(s)</value>
   </data>
   <data name="job.apply_menu" xml:space="preserve">
     <value>Application des entrées du menu contextuel…</value>
@@ -1148,5 +1148,156 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   </data>
   <data name="menu.up_to_date" xml:space="preserve">
     <value>Tout est appliqué</value>
+  </data>
+  <data name="menu.win.open_in_terminal" xml:space="preserve">
+    <value>Ouvrir dans le Terminal</value>
+  </data>
+  <data name="menu.win.open_in_terminal.desc" xml:space="preserve">
+    <value>Ajoute Windows Terminal au menu des dossiers.</value>
+  </data>
+  <data name="menu.win.share" xml:space="preserve">
+    <value>Partager</value>
+  </data>
+  <data name="menu.win.share.desc" xml:space="preserve">
+    <value>Permet d'envoyer un fichier ou un dossier par le partage Windows.</value>
+  </data>
+  <data name="menu.win.give_access" xml:space="preserve">
+    <value>Donner l'accès à</value>
+  </data>
+  <data name="menu.win.give_access.desc" xml:space="preserve">
+    <value>Partage un fichier, un dossier ou un lecteur avec d'autres personnes du réseau.</value>
+  </data>
+  <data name="menu.win.previous_versions" xml:space="preserve">
+    <value>Restaurer les versions précédentes</value>
+  </data>
+  <data name="menu.win.previous_versions.desc" xml:space="preserve">
+    <value>Récupère une ancienne copie d'un fichier ou d'un dossier.</value>
+  </data>
+  <data name="menu.win.include_in_library" xml:space="preserve">
+    <value>Inclure dans la bibliothèque</value>
+  </data>
+  <data name="menu.win.include_in_library.desc" xml:space="preserve">
+    <value>Ajoute un dossier à une bibliothèque Windows.</value>
+  </data>
+  <data name="menu.win.pin_to_start" xml:space="preserve">
+    <value>Épingler au menu Démarrer</value>
+  </data>
+  <data name="menu.win.pin_to_start.desc" xml:space="preserve">
+    <value>Place un dossier dans le menu Démarrer.</value>
+  </data>
+  <data name="menu.win.send_to" xml:space="preserve">
+    <value>Envoyer vers</value>
+  </data>
+  <data name="menu.win.send_to.desc" xml:space="preserve">
+    <value>Copie l'élément vers un endroit comme le Bureau ou une clé USB.</value>
+  </data>
+  <data name="menu.win.cast_to_device" xml:space="preserve">
+    <value>Caster sur un appareil</value>
+  </data>
+  <data name="menu.win.cast_to_device.desc" xml:space="preserve">
+    <value>Lit un fichier sur un téléviseur ou un autre appareil proche.</value>
+  </data>
+  <data name="menu.win.scan_with_defender" xml:space="preserve">
+    <value>Analyser avec Microsoft Defender</value>
+  </data>
+  <data name="menu.win.scan_with_defender.desc" xml:space="preserve">
+    <value>Recherche des menaces dans l'élément avec Microsoft Defender.</value>
+  </data>
+  <data name="menu.win.pin_to_quick_access" xml:space="preserve">
+    <value>Épingler à Accès rapide</value>
+  </data>
+  <data name="menu.win.pin_to_quick_access.desc" xml:space="preserve">
+    <value>Garde un dossier ou un lecteur dans la liste Accès rapide.</value>
+  </data>
+  <data name="menu.win.add_to_favorites" xml:space="preserve">
+    <value>Ajouter aux favoris</value>
+  </data>
+  <data name="menu.win.add_to_favorites.desc" xml:space="preserve">
+    <value>Garde un fichier dans la liste Favoris de l'Explorateur de fichiers.</value>
+  </data>
+  <data name="menu.also.sharing_tab" xml:space="preserve">
+    <value>Retire aussi l'onglet Partage des Propriétés des dossiers et des lecteurs.</value>
+  </data>
+  <data name="menu.also.previous_versions_tab" xml:space="preserve">
+    <value>Retire aussi l'onglet Versions précédentes des Propriétés.</value>
+  </data>
+  <data name="menu.also.pin_to_start_apps" xml:space="preserve">
+    <value>Retire aussi Épingler au menu Démarrer pour les programmes et les raccourcis.</value>
+  </data>
+  <data name="menu.scan_failed" xml:space="preserve">
+    <value>Impossible de lire le menu contextuel : {0}</value>
+  </data>
+  <data name="menu.also.handler" xml:space="preserve">
+    <value>{0} disparaît partout où son programme l'ajoute, pas seulement aux emplacements indiqués.</value>
+  </data>
+  <data name="menu.apply" xml:space="preserve">
+    <value>Appliquer</value>
+  </data>
+  <data name="menu.apply_title" xml:space="preserve">
+    <value>Appliquer ces modifications ?</value>
+  </data>
+  <data name="menu.apply_message" xml:space="preserve">
+    <value>Masquer ces entrées a aussi d'autres effets :
+{0}</value>
+  </data>
+  <data name="menu.state.shown" xml:space="preserve">
+    <value>Affichée</value>
+  </data>
+  <data name="menu.state.hidden" xml:space="preserve">
+    <value>Masquée</value>
+  </data>
+  <data name="menu.state.hidden_elsewhere" xml:space="preserve">
+    <value>Masquée par un autre programme</value>
+  </data>
+  <data name="menu.locked.machine" xml:space="preserve">
+    <value>Masquée pour tous les comptes de ce PC. WinTune ne modifie que votre compte.</value>
+  </data>
+  <data name="menu.locked.unreadable" xml:space="preserve">
+    <value>Impossible de lire cette entrée : {0}</value>
+  </data>
+  <data name="menu.windows" xml:space="preserve">
+    <value>Windows</value>
+  </data>
+  <data name="menu.others" xml:space="preserve">
+    <value>Autres programmes</value>
+  </data>
+  <data name="menu.scanning" xml:space="preserve">
+    <value>Lecture du menu contextuel…</value>
+  </data>
+  <data name="menu.others_empty" xml:space="preserve">
+    <value>Aucun autre programme n'ajoute d'entrée ici.</value>
+  </data>
+  <data name="menu.restart_hint" xml:space="preserve">
+    <value>Peut demander un redémarrage de l'Explorateur.</value>
+  </data>
+  <data name="menu.pill.will_hide" xml:space="preserve">
+    <value>Sera masquée</value>
+  </data>
+  <data name="menu.pill.will_show" xml:space="preserve">
+    <value>Sera affichée</value>
+  </data>
+  <data name="menu.pill.will_rename" xml:space="preserve">
+    <value>Sera renommée</value>
+  </data>
+  <data name="menu.search" xml:space="preserve">
+    <value>Rechercher par nom ou programme</value>
+  </data>
+  <data name="menu.no_match" xml:space="preserve">
+    <value>Aucune entrée ne correspond à « {0} ».</value>
+  </data>
+  <data name="menu.added_by" xml:space="preserve">
+    <value>Ajoutée par {0}</value>
+  </data>
+  <data name="menu.rename" xml:space="preserve">
+    <value>Renommer…</value>
+  </data>
+  <data name="menu.reset_name" xml:space="preserve">
+    <value>Rétablir le nom d'origine</value>
+  </data>
+  <data name="menu.rename_title" xml:space="preserve">
+    <value>Renommer l'entrée</value>
+  </data>
+  <data name="menu.rename_ok" xml:space="preserve">
+    <value>Renommer</value>
   </data>
 </root>

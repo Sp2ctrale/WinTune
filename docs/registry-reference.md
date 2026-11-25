@@ -127,6 +127,42 @@ a key, its original state is saved in
 a `.reg` export is written; History, Saved originals, Context menu puts it
 back. On Windows 11 these entries appear under "Show more options".
 
+### Hiding and renaming existing entries
+
+Written by the Context menu page (Windows and Other programs). Nothing is
+written under `HKLM`. Before each first change, the slot is snapshotted in
+`context-menu-backups.json` (per user, by slot) and a `.reg` is exported.
+
+| Action | Key | Value | Content |
+| --- | --- | --- | --- |
+| Hide a verb | `HKCU\Software\Classes\<class>\shell\<verb>` (a copy of the HKLM verb key, with no `command` of its own) | `ProgrammaticAccessOnly` | REG_SZ `""` |
+| Show a verb | same | `ProgrammaticAccessOnly` removed | The HKCU copy is deleted if WinTune created it and it is now empty |
+| Rename a verb | same | `MUIVerb` | REG_SZ, 1 to 80 characters, each `&` written as `&&`, no leading `@` |
+| Reset a name | same | `MUIVerb` | The value of the first snapshot, or removed if the verb had none. Plain hide and show never touch `MUIVerb` |
+| Hide a shell extension or modern entry | `HKCU\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked` | `{CLSID}` | REG_SZ `""` (undocumented: rows carry an Unofficial pill) |
+| Show it | same | `{CLSID}` | Value deleted |
+
+**Restore original** (History, or a row's `…` menu) puts back only what
+WinTune changes. On a verb's HKCU copy that is `ProgrammaticAccessOnly` and
+`MUIVerb`: each returns to its value in the snapshot, or is removed if the
+snapshot had none; the copy is then deleted only if WinTune created it and it
+is empty (never a tree delete). Anything a program wrote in that key since
+(command, icon, other values) stays. A copy that no longer exists is not
+recreated. A `Blocked` value and a `WinTune.*` key come back exactly as
+snapshotted.
+
+When an Apply brings a slot back to its original (a copy WinTune created is
+deleted again, both values equal the snapshot's, or a `Blocked` value is
+present or absent as before), its snapshot is dropped and the store saved
+again: no Restore original is offered for a state that is already the
+original, so a key a program writes later is never touched.
+
+A CLSID found in `HKLM\...\Shell Extensions\Blocked` is hidden for every
+account. WinTune cannot change that: the row is shown locked, with its toggle
+disabled. The scan lists verbs and handlers under `shell` and
+`shellex\ContextMenuHandlers` of `*`, `AllFilesystemObjects`, `Folder`,
+`Directory`, `Directory\Background` and `Drive`, in HKCU and HKLM `Classes`.
+
 ### Real-machine probe
 
 Script: `scripts/context-menu-probe.ps1` (Windows PowerShell 5.1, unelevated).
@@ -148,16 +184,43 @@ both work without touching HKLM. `Blocked` hides a shellex handler's verb in
 a fresh process; whether the open Explorer honours it immediately is still to
 be confirmed by the owner (PR 2 / spec section 8).
 
+### Windows entries WinTune can hide
+
+Read on this machine (Windows 11 build 26300), read-only. CLSIDs and their
+friendly names come from `HKCR\CLSID`; places come from the `shellex` keys
+that reference them. A Clsid entry is hidden by adding its CLSID to HKCU
+`Blocked`. A Verbs entry is hidden with a `ProgrammaticAccessOnly` HKCU copy of
+the verb.
+
+| id | Mechanism | Places | OS | Presence | Also affects | Evidence |
+| --- | --- | --- | --- | --- | --- | --- |
+| `open_in_terminal` | Clsid `{9F156763-7844-4DC4-B2B1-901F640F5155}` | Folder, Background | Any | Packaged COM class registered: `Software\Classes\PackagedCom\ClassIndex\{9F156763-…}` in HKCU or HKLM | none | Not a classic verb. Terminal's AppxManifest declares `desktop5:Verb Id="OpenTerminalHere"` on `Directory` and `Directory\Background`. Read here: `HKLM\Software\Classes\PackagedCom\ClassIndex\{9F156763-7844-4DC4-B2B1-901F640F5155}` exists, default value `Microsoft.WindowsTerminal_1.25.3131.0_x64__8wekyb3d8bbwe`. The `wt.exe` alias is not the evidence: it can exist without the package (or be turned off while Terminal is installed). |
+| `share` | Clsid `{E2BF9676-5F8F-435C-97EB-11607A5BEDF7}` | Files, Folder | Any | CLSID registered | none | Friendly name "Ribbon Modern Share Verb". |
+| `give_access` | Clsid `{F81E9010-6EA4-11CE-A7FF-00AA003CA9F6}` | Files, Folder, Background, Drive | Any | CLSID registered | Sharing tab of folder and drive Properties | Friendly name "Shell extensions for sharing". Also listed under `Directory` and `Drive` `PropertySheetHandlers`. |
+| `previous_versions` | Clsid `{596AB062-B4D2-4215-9F74-E9109B0A8153}` | Files, Folder, Drive | Any | CLSID registered | Previous Versions tab of Properties | Friendly name "Previous Versions Property Page". Also listed under `AllFilesystemObjects`, `Directory` and `Drive` `PropertySheetHandlers`. |
+| `include_in_library` | Clsid `{3DAD6C5D-2167-4CAE-9914-F99E41C12CFA}` | Folder | Any | CLSID registered | none | Friendly name "Include In Library Sub Context Menu". |
+| `pin_to_start` | Clsid `{470C0EBD-5D73-4D58-9CED-E91E22E23282}` | Folder | Any | CLSID registered | Pin to Start on programs and shortcuts | Friendly name "Pin To Start Screen verb handler". Also listed under `exefile`, `mscfile` and the `Launcher.*` classes. |
+| `send_to` | Clsid `{7BA4C740-9E81-11CF-99D3-00AA004AE837}` | Files, Folder | Any | CLSID registered | none | Friendly name "Microsoft SendTo Service". |
+| `cast_to_device` | Clsid `{7AD84985-87B4-4A16-BE58-8B72A5B390F7}` | Files | Any | CLSID registered | none | Friendly name "Play To menu". |
+| `scan_with_defender` | Clsid `{09A47860-11B0-4DA5-AFA5-26D86198A780}` | Files, Folder, Drive | Any | CLSID registered | none | Friendly name "EPP" (Defender); the friendly name is empty on the key itself. |
+| `pin_to_quick_access` | Verbs `Folder\pintohome`, `Drive\pintohome` | Folder, Drive | Any | Verb exists | none | Verbs under HKLM `Folder\shell` and `Drive\shell`. |
+| `add_to_favorites` | Verbs `*\pintohomefile` | Files | Windows 11 | Verb exists | none | Verb under HKLM `*\shell`. |
+
 ### Needs the owner's eyes
 
-These cannot be seen through `Verbs()` and need a look at the real menu:
+These cannot be seen through `Verbs()` and need a look at the real menu (the
+steps for hiding and renaming are in the PR 2 checklist below):
 
+- Windows entries (catalog above): each Clsid row hides in the open Explorer,
+  or only after an Explorer restart.
+- Modern entries ("Open in Terminal", "Share"): whether `Blocked` hides them
+  in the new compact menu.
 - Where the entries land on Windows 11: only under "Show more options" (the
   classic menu) or also in the new compact menu.
-- Modern entries (for example "Open in Terminal") and whether `Blocked`
-  hides them.
-- Side effects of `Blocked` on Properties tabs (a blocked handler can also
-  remove its tab or overlay).
+- Side effects of `Blocked` on Properties tabs: blocking "Give access to"
+  removes the Sharing tab, and blocking "Restore previous versions" removes
+  the Previous Versions tab (a blocked handler can also remove its overlay).
+- Every row on Windows 10, where only the classic menu exists.
 
 #### Pre-merge checklist for the Context menu entries
 
@@ -191,6 +254,42 @@ underlined letter.
 
 Record anything that does not match, with the program, the place and the
 folder, before merging.
+
+#### Pre-merge checklist for hiding and renaming existing entries (PR 2)
+
+Not run by the developer: the registry writes are covered by tests and by the
+probe above, but no real menu was looked at after a WinTune apply. The owner
+runs this before merging, on Windows 11, and on Windows 10 if available. For
+each step, check the open Explorer first, then again after an Explorer restart.
+
+1. For each row of the Windows section present on the PC: hide it, Apply
+   (confirm the side effects), right-click a folder, a file, the folder
+   background and a drive as the row's places say. The entry is gone. Show it
+   again: it is back.
+2. Hide "Give access to": the Sharing tab of a folder's Properties is gone.
+   Hide "Restore previous versions" (or the row for it): the Previous Versions
+   tab is gone. Both tabs return on Show.
+3. Hide and show one third-party verb (for example from an editor or an
+   archiver) and one third-party shell extension. The verb disappears and
+   returns in the open Explorer. For the extension, note whether it needs an
+   Explorer restart.
+4. Open Explorer's new compact menu (Windows 11) and check that "Open in
+   Terminal" and "Share" go away when hidden and come back when shown.
+5. Rename a third-party verb, Apply: the new label shows in the menu, with
+   `&` and accented characters intact. Reset name: the old label returns.
+6. In History, Saved originals, Context menu: **Restore original** for each
+   entry changed above (an entry already shown again under its own name has
+   nothing left to restore and is not listed). Each is back as it was: a
+   `Blocked` value WinTune added is gone; a verb's `HKCU` copy is gone if
+   WinTune created it, while a program's own per-user key keeps everything
+   except `ProgrammaticAccessOnly` and `MUIVerb`, which return to what they
+   were before.
+7. Check that a CLSID blocked in `HKLM` shows locked with its toggle
+   disabled. Creating that `Blocked` value needs an elevated prompt; skip this
+   step if the PC has none.
+
+Record anything that differs, with the entry, the place and the Windows
+version, before merging.
 
 ## Sources
 

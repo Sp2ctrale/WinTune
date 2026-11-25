@@ -2,6 +2,7 @@
 //! system lives here so it can be unit-tested without the GUI.
 
 pub mod associations;
+pub mod backups;
 pub mod clock;
 pub mod context_menu;
 pub mod detector;

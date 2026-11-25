@@ -15,8 +15,12 @@ pub enum CatalogMechanism {
 /// What must exist on the machine for the entry to be offered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Presence {
+    /// `Software\Classes\CLSID\<clsid>` exists.
     ClsidRegistered,
-    TerminalInstalled,
+    /// `Software\Classes\PackagedCom\ClassIndex\<clsid>` exists: the packaged
+    /// app that registers the handler (Windows Terminal) is installed.
+    PackagedComRegistered,
+    /// One of the verb keys exists.
     VerbExists,
 }
 
@@ -41,7 +45,7 @@ static CATALOG: &[CatalogItem] = &[
         mechanism: CatalogMechanism::Clsid("{9F156763-7844-4DC4-B2B1-901F640F5155}"),
         places: &[Place::Folder, Place::Background],
         os: OsRequirement::Any,
-        presence: Presence::TerminalInstalled,
+        presence: Presence::PackagedComRegistered,
     },
     CatalogItem {
         id: "share",
@@ -186,6 +190,15 @@ mod tests {
             assert_eq!(item.description_key, format!("menu.win.{}.desc", item.id));
         }
         assert_eq!(catalog().len(), 11);
+        // Terminal's row follows its packaged COM class, never the wt.exe alias.
+        let terminal = find_catalog("open_in_terminal").unwrap();
+        assert_eq!(terminal.presence, Presence::PackagedComRegistered);
+        assert_eq!(
+            terminal.mechanism,
+            CatalogMechanism::Clsid("{9F156763-7844-4DC4-B2B1-901F640F5155}")
+        );
+        assert!(catalog().iter().all(|item| item.id == "open_in_terminal"
+            || item.presence != Presence::PackagedComRegistered));
         assert!(find_catalog("share").is_some());
         assert!(find_catalog("nope").is_none());
     }

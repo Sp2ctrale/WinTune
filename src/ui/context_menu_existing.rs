@@ -336,7 +336,15 @@ impl WinTuneApp {
                 pending.label = (!at_original).then_some(None);
             }
             RowAction::Restore => {
-                let slots = entry.mechanism.slots().iter().map(|s| s.id()).collect();
+                // Only the slots WinTune holds, as the store spells them.
+                let user = &self.env.user_label;
+                let slots = entry
+                    .mechanism
+                    .slots()
+                    .iter()
+                    .filter_map(|s| self.menu_store.find_id(user, &s.id()))
+                    .map(str::to_string)
+                    .collect();
                 self.request_restore_menu_keys(slots);
             }
         }
@@ -699,6 +707,96 @@ mod tests {
         let id = super::super::polish::search_box_id(ActiveTab::ContextMenu);
         assert_eq!(id, Some(egui::Id::new("search_menu_others")));
         assert!(ctx.memory(|m| m.has_focus(id.unwrap())));
+    }
+
+    #[test]
+    fn restore_on_a_row_sends_only_the_slots_the_store_holds() {
+        use super::super::confirm::ConfirmAction;
+        use crate::backups::Snapshot;
+        use crate::regsnap::RegistryKeySnapshot;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        // One row, two verb keys; only the first is recorded, in lower case.
+        fx.seed_machine_verb("Directory", "AppVerb", "Open with App");
+        fx.seed_machine_verb(r"Directory\Background", "AppVerb", "Open with App");
+        let mut app = fx.app(&ctx);
+        let stored = VERB_COPY.to_lowercase();
+        let absent = Snapshot::Key(RegistryKeySnapshot::default());
+        app.menu_store
+            .record_first("TEST\\user", &stored, "x", absent);
+        scan_now(&mut app, &ctx);
+        app.active_tab = ActiveTab::ContextMenu;
+        let row = app.menu_scan.as_ref().unwrap().others[0].clone();
+        assert_eq!(row.mechanism.slots().len(), 2);
+        assert!(row.has_snapshot);
+
+        let more = row_widget(&mut app, &ctx, "Open with App", kit::OVERFLOW_BUTTON);
+        click_at(&mut app, &ctx, more);
+        click_key(&mut app, &ctx, "tweaks.restore_original");
+
+        assert_eq!(
+            app.pending_confirm.as_ref().map(|c| c.action.clone()),
+            Some(ConfirmAction::RestoreMenuKeys(vec![stored]))
+        );
+    }
+
+    #[test]
+    fn ctrl_f_scrolls_the_other_programs_search_into_view() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        // Enough Windows rows to push Other programs below a short window.
+        for clsid in [
+            GIVE_ACCESS,
+            "{E2BF9676-5F8F-435C-97EB-11607A5BEDF7}",
+            "{596AB062-B4D2-4215-9F74-E9109B0A8153}",
+            "{3DAD6C5D-2167-4CAE-9914-F99E41C12CFA}",
+            "{470C0EBD-5D73-4D58-9CED-E91E22E23282}",
+            "{7BA4C740-9E81-11CF-99D3-00AA004AE837}",
+            "{7AD84985-87B4-4A16-BE58-8B72A5B390F7}",
+            "{09A47860-11B0-4DA5-AFA5-26D86198A780}",
+        ] {
+            fx.seed_machine_clsid(clsid);
+        }
+        let mut app = page_app(&fx, &ctx);
+        let short = |events| egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1180.0, 500.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        let id = super::super::polish::search_box_id(ActiveTab::ContextMenu).unwrap();
+        let search_rect = |ctx: &egui::Context| {
+            ctx.viewport_for(egui::ViewportId::ROOT, |v| {
+                v.prev_pass.widgets.get(id).map(|w| w.rect)
+            })
+        };
+        frame(&mut app, &ctx, short(vec![]));
+        frame(&mut app, &ctx, short(vec![]));
+        let before = search_rect(&ctx).expect("search box laid out");
+        assert!(before.min.y > 500.0, "already in view: {before:?}");
+
+        let mut input = short(vec![Event::Key {
+            key: Key::F,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::COMMAND,
+        }]);
+        input.modifiers = Modifiers::COMMAND;
+        frame(&mut app, &ctx, input);
+        // The scroll is animated: let it finish.
+        for _ in 0..30 {
+            frame(&mut app, &ctx, short(vec![]));
+        }
+
+        let after = search_rect(&ctx).expect("search box laid out");
+        assert!(ctx.memory(|m| m.has_focus(id)));
+        assert!(
+            after.min.y >= 0.0 && after.max.y <= 500.0,
+            "not scrolled into view: {after:?}"
+        );
     }
 
     #[test]

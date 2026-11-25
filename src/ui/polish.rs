@@ -33,10 +33,13 @@ impl WinTuneApp {
         }
     }
 
-    /// Call right after adding the current tab's search box.
+    /// Call right after adding the current tab's search box. The box is
+    /// scrolled into view too: it can sit below the fold (Context menu's
+    /// Other programs).
     pub(super) fn focus_search_if_requested(&mut self, response: &egui::Response) {
         if self.focus_search {
             response.request_focus();
+            response.scroll_to_me(None);
             self.focus_search = false;
         }
     }

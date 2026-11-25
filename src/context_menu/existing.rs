@@ -20,6 +20,10 @@ use crate::tweaks::OsRequirement;
 /// CLSID). The same path under HKLM blocks them for every user.
 pub const BLOCKED_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked";
 
+/// Index of the COM classes packaged apps register, one subkey per CLSID
+/// while the package is installed (Windows Terminal's menu handler is one).
+pub const PACKAGED_COM_INDEX: &str = r"Software\Classes\PackagedCom\ClassIndex";
+
 /// Classes under `Software\Classes` whose verbs and handlers are scanned.
 pub const SCAN_CLASSES: [&str; 6] = [
     "*",
@@ -233,7 +237,6 @@ pub struct ScanOptions<'a> {
     /// Programs under this folder are Windows' own and never listed.
     pub windows_dir: PathBuf,
     pub is_windows_11: bool,
-    pub terminal_installed: bool,
     /// Resolves an `@file,-id` label (`fileinfo::resolve_indirect`).
     pub indirect: &'a dyn Fn(&str) -> Option<String>,
     /// A program's product name (`fileinfo::product_name`).
@@ -432,7 +435,7 @@ fn settle(
         .mechanism
         .slots()
         .iter()
-        .any(|slot| store.has_backup(user, &slot.id()));
+        .any(|slot| store.find_id(user, &slot.id()).is_some());
     entry.state = match (hidden, entry.has_snapshot) {
         (false, _) => ExistingState::Shown,
         (true, true) => ExistingState::HiddenByWinTune,
@@ -511,8 +514,8 @@ fn read_verb(
     // What Reset name returns to: the HKCU copy as WinTune first found it,
     // over the machine key.
     let snapshot = store
-        .backups_of(opts.user)
-        .and_then(|b| b.get(&rel))
+        .find_id(opts.user, &rel)
+        .and_then(|id| store.backups_of(opts.user)?.get(id))
         .map(|b| &b.snapshot);
     let (saved_verb, saved_default) = match snapshot {
         Some(Snapshot::Key(k)) if k.exists => (snapshot_text(k, "MUIVerb"), snapshot_text(k, "")),
@@ -601,7 +604,7 @@ fn scan_verbs(target: &MenuTarget, store: &UserBackups, opts: &ScanOptions) -> V
                 verb,
             };
             let read = read_verb(target, store, opts, &v);
-            let snapshot = store.has_backup(opts.user, &v.user_key());
+            let snapshot = store.find_id(opts.user, &v.user_key()).is_some();
             if windows_owned(read.file.as_deref(), snapshot, opts)
                 || (read.hidden_by_installer && !snapshot)
             {
@@ -689,7 +692,7 @@ fn scan_handlers(
         let snapshot = mechanism
             .slots()
             .iter()
-            .any(|slot| store.has_backup(opts.user, &slot.id()));
+            .any(|slot| store.find_id(opts.user, &slot.id()).is_some());
         if windows_owned(file.as_deref(), snapshot, opts) {
             continue;
         }
@@ -739,11 +742,15 @@ fn scan_catalog(
             CatalogMechanism::Clsid(_) => Vec::new(),
         };
         let present = match (item.presence, item.mechanism) {
-            (Presence::TerminalInstalled, _) => opts.terminal_installed,
             (Presence::ClsidRegistered, CatalogMechanism::Clsid(clsid)) => {
                 Merged::open(target, &format!(r"Software\Classes\CLSID\{clsid}")).exists()
             }
-            (Presence::ClsidRegistered, CatalogMechanism::Verbs(_)) => false,
+            // A packaged app's handler (Windows Terminal): registered while
+            // the package is installed, whatever its command aliases say.
+            (Presence::PackagedComRegistered, CatalogMechanism::Clsid(clsid)) => {
+                Merged::open(target, &format!(r"{PACKAGED_COM_INDEX}\{clsid}")).exists()
+            }
+            (Presence::ClsidRegistered | Presence::PackagedComRegistered, _) => false,
             (Presence::VerbExists, _) => !refs.is_empty(),
         };
         if !present {
@@ -856,7 +863,6 @@ mod tests {
                 user: "A",
                 windows_dir: self.windows(),
                 is_windows_11: true,
-                terminal_installed: false,
                 indirect: &|_| None,
                 product_name: &|_| None,
             }
@@ -1114,8 +1120,8 @@ mod tests {
         );
         env.verb("*", "pintohomefile", "", "x");
         let mut opts = env.opts();
-        opts.terminal_installed = false;
         opts.is_windows_11 = false;
+        // Terminal's handler and CLSID are there, but not its packaged class.
         let scan = scan(&env.target(), &UserBackups::default(), &opts);
         let ids: Vec<&str> = scan.windows.iter().map(|e| e.id.as_str()).collect();
         assert_eq!(ids, ["win:previous_versions"]);
@@ -1130,8 +1136,14 @@ mod tests {
         );
         assert_eq!(row.state, ExistingState::Shown);
 
-        let mut opts = env.opts();
-        opts.terminal_installed = true;
+        // Installed: the package registers its class in the machine root.
+        let packaged = format!(r"{PACKAGED_COM_INDEX}\{terminal}");
+        env.machine(
+            &packaged,
+            "",
+            "Microsoft.WindowsTerminal_1.0.0.0_x64__8wekyb3d8bbwe",
+        );
+        let opts = env.opts();
         let all = super::scan(&env.target(), &UserBackups::default(), &opts);
         let ids: Vec<&str> = all.windows.iter().map(|e| e.id.as_str()).collect();
         assert_eq!(
@@ -1232,6 +1244,32 @@ mod tests {
         store.record_first("A", copy, "x", key_snapshot(&[("MUIVerb", "Mine")]));
         let row = env.scan(&store).others[0].clone();
         assert_eq!(row.state, ExistingState::HiddenByWinTune);
+        assert_eq!(row.original_label.as_deref(), Some("Mine"));
+    }
+
+    #[test]
+    fn a_snapshot_stored_in_another_case_still_counts() {
+        let env = Env::new();
+        let exe = env.file("app.exe");
+        env.verb(
+            "Directory",
+            "AppVerb",
+            "Open with App",
+            &format!("\"{exe}\""),
+        );
+        env.user(
+            r"Software\Classes\Directory\shell\AppVerb",
+            "ProgrammaticAccessOnly",
+            "",
+        );
+        let mut store = UserBackups::default();
+        let lower = r"software\classes\directory\shell\appverb";
+        store.record_first("A", lower, "x", key_snapshot(&[("MUIVerb", "Mine")]));
+
+        let row = env.scan(&store).others[0].clone();
+        assert!(row.has_snapshot);
+        assert_eq!(row.state, ExistingState::HiddenByWinTune);
+        // Reset name reads that snapshot too.
         assert_eq!(row.original_label.as_deref(), Some("Mine"));
     }
 

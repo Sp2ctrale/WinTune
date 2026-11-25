@@ -98,7 +98,6 @@ impl WinTuneApp {
                     user: &env.user_label,
                     windows_dir: env.windows_dir.clone(),
                     is_windows_11: env.is_windows_11,
-                    terminal_installed: env.programs.terminal.is_some(),
                     indirect: &env.resolve_indirect,
                     product_name: &env.product_name,
                 };

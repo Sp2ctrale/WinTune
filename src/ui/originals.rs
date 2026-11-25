@@ -5,7 +5,7 @@
 use super::kit::{self, space, text_size};
 use super::{ActiveTab, WinTuneApp};
 use crate::backups::Slot;
-use crate::context_menu::{entry_key, Place, KEY_PREFIX};
+use crate::context_menu::{catalog_clsid, entry_key, Place, KEY_PREFIX};
 use crate::i18n::{messages, Tr};
 use crate::tweaks::find_tweak;
 use eframe::egui::{self, RichText};
@@ -145,7 +145,8 @@ impl WinTuneApp {
     /// `WinTune.*` key: the label of the listed entry whose verb key it is,
     /// else a generic "removed entry", with the place of its class path. Any
     /// other slot (a hidden or renamed existing entry): the scanned row's
-    /// name, else the verb name or CLSID from the id, with no place.
+    /// original name (else its name), else the catalog name of a Windows
+    /// CLSID, else the verb name or CLSID from the id, with no place.
     pub(super) fn menu_key_name(&self, key: &str) -> (String, Option<Place>) {
         let slot = Slot::from_id(key);
         let own_key = match &slot {
@@ -158,8 +159,15 @@ impl WinTuneApp {
         if !own_key {
             let scanned = self.menu_scan.as_ref().and_then(|s| s.by_slot(key));
             let name = match (scanned, slot) {
-                (Some(entry), _) => self.existing_name(entry),
-                (None, Slot::Value { name, .. }) => name,
+                // A renamed row by the name it had: that is what comes back.
+                (Some(entry), _) => entry
+                    .original_label
+                    .clone()
+                    .unwrap_or_else(|| self.existing_name(entry)),
+                (None, Slot::Value { name, .. }) => match catalog_clsid(&name) {
+                    Some(item) => self.tr.t(item.name_key),
+                    None => name,
+                },
                 (None, Slot::Key(path)) => path.rsplit('\\').next().unwrap_or_default().to_string(),
             };
             return (name, None);
@@ -900,6 +908,37 @@ mod tests {
         assert_eq!(app.menu_key_name(&value), (clsid.to_string(), None));
         let verb = r"Software\Classes\Directory\shell\SomeVerb";
         assert_eq!(app.menu_key_name(verb), ("SomeVerb".to_string(), None));
+    }
+
+    #[test]
+    fn a_saved_catalog_clsid_the_scan_does_not_list_uses_the_catalog_name() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let app = fx.app(&ctx);
+        assert!(app.menu_scan.is_none());
+        let value = format!(
+            "{}\\\\{}",
+            crate::context_menu::BLOCKED_KEY,
+            "{596ab062-b4d2-4215-9f74-e9109b0a8153}"
+        );
+        assert_eq!(
+            app.menu_key_name(&value),
+            (app.tr.t("menu.win.previous_versions"), None)
+        );
+    }
+
+    #[test]
+    fn a_renamed_row_is_titled_by_its_original_name() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_machine_verb("Directory", "AppVerb", "Open with App");
+        let copy = r"Software\Classes\Directory\shell\AppVerb";
+        let (k, _) = fx.sandbox.root.create_subkey(fx.hkcu(copy)).unwrap();
+        k.set_value("MUIVerb", &"Renamed").unwrap();
+        let mut app = fx.app(&ctx);
+        scan_now(&mut app, &ctx);
+        assert_eq!(app.menu_scan.as_ref().unwrap().others[0].label, "Renamed");
+        assert_eq!(app.menu_key_name(copy), ("Open with App".to_string(), None));
     }
 
     #[test]

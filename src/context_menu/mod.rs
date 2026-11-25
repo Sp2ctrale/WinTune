@@ -2,6 +2,8 @@
 
 pub mod catalog;
 pub mod engine;
+pub mod existing;
+pub mod fileinfo;
 pub mod programs;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -13,6 +15,10 @@ pub use engine::{
     apply_entries, default_menu_store_path, entry_key, entry_status, key_place, load_menu_store,
     orphan_keys, restore_keys, save_menu_store, EntryStatus, MenuBackup, MenuBackupStore,
     MenuOptions, MenuTarget,
+};
+pub use existing::{
+    class_places, scan, ExistingEntry, ExistingState, Locked, Mechanism, Scan, ScanOptions,
+    VerbRef, BLOCKED_KEY, SCAN_CLASSES,
 };
 pub use programs::{command_line, icon_value, Programs};
 

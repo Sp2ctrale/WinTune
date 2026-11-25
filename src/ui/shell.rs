@@ -918,6 +918,117 @@ mod tests {
                     "the Context menu page draws English-only text {value:?} (key {key})"
                 );
             }
+
+            // Existing entries: a catalog row with its "also affects" line, a
+            // third-party verb hidden through an apply (for History), another
+            // to rename, and a handler blocked for every account.
+            use super::super::menu_existing_state::PendingExisting;
+            use crate::context_menu::{Locked, BLOCKED_KEY};
+            const GIVE_ACCESS: &str = "{F81E9010-6EA4-11CE-A7FF-00AA003CA9F6}";
+            const SEVEN_ZIP: &str = "{23170F69-40C1-278A-1000-000100020000}";
+            // The entry with a problem would block every Apply.
+            app.menu_entries_mut().retain(|e| e.id != "e2");
+            app.refresh_menu_statuses();
+            fx.seed_machine_clsid(GIVE_ACCESS);
+            fx.seed_machine_verb("Directory", "AppVerb", "Open with App");
+            fx.seed_machine_verb("Directory", "OtherVerb", "Other thing");
+            let machine = fx.machine_key();
+            let (k, _) = machine
+                .create_subkey(r"Software\Classes\*\shellex\ContextMenuHandlers\7-Zip")
+                .unwrap();
+            k.set_value("", &SEVEN_ZIP).unwrap();
+            let server = format!(r"Software\Classes\CLSID\{SEVEN_ZIP}\InprocServer32");
+            let (k, _) = machine.create_subkey(server).unwrap();
+            k.set_value("", &r"C:\Apps\7-zip.dll").unwrap();
+            let (k, _) = machine.create_subkey(BLOCKED_KEY).unwrap();
+            k.set_value(SEVEN_ZIP, &"").unwrap();
+            scan_now(&mut app, &ctx);
+            let hide = PendingExisting {
+                hidden: Some(true),
+                label: None,
+            };
+            let scan = app.menu_scan.clone().expect("scan");
+            let verb = |label: &str| {
+                scan.others
+                    .iter()
+                    .find(|e| e.label == label)
+                    .unwrap_or_else(|| panic!("{label} not scanned: {:?}", scan.others))
+                    .clone()
+            };
+            let (hidden_verb, renamed_verb) = (verb("Open with App"), verb("Other thing"));
+            let locked = scan
+                .others
+                .iter()
+                .find(|e| e.locked == Some(Locked::MachineWide))
+                .expect("a locked row")
+                .clone();
+            app.menu_pending
+                .insert(hidden_verb.id.clone(), hide.clone());
+            app.start_menu_apply(&ctx);
+            assert!(app.pending_confirm.is_none(), "a verb asked first");
+            run_until_idle(&mut app, &ctx);
+            run_until_scanned(&mut app, &ctx);
+            assert!(
+                app.menu_scan
+                    .as_ref()
+                    .unwrap()
+                    .find(&hidden_verb.id)
+                    .is_some_and(|e| e.has_snapshot),
+                "no snapshot of the hidden verb: {}",
+                app.last_notice()
+            );
+
+            app.menu_pending.insert("win:give_access".into(), hide);
+            let mut texts = Vec::new();
+            for _ in 0..3 {
+                texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
+            }
+            // The rename dialog over the page.
+            app.menu_rename = Some((renamed_verb.id.clone(), "Other thing".into()));
+            for _ in 0..3 {
+                texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
+            }
+            app.menu_rename = None;
+            // The confirmation, with the Sharing tab side effect.
+            app.start_menu_apply(&ctx);
+            assert!(app.pending_confirm.is_some(), "no confirmation");
+            for _ in 0..3 {
+                texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
+            }
+            app.resolve_confirm(&ctx, false);
+            let item = crate::context_menu::find_catalog("give_access").expect("catalog item");
+            let mut positive = vec![
+                app.tr.t("menu.windows"),
+                app.tr.t("menu.others"),
+                app.tr.t("menu.win.give_access"),
+                app.tr.t(item.description_key),
+                app.tr.t("menu.also.sharing_tab"),
+                app.tr.t("menu.restart_hint"),
+                app.tr.t("menu.pill.will_hide"),
+                app.tr.t("tweaks.discard"),
+                app.tr.t("tweaks.pill.unofficial"),
+                app.tr.t("menu.rename_title"),
+                app.tr.t("menu.rename_ok"),
+                app.tr.t_args(
+                    "menu.added_by",
+                    &[&hidden_verb.origin.clone().unwrap_or_default()],
+                ),
+                "Other thing".to_string(),
+                app.existing_name(&locked),
+            ];
+            positive.extend(item.also_affects_key.map(|key| app.tr.t(key)));
+            for drawn in positive {
+                assert!(
+                    texts.iter().any(|t| t.contains(&drawn)),
+                    "{drawn:?} not drawn on the existing entries: {texts:?}"
+                );
+            }
+            for (key, value) in &english_only {
+                assert!(
+                    !texts.iter().any(|t| t == *value),
+                    "the existing entries draw English-only text {value:?} (key {key})"
+                );
+            }
         }
 
         // The History page: saved originals in every group, one opened
@@ -1019,6 +1130,8 @@ mod tests {
             "gone_tweak".to_string(),
             app.tr.t("originals.other"),
             "Open one".to_string(),
+            // A hidden third-party verb, by name.
+            "Open with App".to_string(),
         ];
         rows.extend(
             applied_tweaks

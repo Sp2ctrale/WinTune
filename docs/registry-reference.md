@@ -127,6 +127,27 @@ a key, its original state is saved in
 a `.reg` export is written; History, Saved originals, Context menu puts it
 back. On Windows 11 these entries appear under "Show more options".
 
+### Hiding and renaming existing entries
+
+Written by the Context menu page (Windows and Other programs). Nothing is
+written under `HKLM`. Before each first change, the slot is snapshotted in
+`context-menu-backups.json` (per user, by slot) and a `.reg` is exported.
+
+| Action | Key | Value | Content |
+| --- | --- | --- | --- |
+| Hide a verb | `HKCU\Software\Classes\<class>\shell\<verb>` (a copy of the HKLM verb key, with no `command` of its own) | `ProgrammaticAccessOnly` | REG_SZ `""` |
+| Show a verb | same | `ProgrammaticAccessOnly` removed | The HKCU copy is deleted if WinTune created it and it is now empty |
+| Rename a verb | same | `MUIVerb` | REG_SZ, 1 to 80 characters, each `&` written as `&&`, no leading `@` |
+| Reset a name | same | `MUIVerb` | The value of the first snapshot, or removed if the verb had none. Plain hide and show never touch `MUIVerb` |
+| Hide a shell extension or modern entry | `HKCU\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked` | `{CLSID}` | REG_SZ `""` (undocumented: rows carry an Unofficial pill) |
+| Show it | same | `{CLSID}` | Value deleted |
+
+A CLSID found in `HKLM\...\Shell Extensions\Blocked` is hidden for every
+account. WinTune cannot change that: the row is shown locked, with its toggle
+disabled. The scan lists verbs and handlers under `shell` and
+`shellex\ContextMenuHandlers` of `*`, `AllFilesystemObjects`, `Folder`,
+`Directory`, `Directory\Background` and `Drive`, in HKCU and HKLM `Classes`.
+
 ### Real-machine probe
 
 Script: `scripts/context-menu-probe.ps1` (Windows PowerShell 5.1, unelevated).
@@ -172,7 +193,8 @@ the verb.
 
 ### Needs the owner's eyes
 
-These cannot be seen through `Verbs()` and need a look at the real menu:
+These cannot be seen through `Verbs()` and need a look at the real menu (the
+steps for hiding and renaming are in the PR 2 checklist below):
 
 - Windows entries (catalog above): each Clsid row hides in the open Explorer,
   or only after an Explorer restart.
@@ -221,6 +243,36 @@ underlined letter.
 
 Record anything that does not match, with the program, the place and the
 folder, before merging.
+
+#### Pre-merge checklist for hiding and renaming existing entries (PR 2)
+
+Not run by the developer: the registry writes are covered by tests and by the
+probe above, but no real menu was looked at after a WinTune apply. The owner
+runs this before merging, on Windows 11, and on Windows 10 if available. For
+each step, check the open Explorer first, then again after an Explorer restart.
+
+1. For each row of the Windows section present on the PC: hide it, Apply
+   (confirm the side effects), right-click a folder, a file, the folder
+   background and a drive as the row's places say. The entry is gone. Show it
+   again: it is back.
+2. Hide "Give access to": the Sharing tab of a folder's Properties is gone.
+   Hide "Restore previous versions" (or the row for it): the Previous Versions
+   tab is gone. Both tabs return on Show.
+3. Hide and show one third-party verb (for example from an editor or an
+   archiver) and one third-party shell extension. The verb disappears and
+   returns in the open Explorer. For the extension, note whether it needs an
+   Explorer restart.
+4. Open Explorer's new compact menu (Windows 11) and check that "Open in
+   Terminal" and "Share" go away when hidden and come back when shown.
+5. Rename a third-party verb, Apply: the new label shows in the menu, with
+   `&` and accented characters intact. Reset name: the old label returns.
+6. In History, Saved originals, Context menu: **Restore original** for each
+   entry changed above. Each is back as it was, and its `HKCU` copy or
+   `Blocked` value is gone.
+7. Check that a CLSID blocked in `HKLM` shows locked with its toggle disabled.
+
+Record anything that differs, with the entry, the place and the Windows
+version, before merging.
 
 ## Sources
 

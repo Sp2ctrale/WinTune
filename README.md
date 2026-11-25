@@ -15,7 +15,8 @@ makes can be undone. It has four modules:
   recent files).
 - **Context menu**: your own entries in Explorer's right-click menu (open a
   folder in VS Code, Windows Terminal, PowerShell, Command Prompt or any
-  program), per Windows account.
+  program), per Windows account. It can also hide or rename entries that are
+  already there.
 
 Built with Rust and [egui](https://github.com/emilk/egui). The interface is
 available in English and Français, and the theme follows Windows (or can be
@@ -141,6 +142,38 @@ cannot be used on files.
   that puts the registry keys back as they were before WinTune first changed
   them. Every apply and restore is logged under "Context menu".
 
+### Entries already in the menu
+
+Under "My entries", two more sections list what the menu already holds.
+
+- **Windows.** Eleven known Windows entries, such as Give access to, Share,
+  Include in library, Send to and Open in Terminal, shown when they exist on
+  this PC. Each has a short description and, where it applies, a line saying
+  what else goes with it (for example "Also removes the Sharing tab...").
+- **Other programs.** Entries added by installed programs (verbs and
+  shell extensions). Each row names the program that added it. A search box
+  (Ctrl+F) filters by name or program. Entries that live in the Windows folder,
+  and entries whose program file cannot be found, are not listed.
+- **Hide and show.** Each row has a toggle. Changes stay pending until you
+  press Apply (Discard drops them). Hiding is per account: nothing is written
+  under `HKLM`, and another account still sees the entry. A pill shows what
+  will change.
+- **Unofficial.** Shell extensions and modern entries are hidden through a
+  registry key Microsoft does not document, so their rows carry an
+  **Unofficial** pill and say "May need an Explorer restart to show". An entry
+  blocked for every account on this PC is shown locked, with its toggle
+  disabled.
+- **Rename.** The `...` menu has **Rename...** and **Reset name** for classic
+  entries of other programs only (not for Windows entries or shell
+  extensions). Names are 1 to 80 characters and cannot start with `@`.
+- **Side effects.** Before Apply, a confirmation lists what else a hide
+  takes away: the Sharing or Previous Versions tab for the Windows entries,
+  and, for a program's shell extension, that it is hidden everywhere the
+  program adds it.
+- **Undo.** Hidden and renamed entries appear by name in **History**, **Saved
+  originals**, **Context menu**, with **Restore original**. The Home page
+  counts hidden entries.
+
 ## Safety and undo
 
 Before anything is written:
@@ -202,7 +235,7 @@ Everything lives in `%ProgramData%\Wintune`:
 | `config.json` | Rules, editor path, folders, theme, language |
 | `backups.json` | Original-state snapshots of file associations, used by the rollback |
 | `tweaks-backups.json` | Original state of each Explorer & Taskbar tweak, per user |
-| `context-menu-backups.json` | Original state of each Context menu key, per user |
+| `context-menu-backups.json` | Original state of each Context menu key, hidden entry and name, per user |
 | `history.jsonl` | One line per operation (apply, rollback, restore), shown by the **History** page |
 | `reg-backups\*.reg` | `.reg` safety net written before each apply |
 | `gallery.pak` | Optional compressed icon pack, built from the icon folder |
@@ -216,7 +249,8 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `regsnap` | Generic snapshot, restore, delete-tree and `.reg` export. Every module that writes to the registry builds on it |
 | `associations` | File-association engine on an injectable `AssocTarget`, split into `target`, `validate`, `store`, `apply`, `rollback`, `status` and `tests` |
 | `tweaks` | Explorer & Taskbar tweaks engine (catalog, status, apply, restore) on an injectable `TweakTarget` |
-| `context_menu` | Context menu engine (entries, programs, apply, status, restore) on an injectable `MenuTarget` |
+| `backups` | Snapshot store shared by tweaks and the Context menu (per user, per slot), with save-then-export and restore |
+| `context_menu` | Context menu engine (entries, programs, catalog of Windows entries, scan of existing entries, apply, status, restore) on an injectable `MenuTarget` |
 | `persist` | JSON stores: a missing file is empty, a corrupt or unreadable file is a `LoadError` (a code the UI translates), saves are atomic |
 | `history` | Operation log (`history.jsonl`): append one line per operation, read the most recent |
 | `models` | Config and backup data types, `ThemeMode`, plus the default rules |

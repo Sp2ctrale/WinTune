@@ -4,43 +4,32 @@
 //! the snapshots and a `.reg` export, then write. Everything lives under
 //! `HKCU\Software\Classes`, in `WinTune.<id>` verb keys.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
 use winreg::enums::*;
-use winreg::RegKey;
 
 use super::{
     command_line, entry_problems, icon_value, key_name, MenuEntry, Place, Programs, KEY_PREFIX,
 };
 use crate::associations::OperationReport;
+use crate::backups::{self, RegTarget, Slot};
 use crate::clock;
 use crate::models::app_data_dir;
-use crate::regsnap::{self, RegExportEntry, RegistryKeySnapshot};
+use crate::regsnap;
 
-/// Where entries are written. Production: HKCU itself; tests: a sandbox key.
+/// Where the menu lives. Production: HKCU and HKLM themselves; tests:
+/// sandbox keys. Writes only ever go to `user`.
 pub struct MenuTarget {
-    pub root: RegKey,
-    pub root_name: String,
-    /// Prefix for every path (empty in production).
-    pub base: String,
+    pub user: RegTarget,
+    pub machine: RegTarget,
 }
 
 impl MenuTarget {
     pub fn current_user() -> Self {
         Self {
-            root: RegKey::predef(HKEY_CURRENT_USER),
-            root_name: "HKEY_CURRENT_USER".into(),
-            base: String::new(),
-        }
-    }
-
-    pub(crate) fn path(&self, rel: &str) -> String {
-        if self.base.is_empty() {
-            rel.to_string()
-        } else {
-            format!("{}\\{}", self.base, rel)
+            user: RegTarget::current_user(),
+            machine: RegTarget::local_machine(),
         }
     }
 }
@@ -58,24 +47,9 @@ fn shell_key(place: Place) -> String {
     format!("Software\\Classes\\{}\\shell", place.class_path())
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct MenuBackup {
-    /// When the original state was captured (local time).
-    pub timestamp: String,
-    pub snapshot: RegistryKeySnapshot,
-}
-
-/// Original states, per user then per `entry_key` path.
-#[derive(Default, Serialize, Deserialize, Clone, PartialEq, Debug)]
-pub struct MenuBackupStore {
-    pub users: BTreeMap<String, BTreeMap<String, MenuBackup>>,
-}
-
-impl MenuBackupStore {
-    pub fn backups_of(&self, user: &str) -> Option<&BTreeMap<String, MenuBackup>> {
-        self.users.get(user)
-    }
-}
+pub type MenuBackup = backups::Backup;
+/// Original states, per user then per slot id (`entry_key` path for a key).
+pub type MenuBackupStore = backups::UserBackups;
 
 pub fn default_menu_store_path() -> PathBuf {
     app_data_dir().join("context-menu-backups.json")
@@ -146,6 +120,7 @@ fn wanted(entry: &MenuEntry, programs: &Programs, place: Place) -> Option<Wanted
 
 /// Read-only.
 pub fn entry_status(target: &MenuTarget, entry: &MenuEntry, programs: &Programs) -> EntryStatus {
+    let target = &target.user;
     let mut existing = 0;
     let mut differing = Vec::new();
     for &place in &entry.places {
@@ -193,6 +168,7 @@ pub fn entry_status(target: &MenuTarget, entry: &MenuEntry, programs: &Programs)
 /// Existing `WinTune.*` keys under the four `shell` keys that belong to no
 /// (entry, chosen place). Returned as `entry_key`-style relative paths.
 pub fn orphan_keys(target: &MenuTarget, entries: &[MenuEntry]) -> Vec<String> {
+    let target = &target.user;
     let expected: BTreeSet<String> = entries
         .iter()
         .flat_map(|e| e.places.iter().map(|p| entry_key(*p, &e.id).to_lowercase()))
@@ -220,7 +196,7 @@ pub fn orphan_keys(target: &MenuTarget, entries: &[MenuEntry]) -> Vec<String> {
     orphans
 }
 
-fn write_entry_key(target: &MenuTarget, rel: &str, w: &Wanted) -> Result<(), String> {
+fn write_entry_key(target: &RegTarget, rel: &str, w: &Wanted) -> Result<(), String> {
     let full = target.path(rel);
     regsnap::delete_tree(&target.root, &full)?;
     let (key, _) = target
@@ -282,9 +258,10 @@ pub fn apply_entries(
     if steps == 0 {
         return report;
     }
+    let target = &target.user;
 
     let mut failed_entries: BTreeSet<usize> = BTreeSet::new();
-    let mut snapshots: Vec<(String, RegistryKeySnapshot)> = Vec::new();
+    let mut snapshots: Vec<(Slot, backups::Snapshot)> = Vec::new();
     let all_keys = to_write
         .iter()
         .map(|(i, k, _)| (Some(*i), k.clone()))
@@ -292,18 +269,11 @@ pub fn apply_entries(
     let mut skipped: BTreeSet<String> = BTreeSet::new();
     for (n, (owner, key)) in all_keys.enumerate() {
         (opts.progress)(n + 1, steps * 2, &format!("Snapshotting {}", key));
-        match regsnap::snapshot_key(&target.root, &target.path(&key)) {
+        let slot = Slot::Key(key.clone());
+        match backups::take_snapshot(target, &slot) {
             Ok(current) => {
-                store
-                    .users
-                    .entry(opts.user.clone())
-                    .or_default()
-                    .entry(key.clone())
-                    .or_insert_with(|| MenuBackup {
-                        timestamp: now.clone(),
-                        snapshot: current.clone(),
-                    });
-                snapshots.push((key, current));
+                store.record_first(&opts.user, &slot.id(), &now, current.clone());
+                snapshots.push((slot, current));
             }
             Err(e) => {
                 report.errors.push(format!("{}: {}", key, e));
@@ -319,31 +289,20 @@ pub fn apply_entries(
     }
 
     // Phase 2: persist snapshots + .reg safety net before any write.
-    if let Err(e) = save_menu_store(store, &opts.store_path) {
-        report
-            .errors
-            .push(format!("Nothing applied: cannot save snapshots ({})", e));
-        return report;
-    }
-    let exports: Vec<RegExportEntry> = snapshots
-        .iter()
-        .map(|(key, snapshot)| RegExportEntry {
-            root_name: &target.root_name,
-            path: target.path(key),
-            snapshot,
-        })
-        .collect();
-    let reg_file = regsnap::unique_reg_file(
+    match backups::save_then_export(
+        store,
+        &opts.store_path,
+        target,
+        &snapshots,
         &opts.reg_backup_dir,
-        &format!("{}-context-menu-before-apply", clock::file_stamp()),
-    );
-    if let Err(e) = regsnap::write_reg_file(&reg_file, &regsnap::export_reg_full(&exports, &[])) {
-        report
-            .errors
-            .push(format!("Nothing applied: cannot write .reg backup ({})", e));
-        return report;
+        "context-menu-before-apply",
+    ) {
+        Ok(reg_file) => report.reg_backup_file = Some(reg_file),
+        Err(e) => {
+            report.errors.push(e);
+            return report;
+        }
     }
-    report.reg_backup_file = Some(reg_file);
 
     // Phase 3: writes (delete-then-write), then orphan removal.
     let mut done = steps;
@@ -377,53 +336,25 @@ pub fn apply_entries(
     report
 }
 
-/// Puts each key back exactly as it was before WinTune first changed it,
-/// then forgets its snapshot.
+/// Puts each slot (by id, see [`Slot::from_id`]; a key path is its own id)
+/// back exactly as it was before WinTune first changed it, then forgets its
+/// snapshot.
 pub fn restore_keys(
     target: &MenuTarget,
     store: &mut MenuBackupStore,
-    keys: &[String],
+    ids: &[String],
     opts: &MenuOptions,
 ) -> OperationReport {
-    let mut report = OperationReport::default();
-    let total = keys.len();
-
-    for (i, key) in keys.iter().enumerate() {
-        (opts.progress)(i, total, &format!("Restoring {}", key));
-        let Some(backup) = store
-            .users
-            .get(&opts.user)
-            .and_then(|b| b.get(key))
-            .cloned()
-        else {
-            report.errors.push(format!(
-                "{}: no original state recorded for {}",
-                key, opts.user
-            ));
-            continue;
-        };
-        match regsnap::restore_key(&target.root, &target.path(key), &backup.snapshot) {
-            Ok(()) => {
-                if let Some(user) = store.users.get_mut(&opts.user) {
-                    user.remove(key);
-                }
-                report.succeeded.push(key_report_name("Entry", key));
-            }
-            Err(e) => report.errors.push(format!(
-                "{}: {} (snapshot kept, restore can be retried)",
-                key, e
-            )),
-        }
-    }
-    store.users.retain(|_, b| !b.is_empty());
-
-    if !report.succeeded.is_empty() {
-        if let Err(e) = save_menu_store(store, &opts.store_path) {
-            report.errors.push(format!("Cannot save snapshots: {}", e));
-        }
-    }
-    (opts.progress)(total, total, "Restore finished");
-    report
+    backups::restore_ids(
+        &target.user,
+        store,
+        &opts.user,
+        ids,
+        &opts.store_path,
+        opts.progress,
+        &|id| Ok(Slot::from_id(id)),
+        &|id| key_report_name("Entry", id),
+    )
 }
 
 #[cfg(test)]
@@ -431,6 +362,7 @@ mod tests {
     use super::*;
     use crate::context_menu::ProgramChoice;
     use crate::regsnap::test_support::Sandbox;
+    use winreg::RegKey;
 
     struct Env {
         sb: Sandbox,
@@ -452,10 +384,14 @@ mod tests {
         }
 
         fn target(&self) -> MenuTarget {
-            MenuTarget {
+            let sandbox = |base: String| RegTarget {
                 root: RegKey::predef(HKEY_CURRENT_USER),
                 root_name: "HKEY_CURRENT_USER".into(),
-                base: self.sb.path.clone(),
+                base,
+            };
+            MenuTarget {
+                user: sandbox(self.sb.path.clone()),
+                machine: sandbox(format!("{}\\HKLM", self.sb.path)),
             }
         }
 
@@ -665,13 +601,7 @@ mod tests {
         let second = env.entry("e1", "Second", &[Place::Folder]);
         apply(&env, "A", &mut store, &[first]);
         apply(&env, "B", &mut store, &[second]);
-        let of = |user: &str| {
-            store.users[user][FOLDER]
-                .snapshot
-                .values
-                .get("MUIVerb")
-                .map(|(_, b)| b.clone())
-        };
+        let of = |user: &str| saved_verb(&store, user, FOLDER);
         let utf16 = |s: &str| -> Vec<u8> {
             s.encode_utf16()
                 .chain(Some(0))
@@ -715,11 +645,10 @@ mod tests {
     }
 
     fn saved_verb(store: &MenuBackupStore, user: &str, key: &str) -> Option<Vec<u8>> {
-        store.users[user][key]
-            .snapshot
-            .values
-            .get("MUIVerb")
-            .map(|(_, b)| b.clone())
+        let backups::Snapshot::Key(snapshot) = &store.users[user][key].snapshot else {
+            panic!("{key}: not a key snapshot");
+        };
+        snapshot.values.get("MUIVerb").map(|(_, b)| b.clone())
     }
 
     #[test]

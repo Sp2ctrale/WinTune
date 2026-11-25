@@ -4,14 +4,19 @@
 //! `.reg` safety net is exported, and "restore" puts it back exactly.
 
 use crate::associations::OperationReport;
+use crate::backups::{self, Slot};
 use crate::clock;
 use crate::models::app_data_dir;
-use crate::regsnap::{self, RegExportEntry, RegValueExport, RegistryKeySnapshot, ValueSnapshot};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use crate::regsnap::{self, ValueSnapshot};
 use std::path::{Path, PathBuf};
 use winreg::enums::*;
-use winreg::RegKey;
+
+/// Where tweaks are written. Production: HKCU itself; tests: a sandbox key.
+pub type TweakTarget = backups::RegTarget;
+pub type TweakSnapshot = backups::Snapshot;
+pub type TweakBackup = backups::Backup;
+/// Original states, per user then per tweak id.
+pub type TweakBackupStore = backups::UserBackups;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TweakGroup {
@@ -81,6 +86,18 @@ impl TweakAction {
         match self {
             TweakAction::Dword { path, .. } => path,
             TweakAction::Key { remove, .. } => remove,
+        }
+    }
+
+    /// What is snapshotted before the first write.
+    fn slot(&self) -> Slot {
+        let path = self.snapshot_path().to_string();
+        match self {
+            TweakAction::Dword { name, .. } => Slot::Value {
+                path,
+                name: name.to_string(),
+            },
+            TweakAction::Key { .. } => Slot::Key(path),
         }
     }
 }
@@ -357,32 +374,6 @@ pub fn find_tweak(id: &str) -> Option<&'static Tweak> {
     CATALOG.iter().find(|t| t.id == id)
 }
 
-/// Where tweaks are written. Production: HKCU itself; tests: a sandbox key.
-pub struct TweakTarget {
-    pub root: RegKey,
-    pub root_name: String,
-    /// Prefix for every path (empty in production).
-    pub base: String,
-}
-
-impl TweakTarget {
-    pub fn current_user() -> Self {
-        Self {
-            root: RegKey::predef(HKEY_CURRENT_USER),
-            root_name: "HKEY_CURRENT_USER".into(),
-            base: String::new(),
-        }
-    }
-
-    fn path(&self, rel: &str) -> String {
-        if self.base.is_empty() {
-            rel.to_string()
-        } else {
-            format!("{}\\{}", self.base, rel)
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum TweakStatus {
     On,
@@ -416,37 +407,6 @@ impl std::fmt::Display for CustomReason {
             }
             CustomReason::Unreadable(e) => write!(f, "unreadable: {}", e),
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", content = "data")]
-pub enum TweakSnapshot {
-    Value(ValueSnapshot),
-    Key(RegistryKeySnapshot),
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TweakBackup {
-    /// When the original state was captured (local time).
-    pub timestamp: String,
-    pub snapshot: TweakSnapshot,
-}
-
-/// Original states, per user then per tweak id. HKCU is per user, so a
-/// snapshot only applies to the account that took it.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct TweakBackupStore {
-    pub users: BTreeMap<String, BTreeMap<String, TweakBackup>>,
-}
-
-impl TweakBackupStore {
-    pub fn backups_of(&self, user: &str) -> Option<&BTreeMap<String, TweakBackup>> {
-        self.users.get(user)
-    }
-
-    pub fn has_backup(&self, user: &str, id: &str) -> bool {
-        self.backups_of(user).is_some_and(|b| b.contains_key(id))
     }
 }
 
@@ -553,39 +513,6 @@ fn dword_of(value: &ValueSnapshot) -> Option<u32> {
     (value.kind == REG_DWORD as u32).then(|| u32::from_le_bytes(bytes))
 }
 
-fn snapshot_tweak(target: &TweakTarget, tweak: &Tweak) -> Result<TweakSnapshot, String> {
-    match tweak.action {
-        TweakAction::Dword { path, name, .. } => Ok(TweakSnapshot::Value(regsnap::snapshot_value(
-            &target.root,
-            &target.path(path),
-            name,
-        )?)),
-        TweakAction::Key { remove, .. } => Ok(TweakSnapshot::Key(regsnap::snapshot_key(
-            &target.root,
-            &target.path(remove),
-        )?)),
-    }
-}
-
-fn restore_tweak(
-    target: &TweakTarget,
-    tweak: &Tweak,
-    snapshot: &TweakSnapshot,
-) -> Result<(), String> {
-    match (tweak.action, snapshot) {
-        (TweakAction::Dword { path, name, .. }, TweakSnapshot::Value(v)) => {
-            regsnap::restore_value(&target.root, &target.path(path), name, v)
-        }
-        (TweakAction::Key { remove, .. }, TweakSnapshot::Key(k)) => {
-            regsnap::restore_key(&target.root, &target.path(remove), k)
-        }
-        _ => Err(format!(
-            "{}: the recorded snapshot does not match this tweak",
-            tweak.id
-        )),
-    }
-}
-
 fn write_tweak(target: &TweakTarget, tweak: &Tweak, enabled: bool) -> Result<(), String> {
     match tweak.action {
         TweakAction::Dword {
@@ -631,8 +558,7 @@ pub fn apply_tweaks(
 
     // Phase 1: validate and snapshot (first touch only), nothing written.
     let mut prepared: Vec<(&'static Tweak, bool)> = Vec::new();
-    let mut value_exports: Vec<(String, String, ValueSnapshot)> = Vec::new();
-    let mut key_exports: Vec<(String, RegistryKeySnapshot)> = Vec::new();
+    let mut taken: Vec<(Slot, TweakSnapshot)> = Vec::new();
     for (i, (id, enabled)) in changes.iter().enumerate() {
         (opts.progress)(i + 1, steps * 2, &format!("Snapshotting {}", id));
         let Some(tweak) = find_tweak(id) else {
@@ -643,32 +569,16 @@ pub fn apply_tweaks(
             report.errors.push(format!("{}: needs Windows 11", id));
             continue;
         }
-        let current = match snapshot_tweak(target, tweak) {
+        let slot = tweak.action.slot();
+        let current = match backups::take_snapshot(target, &slot) {
             Ok(s) => s,
             Err(e) => {
                 report.errors.push(format!("{}: {}", id, e));
                 continue;
             }
         };
-        match &current {
-            TweakSnapshot::Value(v) => {
-                if let TweakAction::Dword { path, name, .. } = tweak.action {
-                    value_exports.push((target.path(path), name.to_string(), v.clone()));
-                }
-            }
-            TweakSnapshot::Key(k) => {
-                key_exports.push((target.path(tweak.action.snapshot_path()), k.clone()))
-            }
-        }
-        store
-            .users
-            .entry(opts.user.clone())
-            .or_default()
-            .entry(tweak.id.to_string())
-            .or_insert_with(|| TweakBackup {
-                timestamp: now.clone(),
-                snapshot: current,
-            });
+        store.record_first(&opts.user, tweak.id, &now, current.clone());
+        taken.push((slot, current));
         prepared.push((tweak, *enabled));
     }
     if prepared.is_empty() {
@@ -676,40 +586,20 @@ pub fn apply_tweaks(
     }
 
     // Phase 2: persist snapshots + .reg safety net before any write.
-    if let Err(e) = save_tweak_store(store, &opts.store_path) {
-        report
-            .errors
-            .push(format!("Nothing applied: cannot save snapshots ({})", e));
-        return report;
-    }
-    let keys: Vec<RegExportEntry> = key_exports
-        .iter()
-        .map(|(path, snapshot)| RegExportEntry {
-            root_name: &target.root_name,
-            path: path.clone(),
-            snapshot,
-        })
-        .collect();
-    let values: Vec<RegValueExport> = value_exports
-        .iter()
-        .map(|(path, name, snapshot)| RegValueExport {
-            root_name: &target.root_name,
-            path: path.clone(),
-            name: name.clone(),
-            snapshot,
-        })
-        .collect();
-    let reg_file = regsnap::unique_reg_file(
+    match backups::save_then_export(
+        store,
+        &opts.store_path,
+        target,
+        &taken,
         &opts.reg_backup_dir,
-        &format!("{}-tweaks-before-apply", clock::file_stamp()),
-    );
-    if let Err(e) = regsnap::write_reg_file(&reg_file, &regsnap::export_reg_full(&keys, &values)) {
-        report
-            .errors
-            .push(format!("Nothing applied: cannot write .reg backup ({})", e));
-        return report;
+        "tweaks-before-apply",
+    ) {
+        Ok(reg_file) => report.reg_backup_file = Some(reg_file),
+        Err(e) => {
+            report.errors.push(e);
+            return report;
+        }
     }
-    report.reg_backup_file = Some(reg_file);
 
     // Phase 3: writes.
     let total = steps + prepared.len();
@@ -731,50 +621,28 @@ pub fn restore_tweaks(
     ids: &[String],
     opts: &TweakOptions,
 ) -> OperationReport {
-    let mut report = OperationReport::default();
-    let total = ids.len();
-
-    for (i, id) in ids.iter().enumerate() {
-        (opts.progress)(i, total, &format!("Restoring {}", id));
-        let Some(tweak) = find_tweak(id) else {
-            report.errors.push(format!("{}: unknown tweak", id));
-            continue;
-        };
-        let Some(backup) = store.users.get(&opts.user).and_then(|b| b.get(id)).cloned() else {
-            report.errors.push(format!(
-                "{}: no original state recorded for {}",
-                id, opts.user
-            ));
-            continue;
-        };
-        match restore_tweak(target, tweak, &backup.snapshot) {
-            Ok(()) => {
-                if let Some(user) = store.users.get_mut(&opts.user) {
-                    user.remove(id);
-                }
-                report.succeeded.push(id.clone());
-            }
-            Err(e) => report.errors.push(format!(
-                "{}: {} (snapshot kept, restore can be retried)",
-                id, e
-            )),
-        }
-    }
-    store.users.retain(|_, b| !b.is_empty());
-
-    if !report.succeeded.is_empty() {
-        if let Err(e) = save_tweak_store(store, &opts.store_path) {
-            report.errors.push(format!("Cannot save snapshots: {}", e));
-        }
-    }
-    (opts.progress)(total, total, "Restore finished");
-    report
+    backups::restore_ids(
+        target,
+        store,
+        &opts.user,
+        ids,
+        &opts.store_path,
+        opts.progress,
+        &|id| {
+            find_tweak(id)
+                .map(|t| t.action.slot())
+                .ok_or_else(|| "unknown tweak".to_string())
+        },
+        &|id| id.to_string(),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::regsnap::test_support::Sandbox;
+    use crate::regsnap::RegistryKeySnapshot;
+    use winreg::RegKey;
 
     struct Env {
         sb: Sandbox,

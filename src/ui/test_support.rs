@@ -58,11 +58,17 @@ impl TempIcons {
                 Arc::new(move |path: &Path| opened.lock().unwrap().push(path.to_path_buf()))
             },
             menu_target: {
-                let base = format!("{}\\HKCU", self.sandbox.path);
-                Arc::new(move || crate::context_menu::MenuTarget {
-                    root: RegKey::predef(HKEY_CURRENT_USER),
-                    root_name: "HKEY_CURRENT_USER".into(),
-                    base: base.clone(),
+                let sandbox = self.sandbox.path.clone();
+                Arc::new(move || {
+                    let at = |hive: &str| crate::backups::RegTarget {
+                        root: RegKey::predef(HKEY_CURRENT_USER),
+                        root_name: "HKEY_CURRENT_USER".into(),
+                        base: format!("{}\\{}", sandbox, hive),
+                    };
+                    crate::context_menu::MenuTarget {
+                        user: at("HKCU"),
+                        machine: at("HKLM"),
+                    }
                 })
             },
             menu_store_path: self.dir.join("context-menu-backups.json"),

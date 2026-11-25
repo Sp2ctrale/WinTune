@@ -317,8 +317,7 @@ mod tests {
         let out = settled(&mut app, &ctx);
         let at = text_centers(&out, &label)
             .into_iter()
-            .filter(|c| c.x > 220.0)
-            .next_back()
+            .rfind(|c| c.x > 220.0)
             .expect("context menu chip");
         click_at(&mut app, &ctx, at);
         let out = settled(&mut app, &ctx);

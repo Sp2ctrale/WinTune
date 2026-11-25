@@ -1042,4 +1042,85 @@ Restoring the original puts the choice back, but Windows protects it with a hash
     <value>Fix these first:
 {0}</value>
   </data>
+  <data name="menu.win11_banner" xml:space="preserve">
+    <value>On Windows 11 these entries appear under “Show more options”.</value>
+  </data>
+  <data name="menu.use_classic" xml:space="preserve">
+    <value>Use the classic menu</value>
+  </data>
+  <data name="menu.my_entries" xml:space="preserve">
+    <value>My entries</value>
+  </data>
+  <data name="menu.add" xml:space="preserve">
+    <value>Add entry</value>
+  </data>
+  <data name="menu.empty" xml:space="preserve">
+    <value>No entries yet. Add one to see it in the right-click menu.</value>
+  </data>
+  <data name="menu.new_label" xml:space="preserve">
+    <value>New entry</value>
+  </data>
+  <data name="menu.details" xml:space="preserve">
+    <value>Entry details</value>
+  </data>
+  <data name="menu.label" xml:space="preserve">
+    <value>Label</value>
+  </data>
+  <data name="menu.program" xml:space="preserve">
+    <value>Program</value>
+  </data>
+  <data name="menu.program.vscode" xml:space="preserve">
+    <value>VS Code</value>
+  </data>
+  <data name="menu.program.terminal" xml:space="preserve">
+    <value>Windows Terminal</value>
+  </data>
+  <data name="menu.program.powershell" xml:space="preserve">
+    <value>PowerShell</value>
+  </data>
+  <data name="menu.program.cmd" xml:space="preserve">
+    <value>Command Prompt</value>
+  </data>
+  <data name="menu.program.other" xml:space="preserve">
+    <value>Other program…</value>
+  </data>
+  <data name="menu.program_missing" xml:space="preserve">
+    <value>Not found on this PC.</value>
+  </data>
+  <data name="menu.path" xml:space="preserve">
+    <value>Program file</value>
+  </data>
+  <data name="menu.browse" xml:space="preserve">
+    <value>Browse…</value>
+  </data>
+  <data name="menu.appears_on" xml:space="preserve">
+    <value>Appears on</value>
+  </data>
+  <data name="menu.icon" xml:space="preserve">
+    <value>Icon</value>
+  </data>
+  <data name="menu.icon_default" xml:space="preserve">
+    <value>Program’s icon</value>
+  </data>
+  <data name="menu.change" xml:space="preserve">
+    <value>Change…</value>
+  </data>
+  <data name="menu.reset" xml:space="preserve">
+    <value>Reset</value>
+  </data>
+  <data name="menu.remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="menu.remove_title" xml:space="preserve">
+    <value>Remove this entry?</value>
+  </data>
+  <data name="menu.remove_message" xml:space="preserve">
+    <value>“{0}” leaves the list. Its right-click entries are removed at the next Apply, and the original stays in History.</value>
+  </data>
+  <data name="menu.pending" xml:space="preserve">
+    <value>{0} not applied</value>
+  </data>
+  <data name="menu.up_to_date" xml:space="preserve">
+    <value>Everything is applied</value>
+  </data>
 </root>

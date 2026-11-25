@@ -223,8 +223,7 @@ pub struct WinTuneApp {
     menu_statuses: HashMap<String, EntryStatus>,
     /// `WinTune.*` keys in the registry that no entry of the list owns.
     menu_orphans: Vec<String>,
-    /// Entry open in the editor, by id (read by the page, next task).
-    #[allow(dead_code)]
+    /// Entry open in the editor, by id.
     selected_menu_entry: Option<String>,
     tr: Tr,
     /// The theme actually shown this frame (Light or Dark, never System):
@@ -462,7 +461,6 @@ impl WinTuneApp {
     }
 
     /// Editing the list changes `config`, which the autosave notices.
-    #[allow(dead_code)] // The page that edits the list arrives in the next task.
     pub(super) fn menu_entries_mut(&mut self) -> &mut Vec<MenuEntry> {
         self.config.context_menu.entries_mut(&self.env.user_label)
     }

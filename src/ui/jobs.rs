@@ -282,8 +282,6 @@ impl WinTuneApp {
     }
 
     /// Writes the list of this account to the registry on a background thread.
-    // The page that calls this arrives in the next task.
-    #[allow(dead_code)]
     pub(super) fn start_menu_apply(&mut self, ctx: &egui::Context) {
         if self.refuse_if_busy() {
             return;
@@ -304,7 +302,8 @@ impl WinTuneApp {
     }
 
     /// Puts the given keys (as `entry_key` paths) back to their saved originals.
-    // The page that calls this arrives in the next task.
+    // Nothing in this PR restores from the page (History restores through
+    // its own path); a later PR's entries do.
     #[allow(dead_code)]
     pub(super) fn start_menu_restore(&mut self, ctx: &egui::Context, keys: Vec<String>) {
         if self.refuse_if_busy() {

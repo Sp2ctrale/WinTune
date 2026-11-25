@@ -16,6 +16,11 @@ pub(super) enum ConfirmAction {
     Rollback(Vec<String>),
     /// Tweak ids whose original state must be put back.
     RestoreTweaks(Vec<String>),
+    /// Takes a context menu entry out of the list; its registry keys go at
+    /// the next Apply.
+    RemoveMenuEntry {
+        id: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -62,6 +67,22 @@ impl WinTuneApp {
         self.confirm_rollback(extensions);
     }
 
+    /// Asks before taking a context menu entry out of the list.
+    pub(super) fn request_remove_menu_entry(&mut self, id: &str) {
+        let Some(entry) = self.menu_entries().iter().find(|e| e.id == id) else {
+            return;
+        };
+        let name = entry.label.trim();
+        let name = if name.is_empty() { id } else { name };
+        let tr = self.tr;
+        self.pending_confirm = Some(Confirm {
+            title: tr.t("menu.remove_title"),
+            message: tr.t_args("menu.remove_message", &[&name]),
+            confirm_label: tr.t("menu.remove"),
+            action: ConfirmAction::RemoveMenuEntry { id: id.to_string() },
+        });
+    }
+
     fn confirm_rollback(&mut self, extensions: Vec<String>) {
         let tr = self.tr;
         self.pending_confirm = Some(Confirm {
@@ -90,7 +111,21 @@ impl WinTuneApp {
             ConfirmAction::RemoveRule { index, extension } => self.remove_rule(index, &extension),
             ConfirmAction::Rollback(extensions) => self.start_rollback(ctx, extensions),
             ConfirmAction::RestoreTweaks(ids) => self.start_restore_tweaks(ctx, ids),
+            ConfirmAction::RemoveMenuEntry { id } => self.remove_menu_entry(&id),
         }
+    }
+
+    /// Takes the entry out of the list. Its keys stay in the registry until
+    /// the next Apply (they show as pending), and the original stays in History.
+    fn remove_menu_entry(&mut self, id: &str) {
+        if !self.menu_entries().iter().any(|e| e.id == id) {
+            return;
+        }
+        self.menu_entries_mut().retain(|e| e.id != id);
+        if self.selected_menu_entry.as_deref() == Some(id) {
+            self.selected_menu_entry = None;
+        }
+        self.refresh_menu_statuses();
     }
 
     fn remove_rule(&mut self, hint: usize, extension: &str) {

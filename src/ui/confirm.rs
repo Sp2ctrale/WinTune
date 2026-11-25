@@ -16,6 +16,9 @@ pub(super) enum ConfirmAction {
     Rollback(Vec<String>),
     /// Tweak ids whose original state must be put back.
     RestoreTweaks(Vec<String>),
+    /// Context menu registry keys (`entry_key` paths) whose original must be
+    /// put back.
+    RestoreMenuKeys(Vec<String>),
     /// Takes a context menu entry out of the list; its registry keys go at
     /// the next Apply.
     RemoveMenuEntry {
@@ -83,6 +86,22 @@ impl WinTuneApp {
         });
     }
 
+    /// Asks before putting context menu keys back to what was there before
+    /// WinTune changed them (History's "Restore original").
+    pub(super) fn request_restore_menu_keys(&mut self, keys: Vec<String>) {
+        if keys.is_empty() {
+            return;
+        }
+        let tr = self.tr;
+        let names: Vec<String> = keys.iter().map(|k| self.menu_key_title(k)).collect();
+        self.pending_confirm = Some(Confirm {
+            title: tr.t("menu.restore_title"),
+            message: tr.t_args("menu.restore_message", &[&names.join(", ")]),
+            confirm_label: tr.t("confirm.restore"),
+            action: ConfirmAction::RestoreMenuKeys(keys),
+        });
+    }
+
     fn confirm_rollback(&mut self, extensions: Vec<String>) {
         let tr = self.tr;
         self.pending_confirm = Some(Confirm {
@@ -111,6 +130,7 @@ impl WinTuneApp {
             ConfirmAction::RemoveRule { index, extension } => self.remove_rule(index, &extension),
             ConfirmAction::Rollback(extensions) => self.start_rollback(ctx, extensions),
             ConfirmAction::RestoreTweaks(ids) => self.start_restore_tweaks(ctx, ids),
+            ConfirmAction::RestoreMenuKeys(keys) => self.start_menu_restore(ctx, keys),
             ConfirmAction::RemoveMenuEntry { id } => self.remove_menu_entry(&id),
         }
     }

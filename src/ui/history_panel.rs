@@ -20,6 +20,7 @@ pub(super) enum HistoryFilter {
     Associations,
     Explorer,
     Start,
+    ContextMenu,
 }
 
 impl HistoryFilter {
@@ -31,6 +32,7 @@ impl HistoryFilter {
             Self::Associations => stored_module == "File associations",
             Self::Explorer => stored_module == "Explorer & Taskbar",
             Self::Start => stored_module == "Start & Privacy",
+            Self::ContextMenu => stored_module == "Context menu",
         }
     }
 }
@@ -75,12 +77,14 @@ impl WinTuneApp {
             tr.t("history.module.associations"),
             tr.t("history.module.explorer"),
             tr.t("history.module.start"),
+            tr.t("history.module.context_menu"),
         ];
         let options = [
             (HistoryFilter::All, labels[0].as_str()),
             (HistoryFilter::Associations, labels[1].as_str()),
             (HistoryFilter::Explorer, labels[2].as_str()),
             (HistoryFilter::Start, labels[3].as_str()),
+            (HistoryFilter::ContextMenu, labels[4].as_str()),
         ];
         kit::section(ui, &heading, |ui| {
             if self.history.is_empty() {
@@ -290,6 +294,38 @@ mod tests {
         let texts = drawn_texts(&frame(&mut app, &ctx, RawInput::default()));
         assert!(
             texts.contains(&title_of(&tweak, "Explorer & Taskbar")),
+            "{texts:?}"
+        );
+        assert!(
+            !texts.contains(&title_of(&assoc, "File associations")),
+            "{texts:?}"
+        );
+    }
+
+    #[test]
+    fn the_context_menu_chip_filters_operations() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let menu = entry("Context menu", "Apply");
+        let assoc = entry("File associations", "Apply");
+        let mut app = history_app(&fx, &ctx, vec![menu.clone(), assoc.clone()]);
+        assert!(HistoryFilter::ContextMenu.matches("Context menu"));
+        assert!(!HistoryFilter::ContextMenu.matches("Start & Privacy"));
+
+        // The chip is drawn, right of the sidebar, and clicking it filters.
+        let label = app.tr.t("history.module.context_menu");
+        let out = settled(&mut app, &ctx);
+        let at = text_centers(&out, &label)
+            .into_iter()
+            .filter(|c| c.x > 220.0)
+            .next_back()
+            .expect("context menu chip");
+        click_at(&mut app, &ctx, at);
+        let out = settled(&mut app, &ctx);
+        assert_eq!(app.history_filter, HistoryFilter::ContextMenu);
+        let texts = drawn_texts(&out);
+        assert!(
+            texts.contains(&title_of(&menu, "Context menu")),
             "{texts:?}"
         );
         assert!(

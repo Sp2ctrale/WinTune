@@ -1117,7 +1117,13 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="menu.remove_message" xml:space="preserve">
     <value>“{0}” leaves the list. Its right-click entries are removed at the next Apply, and the original stays in History.</value>
   </data>
-  <data name="menu.pending" xml:space="preserve">
+  <data name="menu.restore_title" xml:space="preserve">
+    <value>Put back the original</value>
+  </data>
+  <data name="menu.restore_message" xml:space="preserve">
+    <value>Put back what was there before WinTune changed {0}?</value>
+  </data>
+  <data name="menu.pending"xml:space="preserve">
     <value>{0} not applied</value>
   </data>
   <data name="menu.up_to_date" xml:space="preserve">

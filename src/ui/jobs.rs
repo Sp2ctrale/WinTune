@@ -302,9 +302,6 @@ impl WinTuneApp {
     }
 
     /// Puts the given keys (as `entry_key` paths) back to their saved originals.
-    // Nothing in this PR restores from the page (History restores through
-    // its own path); a later PR's entries do.
-    #[allow(dead_code)]
     pub(super) fn start_menu_restore(&mut self, ctx: &egui::Context, keys: Vec<String>) {
         if self.refuse_if_busy() {
             return;

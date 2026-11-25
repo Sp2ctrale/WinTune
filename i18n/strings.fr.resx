@@ -1116,7 +1116,13 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="menu.remove_message" xml:space="preserve">
     <value>« {0} » quitte la liste. Ses entrées de clic droit sont supprimées à la prochaine application, et l’original reste dans l’historique.</value>
   </data>
-  <data name="menu.pending" xml:space="preserve">
+  <data name="menu.restore_title" xml:space="preserve">
+    <value>Remettre l’original</value>
+  </data>
+  <data name="menu.restore_message" xml:space="preserve">
+    <value>Remettre en place ce qui existait avant que WinTune ne modifie {0} ?</value>
+  </data>
+  <data name="menu.pending"xml:space="preserve">
     <value>{0} non appliquée(s)</value>
   </data>
   <data name="menu.up_to_date" xml:space="preserve">

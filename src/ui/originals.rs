@@ -4,6 +4,7 @@
 
 use super::kit::{self, space, text_size};
 use super::{ActiveTab, WinTuneApp};
+use crate::context_menu::{entry_key, Place};
 use crate::i18n::{messages, Tr};
 use crate::tweaks::find_tweak;
 use eframe::egui::{self, RichText};
@@ -14,6 +15,7 @@ pub(super) enum OriginalsModule {
     Associations,
     Explorer,
     Start,
+    ContextMenu,
     /// A tweak id the catalog no longer knows (e.g. removed in a later
     /// version): listed with its raw id, still restorable.
     Other,
@@ -36,6 +38,7 @@ impl OriginalsModule {
             Self::Associations => tr.t("history.module.associations"),
             Self::Explorer => tr.t("history.module.explorer"),
             Self::Start => tr.t("history.module.start"),
+            Self::ContextMenu => tr.t("history.module.context_menu"),
             Self::Other => tr.t("originals.other"),
         }
     }
@@ -53,6 +56,7 @@ enum RestoreRequest {
     AllRules,
     Rule(String),
     Tweaks(Vec<String>),
+    MenuKeys(Vec<String>),
 }
 
 /// A secondary button that, given a reason, is disabled and says why on
@@ -91,6 +95,19 @@ impl WinTuneApp {
                 })
                 .collect();
         }
+        if module == OriginalsModule::ContextMenu {
+            let Some(backups) = self.menu_store.backups_of(&self.env.user_label) else {
+                return Vec::new();
+            };
+            return backups
+                .iter()
+                .map(|(key, backup)| OriginalRow {
+                    key: key.clone(),
+                    title: self.menu_key_title(key),
+                    description: tr.t_args("originals.saved_on", &[&backup.timestamp]),
+                })
+                .collect();
+        }
         let Some(backups) = self.tweak_store.backups_of(&self.env.user_label) else {
             return Vec::new();
         };
@@ -123,6 +140,17 @@ impl WinTuneApp {
             .collect()
     }
 
+    /// What a saved context menu key is called: the label of the listed
+    /// entry whose verb key it is (in any place), else the key path.
+    pub(super) fn menu_key_title(&self, key: &str) -> String {
+        self.menu_entries()
+            .iter()
+            .find(|e| {
+                !e.label.trim().is_empty() && Place::ALL.iter().any(|p| entry_key(*p, &e.id) == key)
+            })
+            .map_or_else(|| key.to_string(), |e| e.label.trim().to_string())
+    }
+
     /// The "Saved originals" part of History: one section per module with
     /// snapshots, each with "Restore all" and a "Restore original" per row.
     /// An unreadable store shows a banner instead of its sections.
@@ -139,6 +167,7 @@ impl WinTuneApp {
 
         let assoc_reason = self.busy_or_blocked(&self.backup_store_error);
         let tweak_reason = self.busy_or_blocked(&self.tweak_store_error);
+        let menu_reason = self.busy_or_blocked(&self.menu_store_error);
         let mut request = None;
         let mut shown = 0;
 
@@ -187,6 +216,28 @@ impl WinTuneApp {
                 }
             }
         }
+        match &self.menu_store_error {
+            Some(e) => {
+                let text = tr.t_args("originals.unreadable", &[&messages::load_error(tr, e)]);
+                kit::banner(ui, kit::BannerKind::Error, &text, None);
+                shown += 1;
+            }
+            None => {
+                let rows = self.originals_of(OriginalsModule::ContextMenu);
+                if !rows.is_empty() {
+                    shown += 1;
+                    let reason = menu_reason.as_deref();
+                    originals_section(
+                        ui,
+                        tr,
+                        OriginalsModule::ContextMenu,
+                        rows,
+                        reason,
+                        &mut request,
+                    );
+                }
+            }
+        }
         if shown == 0 {
             kit::card(ui, |ui| {
                 kit::empty_state(ui, kit::Icon::Restore, &tr.t("originals.empty"), None);
@@ -197,6 +248,7 @@ impl WinTuneApp {
             Some(RestoreRequest::AllRules) => self.request_restore_all_rules(),
             Some(RestoreRequest::Rule(ext)) => self.request_restore_rule(&ext),
             Some(RestoreRequest::Tweaks(ids)) => self.request_restore_tweaks(ids),
+            Some(RestoreRequest::MenuKeys(keys)) => self.request_restore_menu_keys(keys),
             None => {}
         }
     }
@@ -237,8 +289,11 @@ fn originals_section(
         },
     );
     let is_rules = module == OriginalsModule::Associations;
+    let is_menu = module == OriginalsModule::ContextMenu;
     let clicked = match (all, one) {
         (true, _) if is_rules => RestoreRequest::AllRules,
+        (true, _) if is_menu => RestoreRequest::MenuKeys(rows.into_iter().map(|r| r.key).collect()),
+        (false, Some(key)) if is_menu => RestoreRequest::MenuKeys(vec![key]),
         (true, _) => RestoreRequest::Tweaks(rows.into_iter().map(|r| r.key).collect()),
         (false, Some(key)) if is_rules => RestoreRequest::Rule(key),
         (false, Some(key)) => RestoreRequest::Tweaks(vec![key]),
@@ -593,6 +648,122 @@ mod tests {
             click_at(&mut app, &ctx, at);
             assert!(app.pending_confirm.is_none(), "{label:?} of {row:?} asked");
         }
+    }
+
+    /// One entry "Open one" in the Folder place, applied, History open.
+    fn applied_menu_entry(fx: &TempIcons, ctx: &egui::Context) -> WinTuneApp {
+        use crate::context_menu::{MenuEntry, Place, ProgramChoice};
+        let mut config = fx.config();
+        config
+            .context_menu
+            .entries_mut("TEST\\user")
+            .push(MenuEntry {
+                id: "e1".into(),
+                label: "Open one".into(),
+                program: ProgramChoice::Cmd,
+                places: [Place::Folder].into_iter().collect(),
+                icon: None,
+            });
+        let mut app = fx.app_with(ctx, config);
+        app.start_menu_apply(ctx);
+        run_until_idle(&mut app, ctx);
+        assert!(
+            app.menu_store.backups_of("TEST\\user").is_some(),
+            "{}",
+            app.last_notice()
+        );
+        app.open_page(ActiveTab::History);
+        app
+    }
+
+    #[test]
+    fn the_context_menu_group_lists_and_restores_after_confirm() {
+        use crate::context_menu::{entry_key, Place};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = applied_menu_entry(&fx, &ctx);
+        let key = fx.hkcu(&entry_key(Place::Folder, "e1"));
+        assert!(fx.key_exists(&key));
+
+        let out = settle(&mut app, &ctx);
+        let module = app.tr.t("history.module.context_menu");
+        let m = in_originals(&app, &out, &module).expect("group title drawn");
+        let r = in_originals(&app, &out, "Open one").expect("entry label drawn");
+        assert!(r.y > m.y);
+        let saved = app.menu_store.backups_of("TEST\\user").unwrap()
+            [&entry_key(Place::Folder, "e1")]
+            .timestamp
+            .clone();
+        assert!(drawn_texts(&out).contains(&app.tr.t_args("originals.saved_on", &[&saved])));
+
+        let label = restore_label(&app);
+        let at = button_on_row(&mut app, &ctx, "Open one", &label);
+        click_at(&mut app, &ctx, at);
+        assert_eq!(
+            pending(&app),
+            Some(ConfirmAction::RestoreMenuKeys(vec![entry_key(
+                Place::Folder,
+                "e1"
+            )]))
+        );
+        assert!(!app.is_busy(), "a restore started without confirmation");
+        assert!(fx.key_exists(&key));
+
+        app.resolve_confirm(&ctx, true);
+        run_until_idle(&mut app, &ctx);
+        assert!(!fx.key_exists(&key));
+        assert!(app
+            .menu_store
+            .backups_of("TEST\\user")
+            .is_none_or(|b| b.is_empty()));
+        let e = &app.history[0];
+        assert_eq!(
+            (e.module.as_str(), e.action.as_str()),
+            ("Context menu", "Restore")
+        );
+    }
+
+    #[test]
+    fn a_broken_menu_store_blocks_only_its_group() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = three_modules(&fx, &ctx);
+        std::fs::write(&app.env.menu_store_path, "{ broken").unwrap();
+        app.reload_menu_store();
+        let error = app.menu_store_error.clone().expect("store error");
+
+        let out = settle(&mut app, &ctx);
+        let texts = drawn_texts(&out);
+        let banner = app.tr.t_args(
+            "originals.unreadable",
+            &[&messages::load_error(app.tr, &error)],
+        );
+        assert!(texts.contains(&banner), "no banner: {texts:?}");
+        // The three other groups keep their buttons.
+        assert_eq!(text_centers(&out, &restore_label(&app)).len(), 3);
+        assert!(app.menu_store.users.is_empty());
+
+        let label = restore_label(&app);
+        let at = button_on_row(&mut app, &ctx, ".foo", &label);
+        click_at(&mut app, &ctx, at);
+        assert_eq!(
+            pending(&app),
+            Some(ConfirmAction::Rollback(vec![".foo".to_string()]))
+        );
+    }
+
+    #[test]
+    fn a_broken_menu_store_hides_the_group_and_its_entries() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = applied_menu_entry(&fx, &ctx);
+        std::fs::write(&app.env.menu_store_path, "{ broken").unwrap();
+        app.reload_menu_store();
+
+        let out = settle(&mut app, &ctx);
+        let module = app.tr.t("history.module.context_menu");
+        assert!(in_originals(&app, &out, &module).is_none());
+        assert!(!drawn_texts(&out).contains(&"Open one".to_string()));
     }
 
     #[test]

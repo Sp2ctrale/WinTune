@@ -4,7 +4,8 @@
 
 use super::{kit, ActiveTab, WinTuneApp};
 use crate::context_menu::{
-    entry_problems, new_entry_id, EntryProblem, EntryStatus, MenuEntry, Place, ProgramChoice,
+    clean_program_path, entry_problems, new_entry_id, EntryProblem, EntryStatus, MenuEntry, Place,
+    ProgramChoice,
 };
 use crate::i18n::messages;
 use eframe::egui::{self, RichText};
@@ -18,9 +19,15 @@ const PROBLEM_LINE: f32 = 18.0;
 /// Width of the text boxes of the entry editor.
 const FIELD_WIDTH: f32 = 260.0;
 
-/// Id of the label box of the entry editor (tests focus it).
-fn menu_label_id() -> egui::Id {
-    egui::Id::new("menu_entry_label")
+/// Id of the label box of the entry editor (tests focus it). Salted per
+/// entry, so selecting another entry never keeps the typing focus.
+fn menu_label_id(id: &str) -> egui::Id {
+    egui::Id::new(("menu_entry_label", id))
+}
+
+/// Id of the program path box of the entry editor.
+fn menu_path_id(id: &str) -> egui::Id {
+    egui::Id::new(("menu_entry_path", id))
 }
 
 /// Id of a row of the entry list.
@@ -118,6 +125,9 @@ impl WinTuneApp {
                     .first()
                     .map(|(_, problem)| messages::entry_problem(self.tr, problem))
             })
+            .or_else(|| {
+                (self.menu_pending_count() == 0).then(|| self.tr.t("menu.nothing_to_apply"))
+            })
     }
 
     /// Entries not applied yet, and keys of removed entries still to delete.
@@ -177,7 +187,7 @@ impl WinTuneApp {
             icon: None,
         });
         self.selected_menu_entry = Some(id);
-        self.refresh_menu_statuses();
+        self.refresh_menu_statuses_if_idle();
     }
 
     fn menu_rows(&self, problems: &[(String, EntryProblem)]) -> Vec<EntryRow> {
@@ -380,7 +390,7 @@ impl WinTuneApp {
             .show(ui, |ui| {
                 ui.add(
                     egui::TextEdit::singleline(&mut edited.label)
-                        .id(menu_label_id())
+                        .id(menu_label_id(id))
                         .desired_width(FIELD_WIDTH),
                 );
             });
@@ -436,7 +446,16 @@ impl WinTuneApp {
                 }
                 .show(ui, |ui| {
                     browse = ui.add(secondary_button(&tr.t("menu.browse"))).clicked();
-                    ui.add(egui::TextEdit::singleline(path).desired_width(FIELD_WIDTH));
+                    let resp = ui.add(
+                        egui::TextEdit::singleline(path)
+                            .id(menu_path_id(id))
+                            .desired_width(FIELD_WIDTH),
+                    );
+                    // Only once the box is left: trimming while typing would
+                    // eat the space of "Program Files" as it is typed.
+                    if resp.lost_focus() {
+                        *path = clean_program_path(path);
+                    }
                 });
             }
 
@@ -498,7 +517,7 @@ impl WinTuneApp {
             if let Some(slot) = self.menu_entries_mut().iter_mut().find(|e| e.id == id) {
                 *slot = edited;
             }
-            self.refresh_menu_statuses();
+            self.refresh_menu_statuses_if_idle();
         }
     }
 }
@@ -579,7 +598,7 @@ mod tests {
         click_key(&mut app, &ctx, "menu.add");
         frame(&mut app, &ctx, tall_input(vec![]));
 
-        ctx.memory_mut(|m| m.request_focus(menu_label_id()));
+        ctx.memory_mut(|m| m.request_focus(menu_label_id("e1")));
         let key = |pressed| Event::Key {
             key: Key::A,
             physical_key: None,
@@ -631,6 +650,91 @@ mod tests {
         let reason =
             messages::entry_problem(app.tr, &crate::context_menu::EntryProblem::EmptyLabel);
         assert!(hover.contains(&reason), "{hover:?}");
+    }
+
+    #[test]
+    fn apply_is_disabled_when_nothing_is_pending() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = page_app(&fx, &ctx);
+        assert_eq!(app.menu_pending_count(), 0);
+
+        let apply = find_key(&mut app, &ctx, "tweaks.apply");
+        click_at(&mut app, &ctx, apply);
+        assert!(!app.is_busy(), "apply started with nothing to apply");
+        let hover = hover_texts(&mut app, &ctx, apply);
+
+        assert!(
+            hover.contains(&app.tr.t("menu.nothing_to_apply")),
+            "{hover:?}"
+        );
+    }
+
+    #[test]
+    fn a_pasted_program_path_is_cleaned_when_the_box_is_left() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = page_app(&fx, &ctx);
+        click_key(&mut app, &ctx, "menu.add");
+        let exe = fx.dir.join("pasted app.exe");
+        std::fs::write(&exe, b"x").unwrap();
+        let pasted = format!("  \"{}\" ", exe.display());
+        app.menu_entries_mut()[0].program = ProgramChoice::Custom(pasted);
+        frame(&mut app, &ctx, tall_input(vec![]));
+
+        ctx.memory_mut(|m| m.request_focus(menu_path_id("e1")));
+        frame(&mut app, &ctx, tall_input(vec![]));
+        // Tab leaves the box.
+        let tab = |pressed| Event::Key {
+            key: Key::Tab,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        };
+        frame(&mut app, &ctx, tall_input(vec![tab(true), tab(false)]));
+        frame(&mut app, &ctx, tall_input(vec![]));
+
+        let clean = exe.display().to_string();
+        assert_eq!(app.menu_entries()[0].program, ProgramChoice::Custom(clean));
+    }
+
+    #[test]
+    fn editing_while_a_job_runs_does_not_reread_the_registry() {
+        use super::super::jobs::RunningJob;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = page_app(&fx, &ctx);
+        click_key(&mut app, &ctx, "menu.add");
+        assert!(app.menu_statuses.contains_key("e1"));
+
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        app.job = Some(RunningJob::BuildPak(crate::tasks::BackgroundJob::spawn(
+            "Building gallery.pak",
+            || {},
+            move |_| {
+                release_rx.recv().unwrap();
+                Ok(crate::gallery::PakStats {
+                    count: 0,
+                    bytes_before: 0,
+                    bytes_after: 0,
+                })
+            },
+        )));
+        app.add_menu_entry();
+        assert_eq!(app.menu_entries().len(), 2);
+        assert!(
+            !app.menu_statuses.contains_key("e2"),
+            "re-read during a job"
+        );
+
+        app.request_remove_menu_entry("e1");
+        app.resolve_confirm(&ctx, true);
+        assert_eq!(app.menu_entries().len(), 1);
+        assert!(app.menu_statuses.contains_key("e1"), "re-read during a job");
+
+        release_tx.send(()).unwrap();
+        run_until_idle(&mut app, &ctx);
     }
 
     #[test]

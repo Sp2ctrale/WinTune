@@ -158,7 +158,7 @@ impl WinTuneApp {
         if self.selected_menu_entry.as_deref() == Some(id) {
             self.selected_menu_entry = None;
         }
-        self.refresh_menu_statuses();
+        self.refresh_menu_statuses_if_idle();
     }
 
     fn remove_rule(&mut self, hint: usize, extension: &str) {

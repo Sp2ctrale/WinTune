@@ -455,6 +455,14 @@ impl WinTuneApp {
         self.menu_orphans = orphans;
     }
 
+    /// Like `refresh_menu_statuses`, but not while a job runs: the registry is
+    /// changing under it, and the job's end re-reads the statuses anyway.
+    pub(super) fn refresh_menu_statuses_if_idle(&mut self) {
+        if !self.is_busy() {
+            self.refresh_menu_statuses();
+        }
+    }
+
     /// The entries of the signed-in account: another account's are never shown.
     pub(super) fn menu_entries(&self) -> &[MenuEntry] {
         self.config.context_menu.entries_of(&self.env.user_label)
@@ -475,7 +483,19 @@ impl WinTuneApp {
             ReportKind::RestoredRules => tr.t_args("report.restored_rules", &[&count]),
             ReportKind::AppliedTweaks => tr.t_args("report.applied_tweaks", &[&count]),
             ReportKind::RestoredTweaks => tr.t_args("report.restored_tweaks", &[&count]),
-            ReportKind::AppliedMenu => tr.t_args("report.applied_menu", &[&count]),
+            ReportKind::AppliedMenu => {
+                // Entries written; keys taken away are counted apart.
+                let removed = report.removed.len();
+                let applied = tr.t_args("report.applied_menu", &[&count]);
+                match (count, removed) {
+                    (_, 0) => applied,
+                    (0, n) => tr.t_args("report.removed_menu", &[&n]),
+                    (_, n) => format!(
+                        "{applied}, {}",
+                        tr.t_args("report.removed_menu_also", &[&n])
+                    ),
+                }
+            }
             ReportKind::RestoredMenu => tr.t_args("report.restored_menu", &[&count]),
         };
         if let Some(first) = report.errors.first() {

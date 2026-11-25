@@ -249,15 +249,12 @@ impl WinTuneApp {
     /// the disabled Apply button.
     pub(super) fn menu_blocked_reason(&self, applying: bool) -> Option<String> {
         let tr = self.tr;
-        let blocked = |e: &crate::persist::LoadError| {
-            let detail = crate::i18n::messages::load_error(tr, e);
-            tr.t_args("tweaks.blocked", &[&detail])
-        };
-        if let Some(e) = &self.menu_store_error {
-            return Some(blocked(e));
+        if let Some(reason) = self.menu_store_blocked_reason() {
+            return Some(reason);
         }
         if let Some(e) = &self.config_error {
-            return Some(blocked(e));
+            let detail = crate::i18n::messages::load_error(tr, e);
+            return Some(tr.t_args("tweaks.blocked", &[&detail]));
         }
         if !applying {
             return None;
@@ -279,6 +276,15 @@ impl WinTuneApp {
             })
             .collect();
         (!lines.is_empty()).then(|| tr.t_args("menu.blocked.problems", &[&lines.join("\n")]))
+    }
+
+    /// Why a restore cannot start: only an unreadable snapshot store. A restore
+    /// never writes the config, so an unreadable config does not stop it.
+    fn menu_store_blocked_reason(&self) -> Option<String> {
+        self.menu_store_error.as_ref().map(|e| {
+            let detail = crate::i18n::messages::load_error(self.tr, e);
+            self.tr.t_args("tweaks.blocked", &[&detail])
+        })
     }
 
     /// Writes the list of this account to the registry on a background thread.
@@ -306,7 +312,7 @@ impl WinTuneApp {
         if self.refuse_if_busy() {
             return;
         }
-        if let Some(reason) = self.menu_blocked_reason(false) {
+        if let Some(reason) = self.menu_store_blocked_reason() {
             self.notify(ToastKind::Error, reason);
             return;
         }
@@ -754,6 +760,69 @@ mod tests {
         );
         assert!(shown.contains("The label is empty."), "{shown}");
         assert!(!app.env.menu_store_path.exists(), "store written");
+    }
+
+    #[test]
+    fn a_menu_restore_still_runs_while_the_config_is_unreadable() {
+        use crate::context_menu::{entry_key, Place};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = two_menu_entries(&fx, &ctx);
+        app.start_menu_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        app.config_error = Some(corrupt("config.json", "bad json"));
+
+        // Apply is blocked (it saves the config), a restore never writes it.
+        app.start_menu_apply(&ctx);
+        assert!(!app.is_busy());
+        let key = entry_key(Place::Folder, "e1");
+        app.request_restore_menu_keys(vec![key.clone()]);
+        app.resolve_confirm(&ctx, true);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+        assert!(!fx.key_exists(&fx.hkcu(&key)));
+        let saved = app.menu_store.backups_of("TEST\\user").unwrap();
+        assert!(saved.get(&key).is_none());
+    }
+
+    #[test]
+    fn the_menu_toast_counts_written_entries_and_names_removed_keys_apart() {
+        use crate::context_menu::{entry_key, Place};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = two_menu_entries(&fx, &ctx);
+        app.start_menu_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+
+        app.menu_entries_mut().retain(|e| e.id != "e2");
+        app.start_menu_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+
+        let toast = app.last_notice();
+        assert!(
+            toast.starts_with("Applied 1 context menu entry(ies), removed 2"),
+            "{toast}"
+        );
+        assert!(!toast.contains("Software"), "{toast}");
+        let last = app.history.first().expect("history entry");
+        assert!(
+            last.succeeded
+                .contains(&"Removed entry \u{b7} Folders".to_string()),
+            "{:?}",
+            last.succeeded
+        );
+        assert!(!last.succeeded.iter().any(|n| n.contains("Software")));
+        assert!(!fx.key_exists(&fx.hkcu(&entry_key(Place::Folder, "e2"))));
+
+        // Only removals: no "Applied 0".
+        app.menu_entries_mut().clear();
+        app.start_menu_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        let toast = app.last_notice();
+        assert!(
+            toast.starts_with("Removed 2 context menu entry(ies)"),
+            "{toast}"
+        );
     }
 
     #[test]

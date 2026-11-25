@@ -173,8 +173,11 @@ Under "My entries", two more sections list what the menu already holds.
   and, for a program's shell extension, that it is hidden everywhere the
   program adds it.
 - **Undo.** Hidden and renamed entries appear by name in **History**, **Saved
-  originals**, **Context menu**, with **Restore original**. The Home page
-  counts hidden entries.
+  originals**, **Context menu**, with **Restore original**. Restore original
+  puts back only what WinTune changed (the hidden flag and the name); anything
+  the program wrote since, such as a new command or icon, is kept. An entry
+  shown again under its own name is already back to its original and leaves
+  the list. The Home page counts hidden entries.
 
 ## Safety and undo
 

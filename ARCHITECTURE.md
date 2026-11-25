@@ -124,7 +124,21 @@ keyed by account, so an account only ever sees and edits its own entries.
   created it and it is empty. Rename writes `MUIVerb` on the HKCU copy. Hide a
   shell extension or modern entry writes its CLSID under HKCU
   `...\Shell Extensions\Blocked`. A CLSID blocked in HKLM `Blocked` is shown
-  locked. Nothing is written under HKLM.
+  locked. Nothing is written under HKLM. When an Apply brings a slot back to
+  its snapshot (the copy WinTune created is gone, or `ProgrammaticAccessOnly`
+  and `MUIVerb` equal the snapshot's, or the `Blocked` value is present or
+  absent as before), the snapshot is forgotten and the store saved again.
+- **Restore of existing entries** (`engine.rs`, `restore_keys`): a verb's
+  HKCU copy is not replayed as a whole key. Only `ProgrammaticAccessOnly` and
+  `MUIVerb` return to the snapshot (removed when it had none); the copy is
+  deleted (`delete_subkey`, never a tree delete) only if WinTune created it and
+  it is now empty, and is never recreated once gone. Everything else in it is
+  the program's and stays. `WinTune.*` keys and `Blocked` values are restored
+  exactly. `restore_ids` (`backups.rs`) stays generic: it takes the per-slot
+  restore as a closure.
+- **Catalog presence**: a Clsid row shows when `CLSID\<clsid>` exists, Open in
+  Terminal when its packaged COM class (`PackagedCom\ClassIndex\<clsid>`)
+  exists, a Verbs row when one of its verb keys exists (HKCU or HKLM).
 - **Page** (`ui/context_menu_existing.rs`, `ui/menu_existing_state.rs`): the
   Windows and Other programs sections. Toggles and renames stay pending
   (`menu_pending`) until Apply; the confirmation lists side effects.

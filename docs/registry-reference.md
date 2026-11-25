@@ -142,6 +142,21 @@ written under `HKLM`. Before each first change, the slot is snapshotted in
 | Hide a shell extension or modern entry | `HKCU\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked` | `{CLSID}` | REG_SZ `""` (undocumented: rows carry an Unofficial pill) |
 | Show it | same | `{CLSID}` | Value deleted |
 
+**Restore original** (History, or a row's `…` menu) puts back only what
+WinTune changes. On a verb's HKCU copy that is `ProgrammaticAccessOnly` and
+`MUIVerb`: each returns to its value in the snapshot, or is removed if the
+snapshot had none; the copy is then deleted only if WinTune created it and it
+is empty (never a tree delete). Anything a program wrote in that key since
+(command, icon, other values) stays. A copy that no longer exists is not
+recreated. A `Blocked` value and a `WinTune.*` key come back exactly as
+snapshotted.
+
+When an Apply brings a slot back to its original (a copy WinTune created is
+deleted again, both values equal the snapshot's, or a `Blocked` value is
+present or absent as before), its snapshot is dropped and the store saved
+again: no Restore original is offered for a state that is already the
+original, so a key a program writes later is never touched.
+
 A CLSID found in `HKLM\...\Shell Extensions\Blocked` is hidden for every
 account. WinTune cannot change that: the row is shown locked, with its toggle
 disabled. The scan lists verbs and handlers under `shell` and
@@ -179,7 +194,7 @@ the verb.
 
 | id | Mechanism | Places | OS | Presence | Also affects | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| `open_in_terminal` | Clsid `{9F156763-7844-4DC4-B2B1-901F640F5155}` | Folder, Background | Any | Terminal installed | none | Not a classic verb. Terminal's AppxManifest declares `desktop5:Verb Id="OpenTerminalHere"` on `Directory` and `Directory\Background`. |
+| `open_in_terminal` | Clsid `{9F156763-7844-4DC4-B2B1-901F640F5155}` | Folder, Background | Any | Packaged COM class registered: `Software\Classes\PackagedCom\ClassIndex\{9F156763-…}` in HKCU or HKLM | none | Not a classic verb. Terminal's AppxManifest declares `desktop5:Verb Id="OpenTerminalHere"` on `Directory` and `Directory\Background`. Read here: `HKLM\Software\Classes\PackagedCom\ClassIndex\{9F156763-7844-4DC4-B2B1-901F640F5155}` exists, default value `Microsoft.WindowsTerminal_1.25.3131.0_x64__8wekyb3d8bbwe`. The `wt.exe` alias is not the evidence: it can exist without the package (or be turned off while Terminal is installed). |
 | `share` | Clsid `{E2BF9676-5F8F-435C-97EB-11607A5BEDF7}` | Files, Folder | Any | CLSID registered | none | Friendly name "Ribbon Modern Share Verb". |
 | `give_access` | Clsid `{F81E9010-6EA4-11CE-A7FF-00AA003CA9F6}` | Files, Folder, Background, Drive | Any | CLSID registered | Sharing tab of folder and drive Properties | Friendly name "Shell extensions for sharing". Also listed under `Directory` and `Drive` `PropertySheetHandlers`. |
 | `previous_versions` | Clsid `{596AB062-B4D2-4215-9F74-E9109B0A8153}` | Files, Folder, Drive | Any | CLSID registered | Previous Versions tab of Properties | Friendly name "Previous Versions Property Page". Also listed under `AllFilesystemObjects`, `Directory` and `Drive` `PropertySheetHandlers`. |
@@ -198,18 +213,14 @@ steps for hiding and renaming are in the PR 2 checklist below):
 
 - Windows entries (catalog above): each Clsid row hides in the open Explorer,
   or only after an Explorer restart.
-- "Open in Terminal" and "Share" are modern entries: check that `Blocked`
-  hides them in the new compact menu.
-- The two Properties tabs: blocking "Give access to" removes the Sharing tab,
-  and blocking "Restore previous versions" removes the Previous Versions tab.
-- Every row on Windows 10, where only the classic menu exists.
-
+- Modern entries ("Open in Terminal", "Share"): whether `Blocked` hides them
+  in the new compact menu.
 - Where the entries land on Windows 11: only under "Show more options" (the
   classic menu) or also in the new compact menu.
-- Modern entries (for example "Open in Terminal") and whether `Blocked`
-  hides them.
-- Side effects of `Blocked` on Properties tabs (a blocked handler can also
-  remove its tab or overlay).
+- Side effects of `Blocked` on Properties tabs: blocking "Give access to"
+  removes the Sharing tab, and blocking "Restore previous versions" removes
+  the Previous Versions tab (a blocked handler can also remove its overlay).
+- Every row on Windows 10, where only the classic menu exists.
 
 #### Pre-merge checklist for the Context menu entries
 
@@ -267,8 +278,12 @@ each step, check the open Explorer first, then again after an Explorer restart.
 5. Rename a third-party verb, Apply: the new label shows in the menu, with
    `&` and accented characters intact. Reset name: the old label returns.
 6. In History, Saved originals, Context menu: **Restore original** for each
-   entry changed above. Each is back as it was, and its `HKCU` copy or
-   `Blocked` value is gone.
+   entry changed above (an entry already shown again under its own name has
+   nothing left to restore and is not listed). Each is back as it was: a
+   `Blocked` value WinTune added is gone; a verb's `HKCU` copy is gone if
+   WinTune created it, while a program's own per-user key keeps everything
+   except `ProgrammaticAccessOnly` and `MUIVerb`, which return to what they
+   were before.
 7. Check that a CLSID blocked in `HKLM` shows locked with its toggle
    disabled. Creating that `Blocked` value needs an elevated prompt; skip this
    step if the PC has none.

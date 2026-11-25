@@ -1149,4 +1149,79 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="menu.up_to_date" xml:space="preserve">
     <value>Tout est appliqué</value>
   </data>
+  <data name="menu.win.open_in_terminal" xml:space="preserve">
+    <value>Ouvrir dans le Terminal</value>
+  </data>
+  <data name="menu.win.open_in_terminal.desc" xml:space="preserve">
+    <value>Ajoute Windows Terminal au menu des dossiers.</value>
+  </data>
+  <data name="menu.win.share" xml:space="preserve">
+    <value>Partager</value>
+  </data>
+  <data name="menu.win.share.desc" xml:space="preserve">
+    <value>Permet d'envoyer un fichier ou un dossier par le partage Windows.</value>
+  </data>
+  <data name="menu.win.give_access" xml:space="preserve">
+    <value>Donner l'accès à</value>
+  </data>
+  <data name="menu.win.give_access.desc" xml:space="preserve">
+    <value>Partage un fichier, un dossier ou un lecteur avec d'autres personnes du réseau.</value>
+  </data>
+  <data name="menu.win.previous_versions" xml:space="preserve">
+    <value>Restaurer les versions précédentes</value>
+  </data>
+  <data name="menu.win.previous_versions.desc" xml:space="preserve">
+    <value>Récupère une ancienne copie d'un fichier ou d'un dossier.</value>
+  </data>
+  <data name="menu.win.include_in_library" xml:space="preserve">
+    <value>Inclure dans la bibliothèque</value>
+  </data>
+  <data name="menu.win.include_in_library.desc" xml:space="preserve">
+    <value>Ajoute un dossier à une bibliothèque Windows.</value>
+  </data>
+  <data name="menu.win.pin_to_start" xml:space="preserve">
+    <value>Épingler au menu Démarrer</value>
+  </data>
+  <data name="menu.win.pin_to_start.desc" xml:space="preserve">
+    <value>Place un dossier dans le menu Démarrer.</value>
+  </data>
+  <data name="menu.win.send_to" xml:space="preserve">
+    <value>Envoyer vers</value>
+  </data>
+  <data name="menu.win.send_to.desc" xml:space="preserve">
+    <value>Copie l'élément vers un endroit comme le Bureau ou une clé USB.</value>
+  </data>
+  <data name="menu.win.cast_to_device" xml:space="preserve">
+    <value>Caster sur un appareil</value>
+  </data>
+  <data name="menu.win.cast_to_device.desc" xml:space="preserve">
+    <value>Lit un fichier sur un téléviseur ou un autre appareil proche.</value>
+  </data>
+  <data name="menu.win.scan_with_defender" xml:space="preserve">
+    <value>Analyser avec Microsoft Defender</value>
+  </data>
+  <data name="menu.win.scan_with_defender.desc" xml:space="preserve">
+    <value>Recherche des menaces dans l'élément avec Microsoft Defender.</value>
+  </data>
+  <data name="menu.win.pin_to_quick_access" xml:space="preserve">
+    <value>Épingler à Accès rapide</value>
+  </data>
+  <data name="menu.win.pin_to_quick_access.desc" xml:space="preserve">
+    <value>Garde un dossier ou un lecteur dans la liste Accès rapide.</value>
+  </data>
+  <data name="menu.win.add_to_favorites" xml:space="preserve">
+    <value>Ajouter aux favoris</value>
+  </data>
+  <data name="menu.win.add_to_favorites.desc" xml:space="preserve">
+    <value>Garde un fichier dans la liste Favoris de l'Explorateur de fichiers.</value>
+  </data>
+  <data name="menu.also.sharing_tab" xml:space="preserve">
+    <value>Retire aussi l'onglet Partage des Propriétés des dossiers et des lecteurs.</value>
+  </data>
+  <data name="menu.also.previous_versions_tab" xml:space="preserve">
+    <value>Retire aussi l'onglet Versions précédentes des Propriétés.</value>
+  </data>
+  <data name="menu.also.pin_to_start_apps" xml:space="preserve">
+    <value>Retire aussi Épingler au menu Démarrer pour les programmes et les raccourcis.</value>
+  </data>
 </root>

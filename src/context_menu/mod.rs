@@ -1,5 +1,6 @@
 //! Context menu module: entries a user adds to the Explorer right-click menu.
 
+pub mod catalog;
 pub mod engine;
 pub mod programs;
 
@@ -7,6 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+pub use catalog::{catalog, catalog_clsid, find_catalog, CatalogItem, CatalogMechanism, Presence};
 pub use engine::{
     apply_entries, default_menu_store_path, entry_key, entry_status, key_place, load_menu_store,
     orphan_keys, restore_keys, save_menu_store, EntryStatus, MenuBackup, MenuBackupStore,

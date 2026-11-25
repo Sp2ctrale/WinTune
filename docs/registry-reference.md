@@ -148,9 +148,39 @@ both work without touching HKLM. `Blocked` hides a shellex handler's verb in
 a fresh process; whether the open Explorer honours it immediately is still to
 be confirmed by the owner (PR 2 / spec section 8).
 
+### Windows entries WinTune can hide
+
+Read on this machine (Windows 11 build 26300), read-only. CLSIDs and their
+friendly names come from `HKCR\CLSID`; places come from the `shellex` keys
+that reference them. A Clsid entry is hidden by adding its CLSID to HKCU
+`Blocked`. A Verbs entry is hidden with a `ProgrammaticAccessOnly` HKCU copy of
+the verb.
+
+| id | Mechanism | Places | OS | Presence | Also affects | Evidence |
+| --- | --- | --- | --- | --- | --- | --- |
+| `open_in_terminal` | Clsid `{9F156763-7844-4DC4-B2B1-901F640F5155}` | Folder, Background | Any | Terminal installed | none | Not a classic verb. Terminal's AppxManifest declares `desktop5:Verb Id="OpenTerminalHere"` on `Directory` and `Directory\Background`. |
+| `share` | Clsid `{E2BF9676-5F8F-435C-97EB-11607A5BEDF7}` | Files, Folder | Any | CLSID registered | none | Friendly name "Ribbon Modern Share Verb". |
+| `give_access` | Clsid `{F81E9010-6EA4-11CE-A7FF-00AA003CA9F6}` | Files, Folder, Background, Drive | Any | CLSID registered | Sharing tab of folder and drive Properties | Friendly name "Shell extensions for sharing". Also listed under `Directory` and `Drive` `PropertySheetHandlers`. |
+| `previous_versions` | Clsid `{596AB062-B4D2-4215-9F74-E9109B0A8153}` | Files, Folder, Drive | Any | CLSID registered | Previous Versions tab of Properties | Friendly name "Previous Versions Property Page". Also listed under `AllFilesystemObjects`, `Directory` and `Drive` `PropertySheetHandlers`. |
+| `include_in_library` | Clsid `{3DAD6C5D-2167-4CAE-9914-F99E41C12CFA}` | Folder | Any | CLSID registered | none | Friendly name "Include In Library Sub Context Menu". |
+| `pin_to_start` | Clsid `{470C0EBD-5D73-4D58-9CED-E91E22E23282}` | Folder | Any | CLSID registered | Pin to Start on programs and shortcuts | Friendly name "Pin To Start Screen verb handler". Also listed under `exefile`, `mscfile` and the `Launcher.*` classes. |
+| `send_to` | Clsid `{7BA4C740-9E81-11CF-99D3-00AA004AE837}` | Files, Folder | Any | CLSID registered | none | Friendly name "Microsoft SendTo Service". |
+| `cast_to_device` | Clsid `{7AD84985-87B4-4A16-BE58-8B72A5B390F7}` | Files | Any | CLSID registered | none | Friendly name "Play To menu". |
+| `scan_with_defender` | Clsid `{09A47860-11B0-4DA5-AFA5-26D86198A780}` | Files, Folder, Drive | Any | CLSID registered | none | Friendly name "EPP" (Defender); the friendly name is empty on the key itself. |
+| `pin_to_quick_access` | Verbs `Folder\pintohome`, `Drive\pintohome` | Folder, Drive | Any | Verb exists | none | Verbs under HKLM `Folder\shell` and `Drive\shell`. |
+| `add_to_favorites` | Verbs `*\pintohomefile` | Files | Windows 11 | Verb exists | none | Verb under HKLM `*\shell`. |
+
 ### Needs the owner's eyes
 
 These cannot be seen through `Verbs()` and need a look at the real menu:
+
+- Windows entries (catalog above): each Clsid row hides in the open Explorer,
+  or only after an Explorer restart.
+- "Open in Terminal" and "Share" are modern entries: check that `Blocked`
+  hides them in the new compact menu.
+- The two Properties tabs: blocking "Give access to" removes the Sharing tab,
+  and blocking "Restore previous versions" removes the Previous Versions tab.
+- Every row on Windows 10, where only the classic menu exists.
 
 - Where the entries land on Windows 11: only under "Show more options" (the
   classic menu) or also in the new compact menu.

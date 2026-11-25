@@ -343,6 +343,8 @@ impl WinTuneApp {
                 progress: &progress,
             };
             let report = run(&env, &mut store, &opts);
+            // Here, not on the UI thread: Explorer can take seconds to answer.
+            (env.notify_shell)();
             MenuOutcome {
                 report,
                 store,
@@ -454,7 +456,6 @@ impl WinTuneApp {
 
     fn finish_menu_job(&mut self, outcome: MenuOutcome) {
         self.menu_store = outcome.store;
-        (self.env.notify_shell)();
         let kind = if outcome.restored {
             ReportKind::RestoredMenu
         } else {

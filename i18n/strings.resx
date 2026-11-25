@@ -967,7 +967,7 @@ Restoring the original puts the choice back, but Windows protects it with a hash
     <value>For {0}. Right-click entries you add, per account.</value>
   </data>
   <data name="home.menu_status" xml:space="preserve">
-    <value>{0} entries, {1} changed</value>
+    <value>{0} entries, {1} hidden</value>
   </data>
   <data name="job.apply_menu" xml:space="preserve">
     <value>Applying context menu entries…</value>
@@ -1224,5 +1224,36 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   </data>
   <data name="menu.also.pin_to_start_apps" xml:space="preserve">
     <value>Also removes Pin to Start from programs and shortcuts.</value>
+  </data>
+  <data name="menu.scan_failed" xml:space="preserve">
+    <value>Could not read the right-click menu: {0}</value>
+  </data>
+  <data name="menu.also.handler" xml:space="preserve">
+    <value>{0} is hidden everywhere its program adds it, not only in the places listed.</value>
+  </data>
+  <data name="menu.apply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="menu.apply_title" xml:space="preserve">
+    <value>Hide these entries?</value>
+  </data>
+  <data name="menu.apply_message" xml:space="preserve">
+    <value>Hiding these entries has side effects:
+{0}</value>
+  </data>
+  <data name="menu.state.shown" xml:space="preserve">
+    <value>Shown</value>
+  </data>
+  <data name="menu.state.hidden" xml:space="preserve">
+    <value>Hidden</value>
+  </data>
+  <data name="menu.state.hidden_elsewhere" xml:space="preserve">
+    <value>Hidden by another program</value>
+  </data>
+  <data name="menu.locked.machine" xml:space="preserve">
+    <value>Hidden for every account on this PC. WinTune changes only your account.</value>
+  </data>
+  <data name="menu.locked.unreadable" xml:space="preserve">
+    <value>Cannot read this entry: {0}</value>
   </data>
 </root>

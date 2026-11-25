@@ -27,6 +27,9 @@ pub(super) enum ConfirmAction {
     RemoveMenuEntry {
         id: String,
     },
+    /// Applies the context menu list and pending changes, once the side
+    /// effects of the hides were read.
+    ApplyMenu,
 }
 
 #[derive(Debug, Clone)]
@@ -115,6 +118,18 @@ impl WinTuneApp {
         });
     }
 
+    /// Asks before an Apply whose hides do more than remove a menu item:
+    /// one line per side effect.
+    pub(super) fn request_apply_menu(&mut self, warnings: &[String]) {
+        let tr = self.tr;
+        self.pending_confirm = Some(Confirm {
+            title: tr.t("menu.apply_title"),
+            message: tr.t_args("menu.apply_message", &[&warnings.join("\n")]),
+            confirm_label: tr.t("menu.apply"),
+            action: ConfirmAction::ApplyMenu,
+        });
+    }
+
     fn confirm_rollback(&mut self, extensions: Vec<String>) {
         let tr = self.tr;
         self.pending_confirm = Some(Confirm {
@@ -145,6 +160,7 @@ impl WinTuneApp {
             ConfirmAction::RestoreTweaks(ids) => self.start_restore_tweaks(ctx, ids),
             ConfirmAction::RestoreMenuKeys(keys) => self.start_menu_restore(ctx, keys),
             ConfirmAction::RemoveMenuEntry { id } => self.remove_menu_entry(&id),
+            ConfirmAction::ApplyMenu => self.run_menu_apply(ctx),
         }
     }
 
@@ -322,6 +338,123 @@ mod tests {
             app.pending_confirm.is_some(),
             "rendering must not resolve it"
         );
+    }
+
+    const GIVE_ACCESS: &str = "{F81E9010-6EA4-11CE-A7FF-00AA003CA9F6}";
+
+    fn blocked_value(fx: &TempIcons, clsid: &str) -> bool {
+        let path = fx.hkcu(crate::context_menu::BLOCKED_KEY);
+        fx.sandbox
+            .root
+            .open_subkey(path)
+            .is_ok_and(|k| k.get_raw_value(clsid).is_ok())
+    }
+
+    #[test]
+    fn hiding_give_access_asks_first_with_its_side_effect() {
+        use super::super::menu_existing_state::PendingExisting;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_machine_clsid(GIVE_ACCESS);
+        let mut app = fx.app(&ctx);
+        scan_now(&mut app, &ctx);
+        assert!(app
+            .menu_scan
+            .as_ref()
+            .unwrap()
+            .find("win:give_access")
+            .is_some());
+        app.menu_pending.insert(
+            "win:give_access".into(),
+            PendingExisting {
+                hidden: Some(true),
+                label: None,
+            },
+        );
+
+        app.start_menu_apply(&ctx);
+
+        let confirm = app.pending_confirm.as_ref().expect("asks first");
+        assert_eq!(confirm.action, ConfirmAction::ApplyMenu);
+        let side_effect = app.tr.t("menu.also.sharing_tab");
+        assert!(
+            confirm.message.contains(&side_effect),
+            "{}",
+            confirm.message
+        );
+        assert!(
+            confirm.message.contains(&app.tr.t("menu.win.give_access")),
+            "{}",
+            confirm.message
+        );
+        assert_eq!(confirm.confirm_label, app.tr.t("menu.apply"));
+        assert!(!app.is_busy(), "applied before the answer");
+        assert!(!blocked_value(&fx, GIVE_ACCESS));
+
+        app.resolve_confirm(&ctx, true);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+        assert!(blocked_value(&fx, GIVE_ACCESS), "{}", app.last_notice());
+        assert!(app.menu_pending.is_empty());
+    }
+
+    #[test]
+    fn hiding_another_programs_handler_names_it_in_the_question() {
+        use super::super::menu_existing_state::PendingExisting;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let clsid = "{23170F69-40C1-278A-1000-000100020000}";
+        let machine = fx.machine_key();
+        let handler = r"Software\Classes\*\shellex\ContextMenuHandlers\7-Zip";
+        let (k, _) = machine.create_subkey(handler).unwrap();
+        k.set_value("", &clsid).unwrap();
+        let server = format!(r"Software\Classes\CLSID\{clsid}\InprocServer32");
+        let (k, _) = machine.create_subkey(server).unwrap();
+        k.set_value("", &r"C:\Apps\7-zip.dll").unwrap();
+        let mut app = fx.app(&ctx);
+        scan_now(&mut app, &ctx);
+        let id = format!("clsid:{clsid}");
+        assert!(app.menu_scan.as_ref().unwrap().find(&id).is_some());
+        app.menu_pending.insert(
+            id,
+            PendingExisting {
+                hidden: Some(true),
+                label: None,
+            },
+        );
+
+        app.start_menu_apply(&ctx);
+        let confirm = app.pending_confirm.as_ref().expect("asks first");
+        let line = app.tr.t_args("menu.also.handler", &[&"7-Zip"]);
+        assert!(confirm.message.contains(&line), "{}", confirm.message);
+
+        // Cancelled: nothing written, the change stays pending.
+        app.resolve_confirm(&ctx, false);
+        assert!(!app.is_busy());
+        assert!(!blocked_value(&fx, clsid));
+        assert_eq!(app.menu_pending.len(), 1);
+    }
+
+    #[test]
+    fn hiding_a_verb_applies_without_asking() {
+        use super::super::menu_existing_state::PendingExisting;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_machine_verb("Directory", "AppVerb", "Open with App");
+        let mut app = fx.app(&ctx);
+        scan_now(&mut app, &ctx);
+        let id = app.menu_scan.as_ref().unwrap().others[0].id.clone();
+        app.menu_pending.insert(
+            id,
+            PendingExisting {
+                hidden: Some(true),
+                label: None,
+            },
+        );
+        app.start_menu_apply(&ctx);
+        assert!(app.pending_confirm.is_none());
+        assert!(app.is_busy());
+        run_until_idle(&mut app, &ctx);
     }
 
     #[test]

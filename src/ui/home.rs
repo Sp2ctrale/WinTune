@@ -3,7 +3,7 @@
 
 use super::{kit, ActiveTab, WinTuneApp};
 use crate::associations::RuleStatus;
-use crate::context_menu::EntryStatus;
+use crate::context_menu::{EntryStatus, ExistingState};
 use crate::i18n::messages;
 use crate::tweaks::TweakStatus;
 use eframe::egui;
@@ -56,6 +56,14 @@ impl WinTuneApp {
             .filter(|s| matches!(s, RuleStatus::Drifted(_)))
             .count();
         let menu_count = self.menu_entries().len();
+        // 0 until the first scan ends.
+        let menu_hidden = self.menu_scan.as_ref().map_or(0, |scan| {
+            scan.windows
+                .iter()
+                .chain(&scan.others)
+                .filter(|e| e.state == ExistingState::HiddenByWinTune)
+                .count()
+        });
         let menu_changed = self
             .menu_entries()
             .iter()
@@ -73,7 +81,7 @@ impl WinTuneApp {
             ModuleSummary {
                 page: ActiveTab::ContextMenu,
                 icon: kit::Icon::ContextMenu,
-                status: tr.t_args("home.menu_status", &[&menu_count, &menu_changed]),
+                status: tr.t_args("home.menu_status", &[&menu_count, &menu_hidden]),
                 drift: menu_changed,
             },
         ]
@@ -339,12 +347,31 @@ mod tests {
                     icon: None,
                 });
         }
+        fx.seed_machine_verb("Directory", "AppVerb", "Open with App");
         let mut app = fx.app_with(&ctx, config);
         app.rule_statuses.clear();
         app.tweak_statuses.clear();
+        // Before the first scan ends, nothing counts as hidden.
+        let before = app.tr.t_args("home.menu_status", &[&2, &0]);
+        assert_eq!(status_of(&app, ActiveTab::ContextMenu).0, before);
+        scan_now(&mut app, &ctx);
+        let id = app.menu_scan.as_ref().unwrap().others[0].id.clone();
+        app.menu_pending.insert(
+            id,
+            super::super::menu_existing_state::PendingExisting {
+                hidden: Some(true),
+                label: None,
+            },
+        );
         app.start_menu_apply(&ctx);
         run_until_idle(&mut app, &ctx);
-        assert_eq!(status_of(&app, ActiveTab::ContextMenu).1, 0);
+        run_until_scanned(&mut app, &ctx);
+        let expected = app.tr.t_args("home.menu_status", &[&2, &1]);
+        assert_eq!(expected, "2 entries, 1 hidden");
+        assert_eq!(
+            status_of(&app, ActiveTab::ContextMenu),
+            (expected.clone(), 0)
+        );
         assert_eq!(app.drift_target(), None);
 
         // Edited outside WinTune: the command of one key changes.
@@ -354,7 +381,6 @@ mod tests {
         command.set_value("", &"other.exe").unwrap();
         app.refresh_menu_statuses();
 
-        let expected = app.tr.t_args("home.menu_status", &[&2, &1]);
         assert_eq!(
             status_of(&app, ActiveTab::ContextMenu),
             (expected.clone(), 1)
@@ -377,6 +403,6 @@ mod tests {
         let texts = drawn_texts(&out);
         assert!(texts.iter().any(|t| t == "No operation yet."));
         assert!(texts.iter().any(|t| t == "0 active · 0 changed"));
-        assert!(texts.iter().any(|t| t == "0 entries, 0 changed"));
+        assert!(texts.iter().any(|t| t == "0 entries, 0 hidden"));
     }
 }

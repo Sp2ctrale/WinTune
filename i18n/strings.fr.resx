@@ -966,7 +966,7 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
     <value>Pour {0}. Les entrées de clic droit que vous ajoutez, par compte.</value>
   </data>
   <data name="home.menu_status" xml:space="preserve">
-    <value>{0} entrée(s), {1} modifiée(s)</value>
+    <value>{0} entrée(s), {1} masquée(s)</value>
   </data>
   <data name="job.apply_menu" xml:space="preserve">
     <value>Application des entrées du menu contextuel…</value>
@@ -1223,5 +1223,36 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   </data>
   <data name="menu.also.pin_to_start_apps" xml:space="preserve">
     <value>Retire aussi Épingler au menu Démarrer pour les programmes et les raccourcis.</value>
+  </data>
+  <data name="menu.scan_failed" xml:space="preserve">
+    <value>Impossible de lire le menu contextuel : {0}</value>
+  </data>
+  <data name="menu.also.handler" xml:space="preserve">
+    <value>{0} disparaît partout où son programme l'ajoute, pas seulement aux emplacements indiqués.</value>
+  </data>
+  <data name="menu.apply" xml:space="preserve">
+    <value>Appliquer</value>
+  </data>
+  <data name="menu.apply_title" xml:space="preserve">
+    <value>Masquer ces entrées ?</value>
+  </data>
+  <data name="menu.apply_message" xml:space="preserve">
+    <value>Masquer ces entrées a d'autres effets :
+{0}</value>
+  </data>
+  <data name="menu.state.shown" xml:space="preserve">
+    <value>Affichée</value>
+  </data>
+  <data name="menu.state.hidden" xml:space="preserve">
+    <value>Masquée</value>
+  </data>
+  <data name="menu.state.hidden_elsewhere" xml:space="preserve">
+    <value>Masquée par un autre programme</value>
+  </data>
+  <data name="menu.locked.machine" xml:space="preserve">
+    <value>Masquée pour tous les comptes de ce PC. WinTune ne modifie que votre compte.</value>
+  </data>
+  <data name="menu.locked.unreadable" xml:space="preserve">
+    <value>Impossible de lire cette entrée : {0}</value>
   </data>
 </root>

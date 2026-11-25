@@ -4,7 +4,8 @@
 
 use super::kit::{self, space, text_size};
 use super::{ActiveTab, WinTuneApp};
-use crate::context_menu::{entry_key, Place};
+use crate::backups::Slot;
+use crate::context_menu::{entry_key, Place, KEY_PREFIX};
 use crate::i18n::{messages, Tr};
 use crate::tweaks::find_tweak;
 use eframe::egui::{self, RichText};
@@ -140,10 +141,29 @@ impl WinTuneApp {
             .collect()
     }
 
-    /// What a saved context menu key is called and where it applies: the
-    /// label of the listed entry whose verb key it is, else a generic
-    /// "removed entry"; the place comes from the key's class path.
+    /// What a saved context menu slot is called and where it applies. A
+    /// `WinTune.*` key: the label of the listed entry whose verb key it is,
+    /// else a generic "removed entry", with the place of its class path. Any
+    /// other slot (a hidden or renamed existing entry): the scanned row's
+    /// name, else the verb name or CLSID from the id, with no place.
     pub(super) fn menu_key_name(&self, key: &str) -> (String, Option<Place>) {
+        let slot = Slot::from_id(key);
+        let own_key = match &slot {
+            Slot::Key(path) => path
+                .rsplit('\\')
+                .next()
+                .is_some_and(|name| name.to_lowercase().starts_with(&KEY_PREFIX.to_lowercase())),
+            Slot::Value { .. } => false,
+        };
+        if !own_key {
+            let scanned = self.menu_scan.as_ref().and_then(|s| s.by_slot(key));
+            let name = match (scanned, slot) {
+                (Some(entry), _) => self.existing_name(entry),
+                (None, Slot::Value { name, .. }) => name,
+                (None, Slot::Key(path)) => path.rsplit('\\').next().unwrap_or_default().to_string(),
+            };
+            return (name, None);
+        }
         let place = Place::ALL.into_iter().find(|p| {
             key.strip_prefix(r"Software\Classes\")
                 .and_then(|rest| rest.strip_prefix(p.class_path()))
@@ -821,6 +841,83 @@ mod tests {
         );
         let key = entry_key(Place::Folder, "e1");
         assert!(!texts.iter().any(|t| t.contains(&key)), "{texts:?}");
+    }
+
+    #[test]
+    fn a_hidden_entry_is_listed_by_its_name_and_restores() {
+        use super::super::menu_existing_state::PendingExisting;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_machine_verb("Directory", "AppVerb", "Open with App");
+        let mut app = fx.app(&ctx);
+        scan_now(&mut app, &ctx);
+        let id = app.menu_scan.as_ref().unwrap().others[0].id.clone();
+        app.menu_pending.insert(
+            id,
+            PendingExisting {
+                hidden: Some(true),
+                label: None,
+            },
+        );
+        app.start_menu_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        run_until_scanned(&mut app, &ctx);
+        let key = r"Software\Classes\Directory\shell\AppVerb";
+        let copy = fx.hkcu(key);
+        assert!(fx.key_exists(&copy), "{}", app.last_notice());
+        app.open_page(ActiveTab::History);
+
+        let out = settle(&mut app, &ctx);
+        let module = app.tr.t("history.module.context_menu");
+        let m = in_originals(&app, &out, &module).expect("group title drawn");
+        let r = in_originals(&app, &out, "Open with App").expect("scanned label drawn");
+        assert!(r.y > m.y);
+        let saved = app.menu_store.backups_of("TEST\\user").unwrap()[key]
+            .timestamp
+            .clone();
+        let desc = app.tr.t_args("originals.saved_on", &[&saved]);
+        assert!(drawn_texts(&out).contains(&desc), "{:?}", drawn_texts(&out));
+
+        let label = restore_label(&app);
+        let at = button_on_row(&mut app, &ctx, "Open with App", &label);
+        click_at(&mut app, &ctx, at);
+        assert_eq!(
+            pending(&app),
+            Some(ConfirmAction::RestoreMenuKeys(vec![key.to_string()]))
+        );
+        app.resolve_confirm(&ctx, true);
+        run_until_idle(&mut app, &ctx);
+        assert!(!fx.key_exists(&copy), "{}", app.last_notice());
+    }
+
+    #[test]
+    fn a_saved_slot_the_scan_does_not_know_is_named_from_its_id() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let app = fx.app(&ctx);
+        let clsid = "{11111111-2222-3333-4444-555555555555}";
+        let value = format!("{}\\\\{clsid}", crate::context_menu::BLOCKED_KEY);
+        assert_eq!(app.menu_key_name(&value), (clsid.to_string(), None));
+        let verb = r"Software\Classes\Directory\shell\SomeVerb";
+        assert_eq!(app.menu_key_name(verb), ("SomeVerb".to_string(), None));
+    }
+
+    #[test]
+    fn a_saved_catalog_slot_uses_the_translated_name() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_machine_clsid("{F81E9010-6EA4-11CE-A7FF-00AA003CA9F6}");
+        let mut app = fx.app(&ctx);
+        scan_now(&mut app, &ctx);
+        let value = format!(
+            "{}\\\\{}",
+            crate::context_menu::BLOCKED_KEY,
+            "{f81e9010-6ea4-11ce-a7ff-00aa003ca9f6}"
+        );
+        assert_eq!(
+            app.menu_key_name(&value).0,
+            app.tr.t("menu.win.give_access")
+        );
     }
 
     #[test]

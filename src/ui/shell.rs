@@ -92,6 +92,9 @@ impl WinTuneApp {
             self.reload_menu_store();
             self.refresh_menu_statuses();
         }
+        if page == ActiveTab::ContextMenu && self.active_tab != page {
+            self.request_menu_scan();
+        }
         if self.active_tab != page {
             self.focus_search = false;
             self.close_popups_next_frame = true;

@@ -5,7 +5,7 @@
 
 use super::Tr;
 use crate::associations::{DriftField, DriftReason, RuleProblem};
-use crate::context_menu::{EntryProblem, EntryStatus, Place};
+use crate::context_menu::{EntryProblem, EntryStatus, ExistingState, Locked, Place, RenameProblem};
 use crate::persist::LoadError;
 use crate::tweaks::{CustomReason, TweakGroup};
 
@@ -46,6 +46,34 @@ pub fn entry_problem(tr: Tr, p: &EntryProblem) -> String {
             tr.t_args("menu.problem.duplicate_label", &[&place_name(tr, *place)])
         }
         EntryProblem::ShellOnFiles => tr.t("menu.problem.shell_on_files"),
+    }
+}
+
+/// Why a new name for an existing entry is refused (the same texts as an
+/// added entry's label problems).
+pub fn rename_problem(tr: Tr, p: &RenameProblem) -> String {
+    let as_entry = match p {
+        RenameProblem::Empty => EntryProblem::EmptyLabel,
+        RenameProblem::TooLong => EntryProblem::LabelTooLong,
+        RenameProblem::LeadingAt => EntryProblem::LeadingAt,
+    };
+    entry_problem(tr, &as_entry)
+}
+
+/// The state of an existing right-click entry.
+pub fn existing_state(tr: Tr, s: ExistingState) -> String {
+    match s {
+        ExistingState::Shown => tr.t("menu.state.shown"),
+        ExistingState::HiddenByWinTune => tr.t("menu.state.hidden"),
+        ExistingState::HiddenElsewhere => tr.t("menu.state.hidden_elsewhere"),
+    }
+}
+
+/// Why WinTune cannot change an existing entry.
+pub fn locked(tr: Tr, l: &Locked) -> String {
+    match l {
+        Locked::MachineWide => tr.t("menu.locked.machine"),
+        Locked::Unreadable(detail) => tr.t_args("menu.locked.unreadable", &[detail]),
     }
 }
 

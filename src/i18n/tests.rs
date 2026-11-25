@@ -312,8 +312,13 @@ fn collect_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
 
 #[test]
 fn every_context_menu_message_translates_in_every_shipped_language() {
-    use super::messages::{entry_problem, entry_status, history_module, place_name};
-    use crate::context_menu::{EntryProblem, EntryStatus, Place};
+    use super::messages::{
+        entry_problem, entry_status, existing_state, history_module, locked, place_name,
+        rename_problem,
+    };
+    use crate::context_menu::{
+        EntryProblem, EntryStatus, ExistingState, Locked, Place, RenameProblem,
+    };
 
     let problems = [
         EntryProblem::EmptyLabel,
@@ -335,6 +340,26 @@ fn every_context_menu_message_translates_in_every_shipped_language() {
         texts.extend(statuses.iter().map(|s| entry_status(tr, s)));
         texts.extend(Place::ALL.iter().map(|p| place_name(tr, *p)));
         texts.push(history_module(tr, "Context menu"));
+        texts.extend(
+            [
+                ExistingState::Shown,
+                ExistingState::HiddenByWinTune,
+                ExistingState::HiddenElsewhere,
+            ]
+            .map(|s| existing_state(tr, s)),
+        );
+        texts.push(locked(tr, &Locked::MachineWide));
+        let unreadable = locked(tr, &Locked::Unreadable("WHY14".into()));
+        assert!(unreadable.contains("WHY14"), "{code}: {unreadable:?}");
+        texts.push(unreadable);
+        // A rename problem reads like the same problem of an added entry.
+        for (rename, entry) in [
+            (RenameProblem::Empty, EntryProblem::EmptyLabel),
+            (RenameProblem::TooLong, EntryProblem::LabelTooLong),
+            (RenameProblem::LeadingAt, EntryProblem::LeadingAt),
+        ] {
+            assert_eq!(rename_problem(tr, &rename), entry_problem(tr, &entry));
+        }
         let unique: BTreeSet<&String> = texts.iter().collect();
         for text in &texts {
             assert!(!text.is_empty() && !text.contains('{'), "{code}: {text:?}");

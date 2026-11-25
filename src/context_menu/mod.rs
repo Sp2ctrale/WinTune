@@ -1,11 +1,17 @@
 //! Context menu module: entries a user adds to the Explorer right-click menu.
 
+pub mod engine;
 pub mod programs;
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+pub use engine::{
+    apply_entries, default_menu_store_path, entry_key, entry_status, load_menu_store, orphan_keys,
+    restore_keys, save_menu_store, EntryStatus, MenuBackup, MenuBackupStore, MenuOptions,
+    MenuTarget,
+};
 pub use programs::{command_line, icon_value, Programs};
 
 /// Prefix of every shell key WinTune owns.

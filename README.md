@@ -1,7 +1,7 @@
 # WinTune
 
 WinTune is a Windows 10/11 desktop app for customizing the system. Every change it
-makes can be undone. It has two modules:
+makes can be undone. It has three modules:
 
 - **File associations**: custom icons, the double-click action (open in your
   editor or run the script), right-click verbs, and Explorer preview metadata.
@@ -103,7 +103,7 @@ WinTune broadcasts `WM_SETTINGCHANGE` so the taskbar picks it up.
 
 HKCU belongs to one account. If WinTune runs elevated under a different
 administrator account, the tweaks change that account's settings, not yours.
-The tab header shows which account is affected.
+The page subtitle shows which account is affected.
 
 ## Safety and undo
 
@@ -123,12 +123,12 @@ If saving the snapshots or the `.reg` file fails, nothing is applied. If
 `backups.json` cannot be read, all registry changes are blocked, so the next
 save cannot overwrite your snapshots.
 
-Each rule shows its live status: **Applied** means the registry matches the
+Each rule shows its live status: **Up to date** means the registry matches the
 rule. **Changed** means the rule was applied but something differs now, for
 example another app took the extension, an Explorer `UserChoice` override
-exists, a ProgID is missing, or the rule was edited since; hover the badge to
+exists, a ProgID is missing, or the rule was edited since; hover the status dot to
 see why. The status is read in the background at startup, after each apply or
-rollback, when you open the tab, and when you click **Refresh status**.
+rollback, when you open the page, and when you click **Refresh**.
 
 The interface checks rules as you edit them. A rule with an invalid extension
 or ProgID, or an extension listed twice, is flagged in red and blocks Apply.
@@ -146,7 +146,7 @@ their part of the snapshot is kept. Roll back again once they are signed in.
 **Known limit:** Explorer's per-user `UserChoice` key is protected by a hash
 that covers the key's metadata. Rollback restores its values, but Windows may
 still consider it tampered with, show "An app default was reset" and go back to
-its default app. Uncheck **Reset Explorer UserChoice override** on a rule to
+its default app. Uncheck **Ignore the "Open with" choice** on a rule to
 leave that key alone.
 
 The **History** page lists every operation and, under **Saved originals**,
@@ -179,16 +179,15 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `regsnap` | Generic snapshot, restore, delete-tree and `.reg` export. Every module that writes to the registry builds on it |
 | `associations` | File-association engine on an injectable `AssocTarget`, split into `target`, `validate`, `store`, `apply`, `rollback`, `status` and `tests` |
 | `tweaks` | Explorer & Taskbar tweaks engine (catalog, status, apply, restore) on an injectable `TweakTarget` |
-| `persist` | JSON stores: a missing file is empty, a corrupt file is an error, saves are atomic |
+| `persist` | JSON stores: a missing file is empty, a corrupt or unreadable file is a `LoadError` (a code the UI translates), saves are atomic |
 | `history` | Operation log (`history.jsonl`): append one line per operation, read the most recent |
-| `models` | Config and backup data types, plus the default rules |
+| `models` | Config and backup data types, `ThemeMode`, plus the default rules |
 | `gallery` | Shareable icon library (folder plus in-memory `.pak`), background thumbnail decoding, and the pack builder |
 | `tasks` | Background jobs with progress reporting and panic capture |
 | `detector` | VS Code, WSL and user-hive detection |
 | `clock` | Local timestamps |
-| `theme` | Fluent-style dark and light theme (old screens; being replaced by `ui::kit`) |
 | `i18n` | Translations: `.resx` catalogs in `i18n/`, the `Tr` handle, and engine message codes turned into text |
-| `ui` | egui interface, one file per page (`home`, `settings`, `history_panel`, `associations_tab`, `tweaks_tab`, `gallery_tab`), `originals` (History's saved originals), `icon_grid` (the shared icon grid), `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation), `autosave`, `confirm`, `rule_status` and `jobs` |
+| `ui` | egui interface, one file per page (`home`, `associations_tab`, `tweaks_tab` for both tweak pages, `gallery_tab` for Icons, `history_panel`, `settings`), `originals` (History's saved originals), `icon_grid` (the shared icon grid) and `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation and action bars), `autosave`, `confirm`, `rule_status`, `jobs`, and `kit/`, the design kit that holds the theme and every control |
 | `main.rs` | Window setup only |
 
 Apply, rollback and pack building run on a background thread, a progress bar
@@ -202,7 +201,7 @@ page. Changes there, and to the rules, are saved automatically about a
 second after the last edit and always before the window closes; if a save
 fails, a banner with a **Retry** button appears.
 
-**Ctrl+F** focuses the search box of the current tab, and **Esc** cancels a
+**Ctrl+F** focuses the search box of the current page, and **Esc** cancels a
 confirmation dialog. No keyboard shortcut changes the registry: those actions
 always take a click and, when they are destructive, a confirmation. A
 disabled button explains on hover why it is disabled.
@@ -212,9 +211,13 @@ disabled button explains on hover why it is disabled.
 1. Put the engine in its own library module, on top of `regsnap`, with an
    injectable target like `AssocTarget` so it can be tested in the HKCU
    sandbox.
-2. Add a variant to `ui::ActiveTab` (title and navigation entry) and a
-   `show_*_tab` method in a new `src/ui/<module>_tab.rs` file.
+2. Add a variant to `ui::ActiveTab` and a page in a new
+   `src/ui/<module>_tab.rs` file, built from `ui::kit` components. Add its
+   navigation entry and Home tile, and its texts in every `.resx` file.
 3. Run long operations through `ui::jobs`.
+
+[CONTRIBUTING.md](CONTRIBUTING.md#adding-a-tweak-or-a-module) has the
+full steps.
 
 ## Releasing
 

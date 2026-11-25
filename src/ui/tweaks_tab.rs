@@ -50,7 +50,8 @@ impl WinTuneApp {
             }
             Err(e) => {
                 self.tweak_store = TweakBackupStore::default();
-                self.notify(ToastKind::Error, e.clone());
+                let text = messages::load_error(self.tr, &e);
+                self.notify(ToastKind::Error, text);
                 self.tweak_store_error = Some(e);
             }
         }
@@ -163,10 +164,11 @@ impl WinTuneApp {
 
     /// History / status name of the module a tweaks tab belongs to.
     pub(super) fn tweaks_module_of(tab: ActiveTab) -> &'static str {
-        match tab {
-            ActiveTab::StartPrivacy => ActiveTab::StartPrivacy.title(),
-            _ => ActiveTab::Tweaks.title(),
-        }
+        let tab = match tab {
+            ActiveTab::StartPrivacy => ActiveTab::StartPrivacy,
+            _ => ActiveTab::Tweaks,
+        };
+        tab.history_module().expect("a tweaks tab is a module")
     }
 
     /// History / status name of a tweak restore: the open tweaks tab's, or,
@@ -224,7 +226,8 @@ impl WinTuneApp {
             return;
         }
         if let Some(err) = &self.tweak_store_error {
-            let msg = self.tr.t_args("tweaks.blocked", &[err]);
+            let detail = messages::load_error(self.tr, err);
+            let msg = self.tr.t_args("tweaks.blocked", &[&detail]);
             self.notify(ToastKind::Error, msg);
             return;
         }
@@ -263,7 +266,11 @@ impl WinTuneApp {
                 }
             },
         );
-        self.job = Some(RunningJob::Tweaks(job, module));
+        self.job = Some(RunningJob::Tweaks {
+            job,
+            module,
+            restore: false,
+        });
     }
 
     /// Asks before putting tweaks back to their state before WinTune.
@@ -297,7 +304,8 @@ impl WinTuneApp {
             return;
         }
         if let Some(err) = &self.tweak_store_error {
-            let msg = self.tr.t_args("tweaks.blocked", &[err]);
+            let detail = messages::load_error(self.tr, err);
+            let msg = self.tr.t_args("tweaks.blocked", &[&detail]);
             self.notify(ToastKind::Error, msg);
             return;
         }
@@ -328,7 +336,11 @@ impl WinTuneApp {
                 }
             },
         );
-        self.job = Some(RunningJob::Tweaks(job, module));
+        self.job = Some(RunningJob::Tweaks {
+            job,
+            module,
+            restore: true,
+        });
     }
 
     pub(super) fn finish_tweaks_job(&mut self, outcome: TweakOutcome) {
@@ -360,7 +372,8 @@ impl WinTuneApp {
             self.tweaks_header(ui);
             self.tweaks_search(ui);
             if let Some(e) = &self.tweak_store_error {
-                let text = self.tr.t_args("tweaks.store_unreadable", &[e]);
+                let detail = messages::load_error(self.tr, e);
+                let text = self.tr.t_args("tweaks.store_unreadable", &[&detail]);
                 kit::banner(ui, kit::BannerKind::Error, &text, None);
                 ui.add_space(space::S);
             }
@@ -584,7 +597,7 @@ mod tests {
     use super::super::test_support::*;
     use super::super::ActiveTab;
     use super::*;
-    use egui::{Pos2, RawInput, Vec2, ViewportId};
+    use egui::{Pos2, Vec2};
 
     const ADVANCED: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced";
     /// Size of a toggle and of a `…` button: no other widget of the tweak
@@ -617,74 +630,14 @@ mod tests {
         app
     }
 
-    /// A page tall enough to show every row without scrolling.
-    fn tall_input(events: Vec<egui::Event>) -> RawInput {
-        RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(
-                Pos2::ZERO,
-                egui::vec2(1180.0, 1600.0),
-            )),
-            events,
-            ..Default::default()
-        }
-    }
-
-    /// Hover, press, release at `pos`.
-    fn click_at(app: &mut WinTuneApp, ctx: &egui::Context, pos: Pos2) {
-        let button = |pressed| egui::Event::PointerButton {
-            pos,
-            button: egui::PointerButton::Primary,
-            pressed,
-            modifiers: Default::default(),
-        };
-        frame(app, ctx, tall_input(vec![egui::Event::PointerMoved(pos)]));
-        frame(app, ctx, tall_input(vec![button(true)]));
-        frame(app, ctx, tall_input(vec![button(false)]));
-    }
-
     fn click_text(app: &mut WinTuneApp, ctx: &egui::Context, text: &str) {
         let out = frame(app, ctx, tall_input(vec![]));
         let pos = text_center(&out, text).unwrap_or_else(|| panic!("no text {text:?} drawn"));
         click_at(app, ctx, pos);
     }
 
-    /// Center of the widget of exactly `size` on the row of tweak `id`, or
-    /// `None` when the row has none. The row's description sits on the row's
-    /// middle line, as do its trailing widgets; rows are at least 48 px apart.
-    fn row_widget(app: &mut WinTuneApp, ctx: &egui::Context, id: &str, size: Vec2) -> Option<Pos2> {
-        let out = frame(app, ctx, tall_input(vec![]));
-        let description = messages::tweak_description(app.tr, id);
-        let at = text_center(&out, &description).unwrap_or_else(|| panic!("row {id} not drawn"));
-        ctx.viewport_for(ViewportId::ROOT, |v| {
-            v.prev_pass
-                .widgets
-                .layers()
-                .flat_map(|(_, widgets)| widgets.iter())
-                .filter(|w| w.rect.size() == size && w.rect.center().x > at.x)
-                .map(|w| w.rect.center())
-                .filter(|c| (c.y - at.y).abs() < 24.0)
-                .min_by(|a, b| (a.y - at.y).abs().total_cmp(&(b.y - at.y).abs()))
-        })
-    }
-
     fn toggle_of(app: &mut WinTuneApp, ctx: &egui::Context, id: &str) -> Pos2 {
         row_widget(app, ctx, id, TOGGLE).unwrap_or_else(|| panic!("no toggle on row {id}"))
-    }
-
-    /// Moves onto `pos` and rests there long enough for a tooltip, and
-    /// returns the texts drawn.
-    fn hover_texts(app: &mut WinTuneApp, ctx: &egui::Context, pos: Pos2) -> Vec<String> {
-        let away = pos - egui::vec2(0.0, 200.0);
-        let mut texts = Vec::new();
-        for i in 0..20 {
-            let at = if i < 2 { away } else { pos };
-            let mut input = tall_input(vec![egui::Event::PointerMoved(at)]);
-            if i >= 6 {
-                input.time = Some(ctx.input(|i| i.time) + 0.1);
-            }
-            texts = drawn_texts(&frame(app, ctx, input));
-        }
-        texts
     }
 
     fn explorer_groups() -> &'static [TweakGroup] {
@@ -860,7 +813,10 @@ mod tests {
         let error = app.tweak_store_error.clone().expect("store error");
 
         let texts = drawn_texts(&frame(&mut app, &ctx, tall_input(vec![])));
-        let banner = app.tr.t_args("tweaks.store_unreadable", &[&error]);
+        let banner = app.tr.t_args(
+            "tweaks.store_unreadable",
+            &[&messages::load_error(app.tr, &error)],
+        );
         assert!(texts.contains(&banner), "no banner: {texts:?}");
 
         let toggle = toggle_of(&mut app, &ctx, "show_extensions");
@@ -883,8 +839,11 @@ mod tests {
             Some(app.tr.t("tweaks.win11_only"))
         );
 
-        app.tweak_store_error = Some("bad json".into());
-        let blocked = app.tr.t_args("tweaks.blocked", &[&"bad json"]);
+        let error = corrupt("tweaks-backups.json", "bad json");
+        app.tweak_store_error = Some(error.clone());
+        let blocked = app
+            .tr
+            .t_args("tweaks.blocked", &[&messages::load_error(app.tr, &error)]);
         assert_eq!(app.tweak_toggle_disabled_reason(left), Some(blocked));
 
         let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
@@ -1014,7 +973,8 @@ mod tests {
         assert!(!app.is_busy(), "a job started");
         assert_eq!(
             app.last_notice(),
-            app.tr.t_args("tweaks.blocked", &[&error])
+            app.tr
+                .t_args("tweaks.blocked", &[&messages::load_error(app.tr, &error)])
         );
         assert_eq!(dword(&fx, ADVANCED, "Hidden"), applied);
     }
@@ -1030,21 +990,7 @@ mod tests {
         let description = messages::tweak_description(app.tr, "taskbar_left");
         let row = text_center(&out, &description).expect("row drawn");
         let label = app.tr.t("tweaks.pill.win11");
-        fn centers(shape: &egui::epaint::Shape, text: &str, found: &mut Vec<Pos2>) {
-            match shape {
-                egui::epaint::Shape::Text(t) if t.galley.text() == text => {
-                    found.push(t.pos + t.galley.rect.center().to_vec2());
-                }
-                egui::epaint::Shape::Vec(shapes) => {
-                    shapes.iter().for_each(|s| centers(s, text, found));
-                }
-                _ => {}
-            }
-        }
-        let mut pills = Vec::new();
-        out.shapes
-            .iter()
-            .for_each(|c| centers(&c.shape, &label, &mut pills));
+        let pills = text_centers(&out, &label);
         let pill = pills
             .into_iter()
             .filter(|p| (p.y - row.y).abs() < 24.0)
@@ -1276,29 +1222,15 @@ mod tests {
         assert!(!app.is_busy());
         assert_eq!(
             app.last_notice(),
-            app.tr
-                .t_args("tweaks.blocked", &[&app.tweak_store_error.clone().unwrap()])
+            app.tr.t_args(
+                "tweaks.blocked",
+                &[&messages::load_error(
+                    app.tr,
+                    &app.tweak_store_error.clone().unwrap()
+                )]
+            )
         );
         assert_eq!(dword(&fx, ADVANCED, "HideFileExt"), None);
-    }
-
-    /// Holds a pak build until the returned sender is used (or dropped).
-    fn hold_job(app: &mut WinTuneApp) -> std::sync::mpsc::Sender<()> {
-        use super::super::jobs::RunningJob;
-        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
-        app.job = Some(RunningJob::BuildPak(BackgroundJob::spawn(
-            "Building gallery.pak",
-            || {},
-            move |_| {
-                let _ = release_rx.recv();
-                Ok(crate::gallery::PakStats {
-                    count: 0,
-                    bytes_before: 0,
-                    bytes_after: 0,
-                })
-            },
-        )));
-        release_tx
     }
 
     /// One pending change on each tab; the app ends on Explorer & Taskbar.
@@ -1414,7 +1346,9 @@ mod tests {
 
         let out = frame(&mut app, &ctx, tall_input(vec![]));
         let apply = text_center(&out, &app.tr.t("tweaks.apply")).expect("Apply drawn");
-        let blocked = app.tr.t_args("tweaks.blocked", &[&error]);
+        let blocked = app
+            .tr
+            .t_args("tweaks.blocked", &[&messages::load_error(app.tr, &error)]);
         assert!(
             hover_texts(&mut app, &ctx, apply).contains(&blocked),
             "no blocked reason over Apply"

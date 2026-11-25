@@ -3,8 +3,8 @@
 
 use super::{kit, WinTuneApp, APP_VERSION};
 use crate::detector::resolve_vscode_executable;
-use crate::i18n::Tr;
-use crate::theme::ThemeMode;
+use crate::i18n::{messages, Tr};
+use crate::models::ThemeMode;
 use eframe::egui;
 
 const REPO_URL: &str = "https://github.com/Sp2ctrale/WinTune";
@@ -53,7 +53,10 @@ impl WinTuneApp {
                     kit::banner(
                         ui,
                         kit::BannerKind::Error,
-                        &tr.t_args("settings.config_unreadable", &[e]),
+                        &tr.t_args(
+                            "settings.config_unreadable",
+                            &[&messages::load_error(tr, e)],
+                        ),
                         None,
                     );
                     ui.add_space(kit::space::L);
@@ -352,7 +355,7 @@ mod tests {
         let fx = TempIcons::new(&[]);
         let ctx = egui::Context::default();
         let mut app = fx.app(&ctx);
-        app.config_error = Some("bad json".into());
+        app.config_error = Some(corrupt("config.json", "bad json"));
         app.open_page(ActiveTab::Settings);
         let out = frame(&mut app, &ctx, RawInput::default());
         assert!(
@@ -380,7 +383,7 @@ mod tests {
 
     #[test]
     fn settings_renders_in_every_theme_and_language() {
-        use crate::theme::ThemeMode;
+        use crate::models::ThemeMode;
         let fx = TempIcons::new(&["foo"]);
         let ctx = egui::Context::default();
         for (code, _) in Tr::languages() {

@@ -126,6 +126,14 @@ pub(super) fn frame(app: &mut WinTuneApp, ctx: &egui::Context, input: RawInput) 
     ctx.run(input, |ctx| app.ui(ctx))
 }
 
+/// A store error, for tests that only need one to be set.
+pub(super) fn corrupt(file: &str, detail: &str) -> crate::persist::LoadError {
+    crate::persist::LoadError::Corrupt {
+        path: file.into(),
+        detail: detail.into(),
+    }
+}
+
 pub(super) fn close_request() -> RawInput {
     let mut input = RawInput::default();
     input
@@ -222,4 +230,136 @@ pub(super) fn text_center(out: &FullOutput, text: &str) -> Option<egui::Pos2> {
         }
     }
     out.shapes.iter().find_map(|c| find(&c.shape, text))
+}
+
+/// Centers of every text drawn as exactly `text`, in paint order.
+pub(super) fn text_centers(out: &FullOutput, text: &str) -> Vec<egui::Pos2> {
+    fn walk(shape: &egui::epaint::Shape, text: &str, found: &mut Vec<egui::Pos2>) {
+        match shape {
+            egui::epaint::Shape::Text(t) if t.galley.text() == text => {
+                found.push(t.pos + t.galley.rect.center().to_vec2());
+            }
+            egui::epaint::Shape::Vec(shapes) => shapes.iter().for_each(|s| walk(s, text, found)),
+            _ => {}
+        }
+    }
+    let mut found = Vec::new();
+    out.shapes
+        .iter()
+        .for_each(|c| walk(&c.shape, text, &mut found));
+    found
+}
+
+/// A window tall enough to show a whole page without scrolling.
+pub(super) fn tall_input(events: Vec<egui::Event>) -> RawInput {
+    RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1180.0, 4000.0),
+        )),
+        events,
+        ..Default::default()
+    }
+}
+
+/// How a test builds each frame's input from its events.
+pub(super) type InputFn = fn(Vec<egui::Event>) -> RawInput;
+
+/// Hover, press, release at `pos`, in a tall window.
+pub(super) fn click_at(app: &mut WinTuneApp, ctx: &egui::Context, pos: egui::Pos2) {
+    click_at_with(app, ctx, tall_input, pos);
+}
+
+/// Hover, press, release at `pos`, with the frames' input built by `input`.
+pub(super) fn click_at_with(
+    app: &mut WinTuneApp,
+    ctx: &egui::Context,
+    input: InputFn,
+    pos: egui::Pos2,
+) {
+    let button = |pressed| egui::Event::PointerButton {
+        pos,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: Default::default(),
+    };
+    frame(app, ctx, input(vec![egui::Event::PointerMoved(pos)]));
+    frame(app, ctx, input(vec![button(true)]));
+    frame(app, ctx, input(vec![button(false)]));
+}
+
+/// Moves onto `pos` and rests there long enough for a tooltip, and returns
+/// the texts drawn, in a tall window. egui shows no tooltip while the last
+/// click is more recent than the last move, and it only sees a move over a
+/// few closely spaced frames.
+pub(super) fn hover_texts(
+    app: &mut WinTuneApp,
+    ctx: &egui::Context,
+    pos: egui::Pos2,
+) -> Vec<String> {
+    hover_texts_with(app, ctx, tall_input, pos)
+}
+
+/// `hover_texts` with the frames' input built by `input`.
+pub(super) fn hover_texts_with(
+    app: &mut WinTuneApp,
+    ctx: &egui::Context,
+    input: InputFn,
+    pos: egui::Pos2,
+) -> Vec<String> {
+    let away = pos - egui::vec2(0.0, 200.0);
+    let mut texts = Vec::new();
+    for i in 0..20 {
+        let at = if i < 2 { away } else { pos };
+        let mut raw = input(vec![egui::Event::PointerMoved(at)]);
+        if i >= 6 {
+            raw.time = Some(ctx.input(|i| i.time) + 0.1);
+        }
+        texts = drawn_texts(&frame(app, ctx, raw));
+    }
+    texts
+}
+
+/// Center of the widget of exactly `size` on the row of tweak `id`, or
+/// `None` when the row has none. The row's description sits on the row's
+/// middle line, as do its trailing widgets; rows are at least 48 px apart.
+pub(super) fn row_widget(
+    app: &mut WinTuneApp,
+    ctx: &egui::Context,
+    id: &str,
+    size: egui::Vec2,
+) -> Option<egui::Pos2> {
+    let out = frame(app, ctx, tall_input(vec![]));
+    let description = crate::i18n::messages::tweak_description(app.tr, id);
+    let at = text_center(&out, &description).unwrap_or_else(|| panic!("row {id} not drawn"));
+    ctx.viewport_for(ViewportId::ROOT, |v| {
+        v.prev_pass
+            .widgets
+            .layers()
+            .flat_map(|(_, widgets)| widgets.iter())
+            .filter(|w| w.rect.size() == size && w.rect.center().x > at.x)
+            .map(|w| w.rect.center())
+            .filter(|c| (c.y - at.y).abs() < 24.0)
+            .min_by(|a, b| (a.y - at.y).abs().total_cmp(&(b.y - at.y).abs()))
+    })
+}
+
+/// Holds a pak build until the returned sender is used (or dropped).
+pub(super) fn hold_job(app: &mut WinTuneApp) -> std::sync::mpsc::Sender<()> {
+    use super::jobs::RunningJob;
+    use crate::tasks::BackgroundJob;
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    app.job = Some(RunningJob::BuildPak(BackgroundJob::spawn(
+        "Building gallery.pak",
+        || {},
+        move |_| {
+            let _ = release_rx.recv();
+            Ok(crate::gallery::PakStats {
+                count: 0,
+                bytes_before: 0,
+                bytes_after: 0,
+            })
+        },
+    )));
+    release_tx
 }

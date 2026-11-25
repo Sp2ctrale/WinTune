@@ -36,9 +36,10 @@ use crate::detector::{
     has_wsl_distribution, is_windows_11_build, resolve_vscode_executable, windows_build,
 };
 use crate::gallery::{IconCategory, IconGallery};
-use crate::i18n::Tr;
+use crate::i18n::{messages, Tr};
+use crate::models::ThemeMode;
 use crate::models::{app_data_dir, AppConfig, BackupStore};
-use crate::theme::ThemeMode;
+use crate::persist::LoadError;
 use crate::tweaks::{
     current_user_label, default_tweak_store_path, notify_explorer_settings, TweakBackupStore,
     TweakStatus, TweakTarget,
@@ -126,17 +127,18 @@ impl ActiveTab {
         ActiveTab::Settings,
     ];
 
-    /// English module label written to history.jsonl (not a navigation
-    /// label: those are translated). Empty for pages that are not modules.
-    pub(crate) fn title(self) -> &'static str {
+    /// English module label stored in history.jsonl (not a navigation
+    /// label: those are translated). `None` for pages with no module.
+    pub(crate) fn history_module(self) -> Option<&'static str> {
         match self {
-            ActiveTab::Associations => "File Associations",
-            ActiveTab::Tweaks => "Explorer & Taskbar",
-            ActiveTab::StartPrivacy => "Start & Privacy",
-            ActiveTab::Gallery => "Icon Gallery",
-            ActiveTab::Home | ActiveTab::History | ActiveTab::Settings | ActiveTab::ContextMenu => {
-                ""
-            }
+            ActiveTab::Associations => Some("File associations"),
+            ActiveTab::Tweaks => Some("Explorer & Taskbar"),
+            ActiveTab::StartPrivacy => Some("Start & Privacy"),
+            ActiveTab::Home
+            | ActiveTab::Gallery
+            | ActiveTab::History
+            | ActiveTab::Settings
+            | ActiveTab::ContextMenu => None,
         }
     }
 
@@ -175,7 +177,7 @@ pub struct WinTuneApp {
     toasts: kit::Toasts,
     /// Set when backups.json cannot be read: registry changes are blocked so
     /// the next save cannot overwrite the recorded snapshots.
-    backup_store_error: Option<String>,
+    backup_store_error: Option<LoadError>,
     wsl_detected: bool,
     new_ext_input: String,
     logo_texture: Option<TextureHandle>,
@@ -192,7 +194,7 @@ pub struct WinTuneApp {
     /// Original states of the tweaks (tweaks-backups.json).
     tweak_store: TweakBackupStore,
     /// Set when tweaks-backups.json cannot be read: tweak changes are blocked.
-    tweak_store_error: Option<String>,
+    tweak_store_error: Option<LoadError>,
     tweak_statuses: HashMap<&'static str, TweakStatus>,
     /// Checkbox states the user changed and has not applied yet.
     tweak_desired: HashMap<&'static str, bool>,
@@ -204,6 +206,10 @@ pub struct WinTuneApp {
     ui_theme: ThemeMode,
     /// Ctrl+F was pressed: focus the current tab's search box.
     focus_search: bool,
+    /// Set when the page changes: the next frame closes open popups (egui
+    /// keeps one popup id, so a `…` menu would reappear when its page comes
+    /// back). `open_page` has no `ctx`, so the frame does it.
+    close_popups_next_frame: bool,
     /// Recent operations, newest first.
     history: Vec<crate::history::HistoryEntry>,
     /// Module filter of the History page.
@@ -213,7 +219,7 @@ pub struct WinTuneApp {
     history_show_all: bool,
     /// Set when config.json exists but is unreadable: saving is refused so
     /// the user's rules are never replaced by the defaults.
-    config_error: Option<String>,
+    config_error: Option<LoadError>,
     /// Debounced writes of config.json.
     autosave: autosave::Autosave,
 }
@@ -231,11 +237,7 @@ impl WinTuneApp {
         shell::round_borderless_window(cc);
         let windir = std::env::var_os("WINDIR").unwrap_or_else(|| r"C:\Windows".into());
         kit::fonts::install(&cc.egui_ctx, &std::path::Path::new(&windir).join("Fonts"));
-        if let Some(e) = &config_error {
-            let text = app.tr.t_args("notice.config_unreadable", &[e]);
-            app.notify(kit::ToastKind::Error, text);
-        }
-        app.config_error = config_error;
+        app.adopt_config_error(config_error);
         app.reload_backup_store();
         app.reload_tweak_store();
         app.refresh_tweak_statuses();
@@ -290,6 +292,7 @@ impl WinTuneApp {
             tr,
             ui_theme,
             focus_search: false,
+            close_popups_next_frame: false,
             history: Vec::new(),
             history_filter: history_panel::HistoryFilter::All,
             history_show_all: false,
@@ -301,6 +304,9 @@ impl WinTuneApp {
     /// One frame of the whole UI.
     fn ui(&mut self, ctx: &egui::Context) {
         self.ui_theme = kit::resolved(self.config.theme, ctx);
+        if std::mem::take(&mut self.close_popups_next_frame) {
+            ctx.memory_mut(|m| m.close_popup());
+        }
         self.poll_job();
         self.handle_shortcuts(ctx);
         self.pump_status_refresh(ctx);
@@ -380,7 +386,8 @@ impl WinTuneApp {
             }
             Err(e) => {
                 self.backup_store = BackupStore::default();
-                self.notify(kit::ToastKind::Error, e.clone());
+                let text = messages::load_error(self.tr, &e);
+                self.notify(kit::ToastKind::Error, text);
                 self.backup_store_error = Some(e);
             }
         }
@@ -444,17 +451,29 @@ impl WinTuneApp {
     }
 
     /// The config, plus an error when the file exists but cannot be used.
-    fn load_or_init_config(path: &Path) -> (AppConfig, Option<String>) {
+    fn load_or_init_config(path: &Path) -> (AppConfig, Option<LoadError>) {
         match crate::persist::load_json::<AppConfig>(path) {
             Ok(config) => (config, None),
             Err(e) => (AppConfig::default(), Some(e)),
         }
     }
 
+    /// Startup: remembers why config.json could not be loaded (which blocks
+    /// every save of it) and says so in a toast.
+    fn adopt_config_error(&mut self, error: Option<LoadError>) {
+        if let Some(e) = &error {
+            let detail = messages::load_error(self.tr, e);
+            let text = self.tr.t_args("notice.config_unreadable", &[&detail]);
+            self.notify(kit::ToastKind::Error, text);
+        }
+        self.config_error = error;
+    }
+
     /// Saves config.json; refused while the file on disk is unreadable.
+    /// The error is English: it ends up in the report and the history.
     fn try_save_config(&self) -> Result<(), String> {
         if let Some(e) = &self.config_error {
-            return Err(e.clone());
+            return Err(e.to_string());
         }
         let path = &self.env.config_path;
         // The persist error already names the file: it is the raw detail
@@ -503,7 +522,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(c.language, "en");
-        assert_eq!(c.theme, crate::theme::ThemeMode::Dark);
+        assert_eq!(c.theme, crate::models::ThemeMode::Dark);
     }
 
     #[test]
@@ -532,7 +551,7 @@ mod tests {
 
     #[test]
     fn the_app_renders_a_frame_in_every_theme_mode() {
-        use crate::theme::ThemeMode;
+        use crate::models::ThemeMode;
         let icons = TempIcons::new(&["foo"]);
         let ctx = egui::Context::default();
         for mode in [ThemeMode::Light, ThemeMode::Dark, ThemeMode::System] {

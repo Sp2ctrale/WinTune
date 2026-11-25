@@ -33,8 +33,13 @@ pub(super) enum RunningJob {
     Apply(BackgroundJob<StoreOutcome>),
     Rollback(BackgroundJob<StoreOutcome>),
     BuildPak(BackgroundJob<Result<PakStats, String>>),
-    /// The job and the module (tab) it belongs to.
-    Tweaks(BackgroundJob<TweakOutcome>, &'static str),
+    /// A tweaks job: apply or restore, and the module (tab) it belongs to.
+    Tweaks {
+        job: BackgroundJob<TweakOutcome>,
+        module: &'static str,
+        /// True for "restore originals", false for "apply changes".
+        restore: bool,
+    },
 }
 
 impl RunningJob {
@@ -43,7 +48,7 @@ impl RunningJob {
             RunningJob::Apply(j) => j.title(),
             RunningJob::Rollback(j) => j.title(),
             RunningJob::BuildPak(j) => j.title(),
-            RunningJob::Tweaks(j, _) => j.title(),
+            RunningJob::Tweaks { job, .. } => job.title(),
         }
     }
 
@@ -53,8 +58,8 @@ impl RunningJob {
             RunningJob::Apply(_) => "job.apply_rules",
             RunningJob::Rollback(_) => "job.rollback",
             RunningJob::BuildPak(_) => "job.build_pak",
-            RunningJob::Tweaks(j, _) if j.title().starts_with("Restoring") => "job.restore_tweaks",
-            RunningJob::Tweaks(..) => "job.apply_tweaks",
+            RunningJob::Tweaks { restore: true, .. } => "job.restore_tweaks",
+            RunningJob::Tweaks { .. } => "job.apply_tweaks",
         }
     }
 
@@ -75,10 +80,12 @@ impl RunningJob {
         match self {
             RunningJob::Apply(_) => Some(("File associations", "Apply")),
             RunningJob::Rollback(_) => Some(("File associations", "Rollback")),
-            RunningJob::Tweaks(j, module) if j.title().starts_with("Restoring") => {
-                Some((module, "Restore"))
-            }
-            RunningJob::Tweaks(_, module) => Some((module, "Apply")),
+            RunningJob::Tweaks {
+                module,
+                restore: true,
+                ..
+            } => Some((module, "Restore")),
+            RunningJob::Tweaks { module, .. } => Some((module, "Apply")),
             RunningJob::BuildPak(_) => None,
         }
     }
@@ -88,7 +95,7 @@ impl RunningJob {
             RunningJob::Apply(j) => j.progress(),
             RunningJob::Rollback(j) => j.progress(),
             RunningJob::BuildPak(j) => j.progress(),
-            RunningJob::Tweaks(j, _) => j.progress(),
+            RunningJob::Tweaks { job, .. } => job.progress(),
         }
     }
 }
@@ -122,7 +129,8 @@ impl WinTuneApp {
             return;
         }
         if let Some(err) = &self.backup_store_error {
-            let text = self.tr.t_args("notice.registry_blocked", &[err]);
+            let detail = crate::i18n::messages::load_error(self.tr, err);
+            let text = self.tr.t_args("notice.registry_blocked", &[&detail]);
             self.notify(ToastKind::Error, text);
             return;
         }
@@ -176,7 +184,8 @@ impl WinTuneApp {
             return;
         }
         if let Some(err) = &self.backup_store_error {
-            let text = self.tr.t_args("notice.rollback_blocked", &[err]);
+            let detail = crate::i18n::messages::load_error(self.tr, err);
+            let text = self.tr.t_args("notice.rollback_blocked", &[&detail]);
             self.notify(ToastKind::Error, text);
             return;
         }
@@ -231,7 +240,7 @@ impl WinTuneApp {
                 JobPoll::Finished(result) => Finished::BuildPak(result),
                 JobPoll::Panicked(msg) => Finished::Panicked(msg),
             },
-            RunningJob::Tweaks(j, _) => match j.poll() {
+            RunningJob::Tweaks { job, .. } => match job.poll() {
                 JobPoll::Running => return,
                 JobPoll::Finished(outcome) => Finished::Tweaks(outcome),
                 JobPoll::Panicked(msg) => Finished::Panicked(msg),

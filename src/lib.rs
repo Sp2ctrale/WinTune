@@ -11,6 +11,5 @@ pub mod models;
 pub mod persist;
 pub mod regsnap;
 pub mod tasks;
-pub mod theme;
 pub mod tweaks;
 pub mod ui;

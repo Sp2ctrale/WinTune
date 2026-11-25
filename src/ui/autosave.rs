@@ -264,7 +264,7 @@ mod tests {
         let path = fx.dir.join("config.json");
         fs::write(&path, "{ broken").unwrap();
         let mut app = fx.app(&ctx);
-        app.config_error = Some("unreadable".into());
+        app.config_error = Some(corrupt("config.json", "unreadable"));
 
         app.set_language("fr");
         for t in 0..=5 {

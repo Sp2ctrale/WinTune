@@ -6,7 +6,7 @@
 //! change: no style is rebuilt.
 
 use super::tokens::{palette, radius, space, text_size, Palette};
-use crate::theme::ThemeMode;
+use crate::models::ThemeMode;
 use egui::{
     Color32, Context, FontId, Margin, Rounding, Stroke, Style, TextStyle, Theme, ThemePreference,
     Visuals,

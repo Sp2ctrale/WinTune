@@ -1,8 +1,18 @@
 pub use crate::regsnap::RegistryKeySnapshot;
-use crate::theme::ThemeMode;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+
+/// Which look the app uses. Serialized in `config.json`: keep the variant
+/// names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ThemeMode {
+    /// Follow the Windows light / dark setting.
+    #[default]
+    System,
+    Dark,
+    Light,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum DoubleClickMode {
@@ -45,7 +55,7 @@ pub struct UserOverrideSnapshot {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtensionBackup {
     pub extension: String,
-    /// ProgID written by the most recent apply (shown in the Rollback tab).
+    /// ProgID written by the most recent apply (shown in History).
     #[serde(default)]
     pub custom_prog_id: String,
     #[serde(default)]

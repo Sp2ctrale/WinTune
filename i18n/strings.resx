@@ -349,6 +349,12 @@
   <data name="notice.config_unreadable" xml:space="preserve">
     <value>Using the default rules: {0} Saving is disabled until it is fixed.</value>
   </data>
+  <data name="load.corrupt" xml:space="preserve">
+    <value>{0} can't be read ({1}). It was left untouched: fix or move it before applying changes.</value>
+  </data>
+  <data name="load.unreadable" xml:space="preserve">
+    <value>Can't read {0}: {1}</value>
+  </data>
   <data name="nav.home" xml:space="preserve">
     <value>Home</value>
   </data>
@@ -455,7 +461,7 @@
     <value>WinTune no longer knows this setting, so it can't restore it.</value>
   </data>
   <data name="originals.unreadable" xml:space="preserve">
-    <value>{0} can't be read, so its restores are blocked: {1}</value>
+    <value>Restores are blocked: {0}</value>
   </data>
   <data name="originals.empty" xml:space="preserve">
     <value>Nothing saved yet. WinTune saves the original the first time it changes something.</value>
@@ -599,7 +605,7 @@
     <value>Project on GitHub</value>
   </data>
   <data name="settings.config_unreadable" xml:space="preserve">
-    <value>config.json can't be read: {0} Changes aren't saved until it is fixed.</value>
+    <value>{0} Changes aren't saved until it is fixed.</value>
   </data>
   <data name="window.minimize" xml:space="preserve">
     <value>Minimize</value>
@@ -760,7 +766,7 @@
   </data>
   <data name="assoc.ignore_open_with_hint" xml:space="preserve">
     <value>Removes the per-user “Open with… / Always” choice so WinTune's association is used.
-Rollback puts the choice back, but Windows protects it with a hash: it may still report “An app default was reset” and fall back to its default app.</value>
+Restoring the original puts the choice back, but Windows protects it with a hash: it may still report “An app default was reset” and fall back to its default app.</value>
   </data>
   <data name="assoc.advanced" xml:space="preserve">
     <value>Advanced options</value>
@@ -874,7 +880,7 @@ Rollback puts the choice back, but Windows protects it with a hash: it may still
     <value>No setting matches "{0}".</value>
   </data>
   <data name="tweaks.store_unreadable" xml:space="preserve">
-    <value>The saved originals can't be read, so changes are blocked: {0}</value>
+    <value>Changes are blocked: {0}</value>
   </data>
   <data name="tweaks.restore_original" xml:space="preserve">
     <value>Restore original</value>

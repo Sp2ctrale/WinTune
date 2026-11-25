@@ -13,7 +13,7 @@ pub fn default_reg_backup_dir() -> PathBuf {
 
 /// A missing file is an empty store. A corrupt one is an error: returning an
 /// empty store would make the next save erase every recorded snapshot.
-pub fn load_backup_store(path: &Path) -> Result<BackupStore, String> {
+pub fn load_backup_store(path: &Path) -> Result<BackupStore, crate::persist::LoadError> {
     crate::persist::load_json(path)
 }
 

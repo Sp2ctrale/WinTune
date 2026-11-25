@@ -2,6 +2,8 @@
 //! box, and the reason shown on a disabled button.
 
 use super::{ActiveTab, WinTuneApp};
+use crate::i18n::messages;
+use crate::persist::LoadError;
 use eframe::egui;
 
 /// Stable ids of the search boxes, so focus can be requested on them.
@@ -55,7 +57,8 @@ impl WinTuneApp {
             return Some(self.tr.t_args("notice.still_running", &[&name]));
         }
         if let Some(e) = &self.backup_store_error {
-            return Some(self.tr.t_args("notice.registry_blocked", &[e]));
+            let detail = messages::load_error(self.tr, e);
+            return Some(self.tr.t_args("notice.registry_blocked", &[&detail]));
         }
         if self.config.code_executable.trim().is_empty() {
             return Some(self.tr.t("assoc.blocked.editor"));
@@ -66,25 +69,30 @@ impl WinTuneApp {
     /// Why the action bar's Apply (this rule only) is disabled. Same reasons
     /// as `apply_disabled_reason`, except that other rules' problems do not
     /// count: only this rule's own.
-    pub(super) fn apply_rule_disabled_reason(&self, index: usize) -> Option<String> {
+    pub(super) fn apply_rule_disabled_reason(
+        &self,
+        index: usize,
+        problems: &[(usize, crate::associations::RuleProblem)],
+    ) -> Option<String> {
         if let Some(reason) = self.assoc_apply_blocked() {
             return Some(reason);
         }
-        crate::associations::find_rule_problems(&self.config.extensions)
+        problems
             .iter()
             .any(|(i, _)| *i == index)
             .then(|| self.tr.t("assoc.blocked.this_rule"))
     }
 
     /// Common reasons first: a running job, then an unreadable store.
-    pub(super) fn busy_or_blocked(&self, store_error: &Option<String>) -> Option<String> {
+    pub(super) fn busy_or_blocked(&self, store_error: &Option<LoadError>) -> Option<String> {
         if let Some(job) = &self.job {
             let name = self.tr.t(job.name_key());
             return Some(self.tr.t_args("notice.still_running", &[&name]));
         }
-        store_error
-            .as_ref()
-            .map(|e| self.tr.t_args("tweaks.blocked", &[e]))
+        store_error.as_ref().map(|e| {
+            let detail = messages::load_error(self.tr, e);
+            self.tr.t_args("tweaks.blocked", &[&detail])
+        })
     }
 
     pub(super) fn tweak_apply_disabled_reason(&self) -> Option<String> {
@@ -179,11 +187,14 @@ mod tests {
         assert!(reason.contains("more than once"), "{reason}");
         assert!(reason.starts_with(&app.tr.t_args("assoc.blocked.problems", &[&""])));
 
-        app.backup_store_error = Some("backups.json is unreadable".into());
+        let error = corrupt("backups.json", "bad json");
+        app.backup_store_error = Some(error.clone());
         assert_eq!(
             app.apply_disabled_reason().unwrap(),
-            app.tr
-                .t_args("notice.registry_blocked", &[&"backups.json is unreadable"])
+            app.tr.t_args(
+                "notice.registry_blocked",
+                &[&messages::load_error(app.tr, &error)]
+            )
         );
     }
 
@@ -200,11 +211,12 @@ mod tests {
         );
         app.tweak_desired.insert("show_extensions", true);
         assert_eq!(app.tweak_apply_disabled_reason(), None);
-        app.tweak_store_error = Some("tweaks-backups.json is unreadable".into());
+        let error = corrupt("tweaks-backups.json", "bad json");
+        app.tweak_store_error = Some(error.clone());
         assert_eq!(
             app.tweak_apply_disabled_reason().unwrap(),
             app.tr
-                .t_args("tweaks.blocked", &[&"tweaks-backups.json is unreadable"])
+                .t_args("tweaks.blocked", &[&messages::load_error(app.tr, &error)])
         );
 
         app.tweak_store_error = None;

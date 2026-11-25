@@ -367,38 +367,9 @@ mod tests {
         assert!(texts.contains(&"Done: a".to_string()), "{texts:?}");
     }
 
-    /// A page tall enough to show every row without scrolling.
-    fn tall(events: Vec<egui::Event>) -> RawInput {
-        RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(
-                egui::Pos2::ZERO,
-                egui::vec2(1180.0, 4000.0),
-            )),
-            events,
-            ..Default::default()
-        }
-    }
-
-    fn click_at(app: &mut WinTuneApp, ctx: &egui::Context, pos: egui::Pos2) {
-        use egui::{Event, Modifiers, PointerButton};
-        let button = |pressed| Event::PointerButton {
-            pos,
-            button: PointerButton::Primary,
-            pressed,
-            modifiers: Modifiers::default(),
-        };
-        for events in [
-            vec![Event::PointerMoved(pos)],
-            vec![button(true)],
-            vec![button(false)],
-        ] {
-            frame(app, ctx, tall(events));
-        }
-    }
-
     fn settled(app: &mut WinTuneApp, ctx: &egui::Context) -> egui::FullOutput {
-        frame(app, ctx, tall(vec![]));
-        frame(app, ctx, tall(vec![]))
+        frame(app, ctx, tall_input(vec![]));
+        frame(app, ctx, tall_input(vec![]))
     }
 
     fn operation_titles(out: &egui::FullOutput) -> usize {

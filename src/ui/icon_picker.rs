@@ -38,11 +38,17 @@ impl WinTuneApp {
         let Some(rule) = self.config.extensions.get(index) else {
             return;
         };
+        // An empty or unknown icon name opens on All.
+        let category = if self.gallery.names().contains(&rule.icon_name) {
+            IconCategory::of(&rule.icon_name)
+        } else {
+            IconCategory::All
+        };
         self.icon_picker = Some(IconPicker {
             extension: rule.extension.clone(),
             index,
             query: String::new(),
-            category: IconCategory::FilesOnly,
+            category,
             focus_search: true,
         });
     }
@@ -291,13 +297,39 @@ mod tests {
             super::super::associations_tab::RuleState::Invalid
         );
         let reason = app.tr.t("assoc.blocked.this_rule");
-        assert_eq!(app.apply_rule_disabled_reason(1), Some(reason));
+        assert_eq!(
+            app.apply_rule_disabled_reason(1, &app.rule_problems()),
+            Some(reason)
+        );
 
         app.open_icon_picker(1);
         click_bar(&mut app, &ctx);
 
         assert_eq!(app.config.extensions[1].icon_name, "bar");
         assert_eq!(app.config.extensions[0].icon_name, "foo");
+    }
+
+    #[test]
+    fn the_picker_opens_on_the_current_icons_category() {
+        let fx = TempIcons::new(&["foo", "folder-src", "rust_light", "rust.clone", "rust"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".foo"]);
+        for (icon, category) in [
+            ("folder-src", IconCategory::FoldersOnly),
+            ("rust_light", IconCategory::LightVariants),
+            ("rust.clone", IconCategory::Clones),
+            ("rust", IconCategory::FilesOnly),
+            ("", IconCategory::All),
+            ("not-in-pack", IconCategory::All),
+        ] {
+            app.config.extensions[0].icon_name = icon.into();
+            app.open_icon_picker(0);
+            assert_eq!(
+                app.icon_picker.as_ref().unwrap().category,
+                category,
+                "icon {icon:?}"
+            );
+        }
     }
 
     fn press_ctrl_f(app: &mut WinTuneApp, ctx: &egui::Context) {

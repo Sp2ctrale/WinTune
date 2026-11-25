@@ -16,6 +16,17 @@ const DEFAULT_LAUNCH_COMMAND: &str = "\"%1\" %*";
 /// Command of a newly enabled "Run as administrator" entry.
 const DEFAULT_ADMIN_COMMAND: &str = "cmd.exe /C \"%1\" %*";
 
+/// Id of a row of the rule list (tests focus it).
+fn rule_row_id(index: usize) -> egui::Id {
+    egui::Id::new(("assoc_rule_row", index))
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How often `rule_problems` ran on this thread (tests reset and read it).
+    static RULE_PROBLEM_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Id of the extension box in Advanced options (tests aim at it).
 fn advanced_extension_id() -> egui::Id {
     egui::Id::new("assoc_advanced_extension")
@@ -23,6 +34,10 @@ fn advanced_extension_id() -> egui::Id {
 
 /// Short name of the code editor, from its path: `VS Code` for Code.exe,
 /// else the file stem; `""` when no editor is set.
+///
+/// A UI copy of the engine's naming in `src/detector.rs` (the engine's
+/// version returns the English "Editor" for an empty path, which the UI must
+/// not show). Keep the two in sync when an editor is added or renamed.
 fn editor_display_name(path: &str) -> String {
     let stem = std::path::Path::new(path.trim())
         .file_stem()
@@ -105,30 +120,39 @@ pub(super) fn rule_state_pill(state: RuleState) -> Option<PillKind> {
 
 impl WinTuneApp {
     pub(super) fn show_associations_tab(&mut self, ctx: &egui::Context) {
+        // Validated once; the bar, the list and the detail all read this.
+        let problems = self.rule_problems();
         // Before the panels, so the bar spans the whole page width.
-        self.rule_action_bar(ctx);
-        self.show_extension_list(ctx);
-        self.show_extension_details(ctx);
+        self.rule_action_bar(ctx, &problems);
+        self.show_extension_list(ctx, &problems);
+        self.show_extension_details(ctx, &problems);
+    }
+
+    /// The problems of all rules, with their indexes. The one place the page
+    /// validates; called once per frame.
+    pub(super) fn rule_problems(&self) -> Vec<(usize, RuleProblem)> {
+        #[cfg(test)]
+        RULE_PROBLEM_CALLS.with(|c| c.set(c.get() + 1));
+        find_rule_problems(&self.config.extensions)
     }
 
     /// `Invalid` wins; otherwise the status read for the rule's extension.
-    /// The list uses `rule_state_in` to validate once per frame; the rule
-    /// detail uses this one.
+    #[cfg(test)]
     pub(super) fn rule_state(&self, index: usize) -> RuleState {
-        self.rule_state_in(index, &find_rule_problems(&self.config.extensions))
+        self.rule_state_in(index, &self.rule_problems())
     }
 
     /// Why the rule at `index` cannot be applied, translated.
-    fn rule_problem_text(&self, index: usize) -> Option<String> {
-        find_rule_problems(&self.config.extensions)
-            .into_iter()
+    fn rule_problem_text(&self, index: usize, problems: &[(usize, RuleProblem)]) -> Option<String> {
+        problems
+            .iter()
             .find(|(i, _)| *i == index)
-            .map(|(_, problem)| messages::rule_problem(self.tr, &problem))
+            .map(|(_, problem)| messages::rule_problem(self.tr, problem))
     }
 
     /// The page's bar: the selected rule's state and its actions, or the
     /// job's progress while one runs.
-    fn rule_action_bar(&mut self, ctx: &egui::Context) {
+    fn rule_action_bar(&mut self, ctx: &egui::Context, problems: &[(usize, RuleProblem)]) {
         let tr = self.tr;
         let index = self.selected_ext_index;
         let Some(rule) = self.config.extensions.get(index) else {
@@ -137,17 +161,17 @@ impl WinTuneApp {
         };
         let extension = rule.extension.clone();
         let has_backup = self.backup_store.find(&extension).is_some();
-        let status = match self.rule_state(index) {
+        let status = match self.rule_state_in(index, problems) {
             RuleState::Checking => tr.t("assoc.bar.checking"),
             RuleState::NotApplied => tr.t("assoc.bar.not_applied"),
             RuleState::UpToDate => tr.t("assoc.bar.up_to_date"),
             RuleState::Changed => tr.t("assoc.bar.changed"),
             RuleState::Invalid => tr.t_args(
                 "assoc.bar.invalid",
-                &[&self.rule_problem_text(index).unwrap_or_default()],
+                &[&self.rule_problem_text(index, problems).unwrap_or_default()],
             ),
         };
-        let disabled_reason = self.apply_rule_disabled_reason(index);
+        let disabled_reason = self.apply_rule_disabled_reason(index, problems);
         let p = kit::current_palette(ctx);
         let apply_label = tr.t("assoc.apply");
         let restore_label = tr.t("assoc.restore");
@@ -309,7 +333,7 @@ impl WinTuneApp {
         self.new_ext_input.clear();
     }
 
-    fn show_extension_list(&mut self, ctx: &egui::Context) {
+    fn show_extension_list(&mut self, ctx: &egui::Context, problems: &[(usize, RuleProblem)]) {
         let p = kit::current_palette(ctx);
         let tr = self.tr;
 
@@ -350,14 +374,19 @@ impl WinTuneApp {
                         );
                         self.focus_search_if_requested(&search);
                         ui.add_space(space::S);
-                        self.rule_rows(ctx, ui);
+                        self.rule_rows(ctx, ui, problems);
                     });
                 });
             });
     }
 
     /// The scrolling list of rules, or what to show instead of it.
-    fn rule_rows(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+    fn rule_rows(
+        &mut self,
+        ctx: &egui::Context,
+        ui: &mut egui::Ui,
+        problems: &[(usize, RuleProblem)],
+    ) {
         let p = kit::current_palette(ctx);
         let tr = self.tr;
         let query = self.ext_search_query.trim().to_lowercase();
@@ -389,30 +418,39 @@ impl WinTuneApp {
             return;
         }
 
-        let problems = find_rule_problems(&self.config.extensions);
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
                 for idx in visible {
-                    let state = self.rule_state_in(idx, &problems);
+                    let state = self.rule_state_in(idx, problems);
+                    let state_label = self.rule_state_label(state);
                     let hover = match state {
-                        RuleState::Invalid => problems
-                            .iter()
-                            .find(|(i, _)| *i == idx)
-                            .map(|(_, problem)| messages::rule_problem(tr, problem))
-                            .unwrap_or_default(),
-                        _ => self.rule_state_label(state),
+                        RuleState::Invalid => {
+                            self.rule_problem_text(idx, problems).unwrap_or_default()
+                        }
+                        _ => state_label.clone(),
                     };
                     let tex = self
                         .gallery
                         .texture(ctx, &self.config.extensions[idx].icon_name);
                     let selected = self.selected_ext_index == idx;
 
-                    let (rect, row) = ui.allocate_exact_size(
+                    let (rect, _) = ui.allocate_exact_size(
                         egui::vec2(ui.available_width(), ROW_HEIGHT),
-                        egui::Sense::click(),
+                        egui::Sense::hover(),
                     );
+                    let row = ui.interact(rect, rule_row_id(idx), egui::Sense::click());
+                    let row_label =
+                        format!("{}, {}", self.config.extensions[idx].extension, state_label);
+                    row.widget_info(|| {
+                        egui::WidgetInfo::selected(
+                            egui::WidgetType::SelectableLabel,
+                            true,
+                            selected,
+                            row_label.clone(),
+                        )
+                    });
                     let fill = if selected {
                         Some(p.accent.gamma_multiply(0.14))
                     } else if row.hovered() {
@@ -425,6 +463,14 @@ impl WinTuneApp {
                             rect,
                             egui::Rounding::same(kit::radius::CONTROL),
                             fill,
+                        );
+                    }
+                    // The ring goes over the fill, so it stays visible.
+                    if row.has_focus() {
+                        ui.painter().rect_stroke(
+                            rect.shrink(1.0),
+                            egui::Rounding::same(kit::radius::CONTROL),
+                            egui::Stroke::new(2.0_f32, p.accent),
                         );
                     }
                     let mut content = ui.new_child(
@@ -462,7 +508,7 @@ impl WinTuneApp {
             });
     }
 
-    fn show_extension_details(&mut self, ctx: &egui::Context) {
+    fn show_extension_details(&mut self, ctx: &egui::Context, problems: &[(usize, RuleProblem)]) {
         Self::page_panel(ctx, |ui| {
             self.associations_header(ui);
             let index = self.selected_ext_index;
@@ -474,7 +520,7 @@ impl WinTuneApp {
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    self.rule_header(ui, index);
+                    self.rule_header(ui, index, problems);
                     ui.add_space(space::L);
                     self.rule_sections(ui, index);
                 });
@@ -482,12 +528,12 @@ impl WinTuneApp {
     }
 
     /// Icon, title, what a double-click does, the state and its details.
-    fn rule_header(&self, ui: &mut egui::Ui, index: usize) {
+    fn rule_header(&self, ui: &mut egui::Ui, index: usize, problems: &[(usize, RuleProblem)]) {
         let tr = self.tr;
         let ctx = ui.ctx().clone();
         let p = kit::current_palette(&ctx);
         let rule = &self.config.extensions[index];
-        let state = self.rule_state(index);
+        let state = self.rule_state_in(index, problems);
         let editor = editor_display_name(&self.config.code_executable);
         let behavior = match rule.mode {
             DoubleClickMode::OpenInEditor if editor.is_empty() => tr.t("assoc.no_editor"),
@@ -536,7 +582,7 @@ impl WinTuneApp {
                         }
                     }
                     RuleState::Invalid => {
-                        if let Some(problem) = self.rule_problem_text(index) {
+                        if let Some(problem) = self.rule_problem_text(index, problems) {
                             ui.label(
                                 RichText::new(problem)
                                     .size(text_size::SECONDARY)
@@ -927,6 +973,127 @@ mod tests {
         assert!(drawn_texts(&out).contains(&app.tr.t("assoc.empty")));
     }
 
+    fn has_two_px_ring(out: &egui::FullOutput) -> bool {
+        ring_and_fill_order(out).0.is_some()
+    }
+
+    /// Paint-order indexes of the first 2 px stroke rect (the focus ring)
+    /// and of the first row-height filled, stroke-less rect (the row fill).
+    fn ring_and_fill_order(out: &egui::FullOutput) -> (Option<usize>, Option<usize>) {
+        fn flat<'a>(shape: &'a egui::Shape, acc: &mut Vec<&'a egui::Shape>) {
+            match shape {
+                egui::Shape::Vec(v) => v.iter().for_each(|s| flat(s, acc)),
+                s => acc.push(s),
+            }
+        }
+        let mut all = Vec::new();
+        out.shapes.iter().for_each(|c| flat(&c.shape, &mut all));
+        let ring = all
+            .iter()
+            .position(|s| matches!(s, egui::Shape::Rect(r) if r.stroke.width == 2.0));
+        let fill = all.iter().position(|s| {
+            matches!(s, egui::Shape::Rect(r)
+                if r.stroke.width == 0.0
+                    && r.fill != egui::Color32::TRANSPARENT
+                    && r.rect.height() >= ROW_HEIGHT - 0.5
+                    && r.rect.height() <= ROW_HEIGHT + 0.5)
+        });
+        (ring, fill)
+    }
+
+    #[test]
+    fn a_focused_rule_row_paints_a_focus_ring() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".a", ".b"]);
+        app.active_tab = ActiveTab::Associations;
+
+        frame(&mut app, &ctx, page_input(vec![]));
+        let before = frame(&mut app, &ctx, page_input(vec![]));
+        assert!(!has_two_px_ring(&before), "no ring while unfocused");
+
+        ctx.memory_mut(|m| m.request_focus(rule_row_id(1)));
+        frame(&mut app, &ctx, page_input(vec![]));
+        let after = frame(&mut app, &ctx, page_input(vec![]));
+        assert!(has_two_px_ring(&after), "a focused row paints a ring");
+
+        // The selected row has a fill; the ring must be painted over it.
+        app.selected_ext_index = 1;
+        frame(&mut app, &ctx, page_input(vec![]));
+        let selected = frame(&mut app, &ctx, page_input(vec![]));
+        let (ring, fill) = ring_and_fill_order(&selected);
+        let (ring, fill) = (ring.expect("ring"), fill.expect("row fill"));
+        assert!(
+            ring > fill,
+            "ring ({ring}) must paint after the fill ({fill})"
+        );
+    }
+
+    #[test]
+    fn a_rule_row_is_labeled_with_its_extension_and_state() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app_with_rules(&ctx, &[".a", ".x y"]);
+        app.active_tab = ActiveTab::Associations;
+        app.rule_statuses.clear();
+        app.rule_statuses
+            .insert(".a".into(), crate::associations::RuleStatus::Applied);
+
+        frame(&mut app, &ctx, page_input(vec![]));
+        let up_to_date = app.tr.t("assoc.state.up_to_date");
+        let invalid = app.tr.t("assoc.state.invalid");
+        // Clicking a row reports its widget info.
+        let mut info = |ext: &str| {
+            let out = frame(&mut app, &ctx, page_input(vec![]));
+            let pos = text_center(&out, ext).expect("row drawn");
+            let button = |pressed| egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: Default::default(),
+            };
+            frame(
+                &mut app,
+                &ctx,
+                page_input(vec![egui::Event::PointerMoved(pos)]),
+            );
+            frame(&mut app, &ctx, page_input(vec![button(true)]));
+            let out = frame(&mut app, &ctx, page_input(vec![button(false)]));
+            out.platform_output
+                .events
+                .iter()
+                .find_map(|e| match e {
+                    egui::output::OutputEvent::Clicked(i) => i.label.clone(),
+                    _ => None,
+                })
+                .unwrap_or_default()
+        };
+        assert_eq!(info(".a"), format!(".a, {up_to_date}"));
+        assert_eq!(info(".x y"), format!(".x y, {invalid}"));
+    }
+
+    #[test]
+    fn rule_problems_are_computed_once_per_frame() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let rules: Vec<String> = (0..30).map(|i| format!(".r{i}")).collect();
+        let refs: Vec<&str> = rules.iter().map(String::as_str).collect();
+        let mut app = fx.app_with_rules(&ctx, &refs);
+        app.config.extensions[3].extension = ".x y".into();
+        app.active_tab = ActiveTab::Associations;
+        app.selected_ext_index = 3;
+        frame(&mut app, &ctx, page_input(vec![]));
+
+        RULE_PROBLEM_CALLS.with(|c| c.set(0));
+        frame(&mut app, &ctx, page_input(vec![]));
+
+        assert_eq!(
+            RULE_PROBLEM_CALLS.with(|c| c.get()),
+            1,
+            "the page validated the rules more than once in one frame"
+        );
+    }
+
     #[test]
     fn a_search_without_match_says_so() {
         let fx = TempIcons::new(&["foo"]);
@@ -940,89 +1107,12 @@ mod tests {
         assert!(drawn_texts(&out).contains(&app.tr.t_args("assoc.no_match", &[&"zzz"])));
     }
 
-    fn press_at(
-        app: &mut WinTuneApp,
-        ctx: &egui::Context,
-        input: fn(Vec<egui::Event>) -> egui::RawInput,
-        pos: egui::Pos2,
-    ) {
-        let button = |pressed| egui::Event::PointerButton {
-            pos,
-            button: egui::PointerButton::Primary,
-            pressed,
-            modifiers: Default::default(),
-        };
-        frame(app, ctx, input(vec![egui::Event::PointerMoved(pos)]));
-        frame(app, ctx, input(vec![button(true)]));
-        frame(app, ctx, input(vec![button(false)]));
-    }
-
-    /// A page tall enough to show the whole detail without scrolling.
-    fn tall_input(events: Vec<egui::Event>) -> egui::RawInput {
-        egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(
-                egui::Pos2::ZERO,
-                egui::vec2(1180.0, 1600.0),
-            )),
-            events,
-            ..Default::default()
-        }
-    }
-
-    /// Holds a pak build until the returned sender is used (or dropped).
-    fn hold_job(app: &mut WinTuneApp) -> std::sync::mpsc::Sender<()> {
-        use super::super::jobs::RunningJob;
-        use crate::gallery::PakStats;
-        use crate::tasks::BackgroundJob;
-        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
-        app.job = Some(RunningJob::BuildPak(BackgroundJob::spawn(
-            "Building gallery.pak",
-            || {},
-            move |_| {
-                let _ = release_rx.recv();
-                Ok(PakStats {
-                    count: 0,
-                    bytes_before: 0,
-                    bytes_after: 0,
-                })
-            },
-        )));
-        release_tx
-    }
-
     /// Draws one frame `seconds` after the previous one, so the next click
     /// is not taken as the second half of a double-click.
     fn wait(app: &mut WinTuneApp, ctx: &egui::Context, seconds: f64) {
         let mut input = page_input(vec![]);
         input.time = Some(ctx.input(|i| i.time) + seconds);
         frame(app, ctx, input);
-    }
-
-    /// Moves onto `pos` and rests there long enough for a tooltip, and
-    /// returns the texts drawn. egui shows no tooltip while the last click
-    /// is more recent than the last move, and it only sees a move over a
-    /// few closely spaced frames.
-    fn hover_texts(app: &mut WinTuneApp, ctx: &egui::Context, pos: egui::Pos2) -> Vec<String> {
-        hover_texts_with(app, ctx, pos, page_input)
-    }
-
-    fn hover_texts_with(
-        app: &mut WinTuneApp,
-        ctx: &egui::Context,
-        pos: egui::Pos2,
-        page_input: fn(Vec<egui::Event>) -> egui::RawInput,
-    ) -> Vec<String> {
-        let away = pos - egui::vec2(0.0, 200.0);
-        let mut texts = Vec::new();
-        for i in 0..20 {
-            let at = if i < 2 { away } else { pos };
-            let mut input = page_input(vec![egui::Event::PointerMoved(at)]);
-            if i >= 6 {
-                input.time = Some(ctx.input(|i| i.time) + 0.1);
-            }
-            texts = drawn_texts(&frame(app, ctx, input));
-        }
-        texts
     }
 
     #[test]
@@ -1051,7 +1141,10 @@ mod tests {
         app.selected_ext_index = 0;
         // Control: "Apply all enabled" is blocked by `.x y`.
         assert!(app.apply_disabled_reason().is_some());
-        assert_eq!(app.apply_rule_disabled_reason(0), None);
+        assert_eq!(
+            app.apply_rule_disabled_reason(0, &app.rule_problems()),
+            None
+        );
 
         let apply = app.tr.t("assoc.apply");
         click_text(&mut app, &ctx, &apply);
@@ -1063,11 +1156,14 @@ mod tests {
 
         app.selected_ext_index = 1;
         let reason = app.tr.t("assoc.blocked.this_rule");
-        assert_eq!(app.apply_rule_disabled_reason(1), Some(reason.clone()));
+        assert_eq!(
+            app.apply_rule_disabled_reason(1, &app.rule_problems()),
+            Some(reason.clone())
+        );
         let out = frame(&mut app, &ctx, page_input(vec![]));
         let at = text_center(&out, &apply).expect("Apply drawn");
         assert!(
-            hover_texts(&mut app, &ctx, at).contains(&reason),
+            hover_texts_with(&mut app, &ctx, page_input, at).contains(&reason),
             "the disabled Apply does not say why"
         );
         click_text(&mut app, &ctx, &apply);
@@ -1121,14 +1217,14 @@ mod tests {
         let out = frame(&mut app, &ctx, tall_input(vec![]));
         let advanced = app.tr.t("assoc.advanced");
         let at = text_center(&out, &advanced).expect("Advanced options drawn");
-        press_at(&mut app, &ctx, tall_input, at);
+        click_at_with(&mut app, &ctx, tall_input, at);
         wait(&mut app, &ctx, 1.0);
         frame(&mut app, &ctx, tall_input(vec![]));
         let rect = ctx
             .read_response(advanced_extension_id())
             .expect("extension box drawn")
             .rect;
-        press_at(&mut app, &ctx, tall_input, rect.center());
+        click_at_with(&mut app, &ctx, tall_input, rect.center());
         assert!(!app.status_refresh_needed, "focusing is not an edit");
 
         frame(
@@ -1209,7 +1305,7 @@ mod tests {
 
         let hint = app.tr.t("assoc.ignore_open_with_hint");
         assert!(
-            hover_texts_with(&mut app, &ctx, at, tall_input).contains(&hint),
+            hover_texts_with(&mut app, &ctx, tall_input, at).contains(&hint),
             "no hint over the row title"
         );
     }

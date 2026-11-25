@@ -8,6 +8,9 @@ use winreg::enums::*;
 use winreg::RegKey;
 
 use super::catalog::{catalog, catalog_clsid, CatalogItem, CatalogMechanism, Presence};
+use super::origin::{
+    clsid_server, command_program, is_braced_guid, resolve, resource_file, under_dir,
+};
 use super::{MenuTarget, Place, KEY_PREFIX};
 use crate::backups::{RegTarget, Slot, Snapshot, UserBackups};
 use crate::regsnap::RegistryKeySnapshot;
@@ -116,6 +119,14 @@ pub struct ExistingEntry {
     pub locked: Option<Locked>,
     /// WinTune holds an original state for one of the mechanism's slots.
     pub has_snapshot: bool,
+}
+
+impl ExistingEntry {
+    /// Whether Rename is offered for this row: third-party verbs only.
+    /// Windows entries are hidden, never renamed.
+    pub fn renamable(&self) -> bool {
+        self.catalog.is_none() && self.mechanism.renamable()
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -315,100 +326,14 @@ fn verb_label(
     }
 }
 
-// ---- Origin files ----------------------------------------------------------
-
-/// `%NAME%` replaced by the variable's value; unknown names stay as written.
-fn expand_env(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(start) = rest.find('%') {
-        out.push_str(&rest[..start]);
-        let after = &rest[start + 1..];
-        let Some(end) = after.find('%') else {
-            out.push_str(&rest[start..]);
-            return out;
-        };
-        let name = &after[..end];
-        match std::env::var(name) {
-            Ok(value) if !name.is_empty() => {
-                out.push_str(&value);
-                rest = &after[end + 1..];
-            }
-            // Keep the closing `%`: it may open the next variable.
-            _ => {
-                out.push('%');
-                out.push_str(name);
-                rest = &after[end..];
-            }
-        }
+/// Whether a row behind `file` is Windows' own and so never listed. Fails
+/// closed: an unknown file counts as Windows' unless WinTune holds a snapshot
+/// of the row (it changed it, so it must stay undoable).
+fn windows_owned(file: Option<&str>, has_snapshot: bool, opts: &ScanOptions) -> bool {
+    match file {
+        Some(file) => under_dir(file, &opts.windows_dir),
+        None => !has_snapshot,
     }
-    out.push_str(rest);
-    out
-}
-
-/// The program of a command line: the first quoted token, else the text up
-/// to the first `.exe`, else the first word; variables expanded.
-fn command_program(command: &str) -> Option<String> {
-    let command = command.trim();
-    let program = if let Some(rest) = command.strip_prefix('"') {
-        rest.split('"').next().unwrap_or_default()
-    } else if let Some(end) = command.to_ascii_lowercase().find(".exe") {
-        &command[..end + 4]
-    } else {
-        command.split_whitespace().next().unwrap_or_default()
-    };
-    let program = expand_env(program.trim());
-    (!program.is_empty()).then_some(program)
-}
-
-/// A bare file name (`rundll32.exe`) as Windows finds it: in `System32` or
-/// the Windows folder itself. Anything else is returned unchanged.
-fn locate(file: String, windows_dir: &Path) -> String {
-    if file.contains(['\\', '/']) {
-        return file;
-    }
-    let mut names = vec![file.clone()];
-    if Path::new(&file).extension().is_none() {
-        names.push(format!("{file}.exe"));
-    }
-    let dirs = [windows_dir.join("System32"), windows_dir.to_path_buf()];
-    dirs.iter()
-        .flat_map(|dir| names.iter().map(move |name| dir.join(name)))
-        .find(|candidate| candidate.is_file())
-        .map(|found| found.display().to_string())
-        .unwrap_or(file)
-}
-
-/// `file` is `dir` or inside it (case-insensitive, whole components only).
-fn under_dir(file: &str, dir: &Path) -> bool {
-    let norm = |s: &str| s.replace('/', "\\").trim_end_matches('\\').to_lowercase();
-    let file = norm(file);
-    let dir = norm(&dir.to_string_lossy());
-    !dir.is_empty()
-        && file
-            .strip_prefix(&dir)
-            .is_some_and(|rest| rest.is_empty() || rest.starts_with('\\'))
-}
-
-fn is_braced_guid(text: &str) -> bool {
-    let bytes = text.as_bytes();
-    bytes.len() == 38
-        && bytes[0] == b'{'
-        && bytes[37] == b'}'
-        && bytes[1..37].iter().enumerate().all(|(i, b)| match i {
-            8 | 13 | 18 | 23 => *b == b'-',
-            _ => b.is_ascii_hexdigit(),
-        })
-}
-
-/// The DLL behind a CLSID (`InprocServer32`, user then machine), expanded.
-fn clsid_server(target: &MenuTarget, clsid: &str) -> Option<String> {
-    let key = Merged::open(
-        target,
-        &format!(r"Software\Classes\CLSID\{clsid}\InprocServer32"),
-    );
-    let server = expand_env(key.text("")?.trim().trim_matches('"'));
-    (!server.is_empty()).then_some(server)
 }
 
 /// What a row shows as its origin: the product name, else the file name.
@@ -489,6 +414,8 @@ fn settle_clsid(
 struct VerbRead {
     label: String,
     original_label: String,
+    /// Absolute path of the program or DLL behind the verb; `None` when
+    /// nothing names one or a bare name cannot be found.
     file: Option<String>,
     /// The HKCU copy has `ProgrammaticAccessOnly`: how WinTune hides a verb.
     hidden_in_user: bool,
@@ -533,18 +460,23 @@ fn read_verb(
         opts.indirect,
     );
 
-    let delegate = || {
-        command
-            .text("DelegateExecute")
+    // The first thing that names a file decides: the command's program, the
+    // COM server that runs the verb, else the DLL its name or icon comes from.
+    let server = |value: Option<String>| {
+        value
             .map(|c| c.trim().to_string())
             .filter(|c| is_braced_guid(c))
             .and_then(|clsid| clsid_server(target, &clsid))
     };
+    let indirect_name = key.text("MUIVerb").filter(|t| t.trim().starts_with('@'));
     let file = command
         .text("")
         .and_then(|c| command_program(&c))
-        .or_else(delegate)
-        .map(|f| locate(f, &opts.windows_dir));
+        .or_else(|| server(command.text("DelegateExecute")))
+        .or_else(|| server(key.text("ExplorerCommandHandler")))
+        .or_else(|| indirect_name.and_then(|t| resource_file(&t)))
+        .or_else(|| key.text("Icon").and_then(|t| resource_file(&t)))
+        .and_then(|f| resolve(target, &f, &opts.windows_dir));
 
     let user_has = |name| key.user.as_ref().is_some_and(|k| has_value(k, name));
     let hidden_in_user = user_has(PROGRAMMATIC_ACCESS_ONLY);
@@ -598,14 +530,10 @@ fn scan_verbs(target: &MenuTarget, store: &UserBackups, opts: &ScanOptions) -> V
                 verb,
             };
             let read = read_verb(target, store, opts, &v);
-            if read
-                .file
-                .as_deref()
-                .is_some_and(|f| under_dir(f, &opts.windows_dir))
+            let snapshot = store.has_backup(opts.user, &v.user_key());
+            if windows_owned(read.file.as_deref(), snapshot, opts)
+                || (read.hidden_by_installer && !snapshot)
             {
-                continue;
-            }
-            if read.hidden_by_installer && !store.has_backup(opts.user, &v.user_key()) {
                 continue;
             }
             let file = read.file.clone().unwrap_or_default();
@@ -684,11 +612,14 @@ fn scan_handlers(
 
     let mut rows = Vec::new();
     for (clsid, group) in groups {
-        let file = clsid_server(target, &clsid).map(|f| locate(f, &opts.windows_dir));
-        if file
-            .as_deref()
-            .is_some_and(|f| under_dir(f, &opts.windows_dir))
-        {
+        let file =
+            clsid_server(target, &clsid).and_then(|f| resolve(target, &f, &opts.windows_dir));
+        let mechanism = Mechanism::Clsid(clsid.clone());
+        let snapshot = mechanism
+            .slots()
+            .iter()
+            .any(|slot| store.has_backup(opts.user, &slot.id()));
+        if windows_owned(file.as_deref(), snapshot, opts) {
             continue;
         }
         let class_key = Merged::open(target, &format!(r"Software\Classes\CLSID\{clsid}"));
@@ -697,7 +628,6 @@ fn scan_handlers(
             .map(|t| t.trim().to_string())
             .filter(|t| !t.is_empty())
             .unwrap_or(group.name);
-        let mechanism = Mechanism::Clsid(clsid.clone());
         let mut entry = row(format!("clsid:{clsid}"), label, mechanism, group.places);
         entry.origin = file.as_deref().map(|f| origin_name(f, opts));
         let error = group.error.or(class_key.error);
@@ -921,11 +851,70 @@ mod tests {
         assert_eq!(row.state, ExistingState::Shown);
         assert_eq!(row.locked, None);
         assert!(row.mechanism.renamable());
+        assert!(row.renamable());
         assert_eq!(row.catalog, None);
         assert_eq!(row.original_label.as_deref(), Some("Open with App"));
         let key = r"Software\Classes\Directory\shell\AppVerb";
         assert_eq!(scan.by_slot(key).map(|e| &e.id), Some(&row.id));
         assert_eq!(scan.find(&row.id), Some(row));
+    }
+
+    #[test]
+    fn windows_verbs_without_a_known_program_are_not_listed() {
+        let env = Env::new();
+        // A bare name in no folder WinTune knows: Windows' own by default
+        // (stock powershell.exe lives in System32\WindowsPowerShell\v1.0).
+        let powershell = r#"powershell.exe -noexit -WorkingDirectory "%V""#;
+        env.verb(r"Directory\Background", "Powershell", "", powershell);
+        // A cascade with no command, named from a Windows DLL (stock EFS).
+        let efs = r"Software\Classes\Directory\shell\UpdateEncryptionSettings";
+        env.machine(efs, "MUIVerb", "@efscore.dll,-101");
+        env.machine(efs, "ExtendedSubCommandsKey", r"Directory\ContextMenus\EFS");
+        // Nothing at all says whose it is.
+        let mystery = r"Software\Classes\Drive\shell\Mystery";
+        env.machine(mystery, "MUIVerb", "Mystery");
+        let mut store = UserBackups::default();
+        assert!(env.scan(&store).others.is_empty(), "{:?}", env.scan(&store));
+
+        // Found in System32 it is Windows' own as well.
+        std::fs::write(env.windows().join(r"System32\efscore.dll"), b"x").unwrap();
+        assert!(env.scan(&store).others.is_empty());
+
+        // Once WinTune holds its snapshot, an unknown verb stays listed.
+        store.record_first("A", mystery, "x", key_snapshot(&[]));
+        let scan = env.scan(&store);
+        assert_eq!(scan.others.len(), 1, "{:?}", scan.others);
+        assert_eq!(scan.others[0].label, "Mystery");
+        assert_eq!(scan.others[0].origin, None);
+    }
+
+    #[test]
+    fn a_verb_without_a_command_file_takes_its_origin_from_its_handler_or_resources() {
+        let env = Env::new();
+        let guid = "{DDDDDDDD-2222-3333-4444-555555555555}";
+        let tool = r"Software\Classes\Directory\shell\Tool";
+        env.machine(tool, "MUIVerb", "Tool");
+        env.machine(tool, "ExplorerCommandHandler", guid);
+        let server = format!(r"Software\Classes\CLSID\{guid}\InprocServer32");
+        env.machine(&server, "", &env.file(r"Tool\tool.dll"));
+        let res = r"Software\Classes\Drive\shell\Res";
+        env.machine(res, "MUIVerb", &format!("@{},-5", env.file(r"Res\res.dll")));
+        let icon = r"Software\Classes\Folder\shell\Pic";
+        env.machine(icon, "MUIVerb", "Pic");
+        env.machine(icon, "Icon", &format!("\"{}\",0", env.file(r"Pic\pic.exe")));
+        // A bare name registered under App Paths.
+        env.verb("*", "Edit", "Edit", r#"editor.exe "%1""#);
+        let app_paths = r"Software\Microsoft\Windows\CurrentVersion\App Paths\editor.exe";
+        env.machine(app_paths, "", &env.file(r"Editor\editor.exe"));
+
+        let scan = env.scan(&UserBackups::default());
+        let origins: BTreeSet<&str> = scan
+            .others
+            .iter()
+            .filter_map(|e| e.origin.as_deref())
+            .collect();
+        assert_eq!(origins, BTreeSet::from(["tool", "res", "pic", "editor"]));
+        assert_eq!(scan.others.len(), 4, "{:?}", scan.others);
     }
 
     #[test]
@@ -1089,6 +1078,9 @@ mod tests {
         };
         assert_eq!(favorites.mechanism, Mechanism::Verbs(vec![fav]));
         assert_eq!(favorites.state, ExistingState::Shown);
+        // Windows entries are hidden, never renamed.
+        assert!(!favorites.renamable());
+        assert!(!all.find("win:previous_versions").unwrap().renamable());
 
         // A catalog verb is hidden by its HKCU copy, like any verb.
         let copy = r"Software\Classes\*\shell\pintohomefile";
@@ -1096,37 +1088,6 @@ mod tests {
         let all = super::scan(&env.target(), &UserBackups::default(), &opts);
         let favorites = all.find("win:add_to_favorites").unwrap();
         assert_eq!(favorites.state, ExistingState::HiddenElsewhere);
-    }
-
-    #[test]
-    fn command_lines_paths_and_guids_are_parsed() {
-        assert_eq!(strip_accelerators("&Open && go"), "Open & go");
-        let program = |c: &str| command_program(c);
-        assert_eq!(
-            program(r#""C:\A b\x.exe" "%1""#).as_deref(),
-            Some(r"C:\A b\x.exe")
-        );
-        assert_eq!(
-            program(r"C:\A b\X.EXE %1").as_deref(),
-            Some(r"C:\A b\X.EXE")
-        );
-        assert_eq!(program("rundll32 x.dll,Y").as_deref(), Some("rundll32"));
-        assert_eq!(program("  "), None);
-        let root = std::env::var("SystemRoot").expect("SystemRoot is always set");
-        assert_eq!(expand_env(r"%SystemRoot%\x"), format!(r"{root}\x"));
-        assert_eq!(
-            expand_env("%WINTUNE_NOT_A_VARIABLE%%SystemRoot%"),
-            format!("%WINTUNE_NOT_A_VARIABLE%{root}")
-        );
-        assert_eq!(expand_env("100% sure"), "100% sure");
-        let windows = Path::new(r"C:\Windows\");
-        assert!(under_dir(r"c:\windows\System32\x.dll", windows));
-        assert!(under_dir(r"C:/Windows/x.exe", windows));
-        assert!(!under_dir(r"C:\Windows2\x.exe", windows));
-        assert!(!under_dir(r"D:\C\Windows\x.exe", windows));
-        assert!(is_braced_guid("{596ab062-B4D2-4215-9F74-E9109B0A8153}"));
-        assert!(!is_braced_guid("596AB062-B4D2-4215-9F74-E9109B0A8153"));
-        assert!(!is_braced_guid("{596AB062-B4D2-4215-9F74-E9109B0A815G}"));
     }
 
     #[test]
@@ -1225,6 +1186,7 @@ mod tests {
             labels,
             BTreeSet::from(["Resolved Name", "@y.dll,-2", "A & B", "Bare"])
         );
+        assert_eq!(strip_accelerators("&Open && go"), "Open & go");
     }
 
     #[test]

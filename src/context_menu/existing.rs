@@ -92,22 +92,32 @@ impl Mechanism {
     }
 }
 
+/// What Apply does to a verb's name.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Rename {
+    /// Leave `MUIVerb` as it is (a plain hide or show).
+    Keep,
+    /// A new name (verbs only).
+    To(String),
+    /// Back to the name WinTune first found.
+    Original,
+}
+
 /// The state the user wants for an existing entry; Apply writes it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExistingChange {
     pub mechanism: Mechanism,
     pub hidden: bool,
-    /// `None` means the original name.
-    pub label: Option<String>,
+    pub rename: Rename,
 }
 
 impl ExistingChange {
     /// How a report names the change: the new label, else the first verb
     /// name, else the CLSID.
     pub fn report_name(&self) -> String {
-        match &self.label {
-            Some(label) => label.trim().to_string(),
-            None => self.mechanism.name(),
+        match &self.rename {
+            Rename::To(label) => label.trim().to_string(),
+            Rename::Keep | Rename::Original => self.mechanism.name(),
         }
     }
 }

@@ -19,7 +19,7 @@ pub use engine::{
 };
 pub use existing::{
     class_places, rename_problem, scan, ExistingChange, ExistingEntry, ExistingState, Locked,
-    Mechanism, RenameProblem, Scan, ScanOptions, VerbRef, BLOCKED_KEY, SCAN_CLASSES,
+    Mechanism, Rename, RenameProblem, Scan, ScanOptions, VerbRef, BLOCKED_KEY, SCAN_CLASSES,
 };
 pub use programs::{command_line, icon_value, Programs};
 

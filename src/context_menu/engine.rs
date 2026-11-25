@@ -14,7 +14,7 @@ use winreg::enums::*;
 use super::existing::PROGRAMMATIC_ACCESS_ONLY;
 use super::{
     command_line, entry_problems, icon_value, key_name, rename_problem, ExistingChange, Mechanism,
-    MenuEntry, Place, Programs, BLOCKED_KEY, KEY_PREFIX,
+    MenuEntry, Place, Programs, Rename, BLOCKED_KEY, KEY_PREFIX,
 };
 use crate::associations::OperationReport;
 use crate::backups::{self, RegTarget, Slot};
@@ -243,7 +243,7 @@ fn change_problems(target: &MenuTarget, changes: &[ExistingChange]) -> Vec<Strin
     let mut problems = Vec::new();
     for change in changes {
         let name = change.mechanism.name();
-        if let Some(label) = &change.label {
+        if let Rename::To(label) = &change.rename {
             if !change.mechanism.renamable() {
                 problems.push(format!("{name}: a shell extension cannot be renamed"));
             } else if let Some(problem) = rename_problem(label) {
@@ -332,14 +332,20 @@ fn write_verb_copy(
         Some(backups::Snapshot::Key(k)) => Some(k),
         _ => None,
     };
-    match &change.label {
-        Some(label) => key
+    match &change.rename {
+        Rename::Keep => {}
+        Rename::To(label) => key
             .set_value("MUIVerb", &verb_text(label))
             .map_err(|e| format!("Cannot write {rel}\\MUIVerb: {e}"))?,
-        None => {
+        Rename::Original => {
+            // Value names are case-insensitive: a vendor's `MuiVerb` counts.
             let verb = original_key
-                .and_then(|k| k.values.get("MUIVerb"))
-                .map(|(kind, data)| ValueSnapshot {
+                .and_then(|k| {
+                    k.values
+                        .iter()
+                        .find(|(name, _)| name.eq_ignore_ascii_case("MUIVerb"))
+                })
+                .map(|(_, (kind, data))| ValueSnapshot {
                     exists: true,
                     kind: *kind,
                     data: data.clone(),
@@ -363,6 +369,16 @@ fn write_verb_copy(
         }
     }
     Ok(())
+}
+
+/// The store's spelling of slot `id` for `user`, matched ignoring ASCII case
+/// like the registry paths it names; `None` when nothing is recorded.
+fn stored_id<'a>(store: &'a MenuBackupStore, user: &str, id: &str) -> Option<&'a String> {
+    let backups = store.backups_of(user)?;
+    match backups.get_key_value(id) {
+        Some((key, _)) => Some(key),
+        None => backups.keys().find(|k| k.eq_ignore_ascii_case(id)),
+    }
 }
 
 /// What Apply touches, and on whose behalf.
@@ -452,6 +468,8 @@ pub fn apply_menu(
         }
         match backups::take_snapshot(target, &slot) {
             Ok(current) => {
+                // A slot recorded under another spelling keeps that original.
+                let id = stored_id(store, &opts.user, &id).cloned().unwrap_or(id);
                 store.record_first(&opts.user, &id, &now, current.clone());
                 taken.insert(id.to_lowercase());
                 snapshots.push((slot, current));
@@ -518,9 +536,14 @@ pub fn apply_menu(
     }
     // Every change compares against the original, never the state the last
     // Apply left: that is what Reset name and a WinTune-made copy go back to.
-    let backups_of = store.backups_of(&opts.user);
-    let recorded =
-        |slot: &Slot| backups_of.and_then(|b| b.get(&slot.id()).map(|b| b.snapshot.clone()));
+    let store = &*store;
+    let recorded = |slot: &Slot| {
+        let id = stored_id(store, &opts.user, &slot.id())?;
+        store
+            .backups_of(&opts.user)?
+            .get(id)
+            .map(|b| b.snapshot.clone())
+    };
     for (index, change) in changes.iter().enumerate() {
         let name = change.report_name();
         if failed_changes.contains(&index) {
@@ -561,7 +584,7 @@ pub fn restore_keys(
 mod tests {
     use super::*;
     use crate::context_menu::{
-        rename_problem, Mechanism, ProgramChoice, RenameProblem, VerbRef, BLOCKED_KEY,
+        rename_problem, Mechanism, ProgramChoice, Rename, RenameProblem, VerbRef, BLOCKED_KEY,
     };
     use crate::regsnap::test_support::Sandbox;
     use winreg::RegKey;
@@ -728,16 +751,122 @@ mod tests {
         }])
     }
 
-    fn wanted_state(mechanism: Mechanism, hidden: bool, label: Option<&str>) -> ExistingChange {
+    fn wanted_state(mechanism: Mechanism, hidden: bool, rename: Rename) -> ExistingChange {
         ExistingChange {
             mechanism,
             hidden,
-            label: label.map(str::to_string),
+            rename,
         }
+    }
+
+    fn to(label: &str) -> Rename {
+        Rename::To(label.to_string())
     }
 
     fn clsid_slot() -> String {
         Mechanism::Clsid(CLSID.into()).slots()[0].id()
+    }
+
+    /// A per-user install whose vendor spelled the value `MuiVerb`.
+    fn vendor_copy(env: &Env) {
+        env.set_text(APP_VERB, "MuiVerb", "Vendor");
+        env.set_text(&format!(r"{APP_VERB}\command"), "", "app.exe");
+    }
+
+    #[test]
+    fn a_plain_hide_keeps_a_vendor_label() {
+        let env = Env::new();
+        let mut store = MenuBackupStore::default();
+        vendor_copy(&env);
+        let report = change(
+            &env,
+            "A",
+            &mut store,
+            &[wanted_state(app_verb(), true, Rename::Keep)],
+        );
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(
+            env.value_names(APP_VERB),
+            ["MuiVerb", "ProgrammaticAccessOnly"]
+        );
+        assert_eq!(env.text(APP_VERB, "MUIVerb").unwrap(), "Vendor");
+
+        let report = change(
+            &env,
+            "A",
+            &mut store,
+            &[wanted_state(app_verb(), false, Rename::Keep)],
+        );
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(env.value_names(APP_VERB), ["MuiVerb"]);
+        assert_eq!(env.text(APP_VERB, "MUIVerb").unwrap(), "Vendor");
+        assert_eq!(env.subkey_count(APP_VERB), 1);
+    }
+
+    #[test]
+    fn reset_finds_a_vendor_label_whatever_its_case() {
+        let env = Env::new();
+        let mut store = MenuBackupStore::default();
+        vendor_copy(&env);
+        change(
+            &env,
+            "A",
+            &mut store,
+            &[wanted_state(app_verb(), false, to("Mine"))],
+        );
+        assert_eq!(env.text(APP_VERB, "MUIVerb").unwrap(), "Mine");
+        let reset = wanted_state(app_verb(), false, Rename::Original);
+        let report = change(&env, "A", &mut store, &[reset]);
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(env.text(APP_VERB, "MUIVerb").unwrap(), "Vendor");
+        assert_eq!(env.value_names(APP_VERB).len(), 1);
+    }
+
+    #[test]
+    fn showing_a_verb_hidden_elsewhere_and_restoring_it() {
+        let env = Env::new();
+        let mut store = MenuBackupStore::default();
+        env.machine_verb();
+        env.set_text(APP_VERB, "ProgrammaticAccessOnly", "");
+        let show = wanted_state(app_verb(), false, Rename::Keep);
+        let report = change(&env, "A", &mut store, &[show]);
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        // The copy existed before WinTune: emptied, never deleted.
+        assert!(env.exists(APP_VERB));
+        assert!(env.value_names(APP_VERB).is_empty());
+
+        let ids = vec![APP_VERB.to_string()];
+        let report = restore_keys(&env.target(), &mut store, &ids, &env.opts("A"));
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(env.text(APP_VERB, "ProgrammaticAccessOnly").unwrap(), "");
+        assert!(store.backups_of("A").is_none());
+    }
+
+    #[test]
+    fn a_ref_spelled_in_another_case_finds_the_first_snapshot() {
+        let env = Env::new();
+        let mut store = MenuBackupStore::default();
+        env.machine_verb();
+        change(
+            &env,
+            "A",
+            &mut store,
+            &[wanted_state(app_verb(), true, Rename::Keep)],
+        );
+        let lower = Mechanism::Verbs(vec![VerbRef {
+            class: "directory".into(),
+            verb: "appverb".into(),
+        }]);
+        let report = change(
+            &env,
+            "A",
+            &mut store,
+            &[wanted_state(lower, false, Rename::Keep)],
+        );
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        // Still the snapshot from before the hide: the copy did not exist.
+        assert!(!env.exists(APP_VERB));
+        assert_eq!(store.backups_of("A").unwrap().len(), 1);
     }
 
     #[test]
@@ -749,7 +878,7 @@ mod tests {
             &env,
             "A",
             &mut store,
-            &[wanted_state(app_verb(), true, None)],
+            &[wanted_state(app_verb(), true, Rename::Keep)],
         );
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         assert_eq!(report.succeeded, ["AppVerb"]);
@@ -775,14 +904,14 @@ mod tests {
             &env,
             "A",
             &mut store,
-            &[wanted_state(app_verb(), true, None)],
+            &[wanted_state(app_verb(), true, Rename::Keep)],
         );
         assert!(env.exists(APP_VERB));
         let report = change(
             &env,
             "A",
             &mut store,
-            &[wanted_state(app_verb(), false, None)],
+            &[wanted_state(app_verb(), false, Rename::Keep)],
         );
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         assert!(!env.exists(APP_VERB));
@@ -796,7 +925,7 @@ mod tests {
         // A per-user install: the verb lives in HKCU only.
         env.set_text(APP_VERB, "MUIVerb", "Vendor");
         env.set_text(&format!(r"{APP_VERB}\command"), "", "app.exe");
-        let renamed = wanted_state(app_verb(), false, Some("Mine & Co"));
+        let renamed = wanted_state(app_verb(), false, to("Mine & Co"));
         let report = change(&env, "A", &mut store, &[renamed]);
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         assert_eq!(report.succeeded, ["Mine & Co"]);
@@ -806,7 +935,7 @@ mod tests {
             &env,
             "A",
             &mut store,
-            &[wanted_state(app_verb(), false, None)],
+            &[wanted_state(app_verb(), false, Rename::Original)],
         );
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         assert_eq!(env.text(APP_VERB, "MUIVerb").unwrap(), "Vendor");
@@ -819,7 +948,7 @@ mod tests {
         let env = Env::new();
         let mut store = MenuBackupStore::default();
         env.machine_verb();
-        let both = wanted_state(app_verb(), true, Some("Renamed"));
+        let both = wanted_state(app_verb(), true, to("Renamed"));
         let report = change(&env, "A", &mut store, &[both]);
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         assert_eq!(
@@ -840,7 +969,7 @@ mod tests {
     fn blocking_a_clsid_and_restoring_it() {
         let env = Env::new();
         let mut store = MenuBackupStore::default();
-        let hide = wanted_state(Mechanism::Clsid(CLSID.into()), true, None);
+        let hide = wanted_state(Mechanism::Clsid(CLSID.into()), true, Rename::Keep);
         let report = change(&env, "A", &mut store, std::slice::from_ref(&hide));
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         assert_eq!(report.succeeded, [CLSID]);
@@ -852,7 +981,7 @@ mod tests {
 
         // Hidden elsewhere: showing deletes the value, restore puts it back.
         env.set_text(BLOCKED_KEY, CLSID, "");
-        let show = wanted_state(Mechanism::Clsid(CLSID.into()), false, None);
+        let show = wanted_state(Mechanism::Clsid(CLSID.into()), false, Rename::Keep);
         let report = change(&env, "A", &mut store, &[show]);
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         assert!(env.text(BLOCKED_KEY, CLSID).is_none());
@@ -868,8 +997,8 @@ mod tests {
         env.machine_verb();
         env.set_machine(BLOCKED_KEY, CLSID, "");
         let changes = [
-            wanted_state(app_verb(), true, None),
-            wanted_state(Mechanism::Clsid(CLSID.into()), false, None),
+            wanted_state(app_verb(), true, Rename::Keep),
+            wanted_state(Mechanism::Clsid(CLSID.into()), false, Rename::Keep),
         ];
         let report = change(&env, "A", &mut store, &changes);
         assert_eq!(
@@ -892,8 +1021,8 @@ mod tests {
         let mut store = MenuBackupStore::default();
         env.machine_verb();
         let changes = [
-            wanted_state(Mechanism::Clsid(CLSID.into()), true, None),
-            wanted_state(app_verb(), true, Some("@x")),
+            wanted_state(Mechanism::Clsid(CLSID.into()), true, Rename::Keep),
+            wanted_state(app_verb(), true, to("@x")),
         ];
         let report = change(&env, "A", &mut store, &changes);
         assert!(!report.errors.is_empty());
@@ -903,7 +1032,7 @@ mod tests {
         assert!(!env.opts("A").store_path.exists());
 
         // A shell extension has no name of its own to change.
-        let renamed = wanted_state(Mechanism::Clsid(CLSID.into()), true, Some("Mine"));
+        let renamed = wanted_state(Mechanism::Clsid(CLSID.into()), true, to("Mine"));
         let report = change(&env, "A", &mut store, &[renamed]);
         assert!(!report.errors.is_empty());
         assert!(!env.exists(BLOCKED_KEY));
@@ -933,7 +1062,7 @@ mod tests {
             &env.target(),
             &mut store,
             &[entry],
-            &[wanted_state(app_verb(), true, None)],
+            &[wanted_state(app_verb(), true, Rename::Keep)],
             &Programs::default(),
             &env.opts("A"),
         );

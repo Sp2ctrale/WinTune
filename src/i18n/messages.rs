@@ -39,6 +39,8 @@ pub fn entry_problem(tr: Tr, p: &EntryProblem) -> String {
         EntryProblem::LabelTooLong => tr.t("menu.problem.label_too_long"),
         EntryProblem::NoPlace => tr.t("menu.problem.no_place"),
         EntryProblem::ProgramNotFound => tr.t("menu.problem.program_not_found"),
+        EntryProblem::NotAnExe => tr.t("menu.problem.not_an_exe"),
+        EntryProblem::LeadingAt => tr.t("menu.problem.leading_at"),
         EntryProblem::IconNotFound => tr.t("menu.problem.icon_not_found"),
         EntryProblem::DuplicateLabel(place) => {
             tr.t_args("menu.problem.duplicate_label", &[&place_name(tr, *place)])

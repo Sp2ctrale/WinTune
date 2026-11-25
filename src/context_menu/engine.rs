@@ -112,10 +112,33 @@ struct Wanted {
     command: String,
 }
 
+/// The `MUIVerb` text for a label: `&` marks an accelerator there, so a
+/// literal one is doubled.
+fn verb_text(label: &str) -> String {
+    label.trim().replace('&', "&&")
+}
+
+/// The place whose `shell` key is `key` (an `entry_key`-style path).
+pub fn key_place(key: &str) -> Option<Place> {
+    let rest = key.strip_prefix(r"Software\Classes\")?;
+    Place::ALL.into_iter().find(|p| {
+        rest.strip_prefix(p.class_path())
+            .is_some_and(|rest| rest.starts_with(r"\shell\"))
+    })
+}
+
+/// A key as a report names it: "<what> · <place>", never the registry path.
+fn key_report_name(what: &str, key: &str) -> String {
+    match key_place(key) {
+        Some(place) => format!("{what} \u{b7} {}", place.english_name()),
+        None => what.to_string(),
+    }
+}
+
 fn wanted(entry: &MenuEntry, programs: &Programs, place: Place) -> Option<Wanted> {
     let exe = programs.resolve(&entry.program)?;
     Some(Wanted {
-        label: entry.label.trim().to_string(),
+        label: verb_text(&entry.label),
         icon: icon_value(entry, &exe),
         command: command_line(&entry.program, programs, place)?,
     })
@@ -243,9 +266,14 @@ pub fn apply_entries(
         for &place in &entry.places {
             match wanted(entry, programs, place) {
                 Some(w) => to_write.push((index, entry_key(place, &entry.id), w)),
-                None => report
-                    .errors
-                    .push(format!("{}: program not found", entry.id)),
+                None => {
+                    // The program vanished after validation: same rule as a
+                    // validation problem, nothing is written.
+                    report
+                        .errors
+                        .push(format!("Nothing applied: {}: program not found", entry.id));
+                    return report;
+                }
             }
         }
     }
@@ -340,7 +368,7 @@ pub fn apply_entries(
             continue;
         }
         match regsnap::delete_tree(&target.root, &target.path(key)) {
-            Ok(()) => report.succeeded.push(key.clone()),
+            Ok(()) => report.removed.push(key_report_name("Removed entry", key)),
             Err(e) => report.errors.push(format!("{}: {}", key, e)),
         }
         done += 1;
@@ -379,7 +407,7 @@ pub fn restore_keys(
                 if let Some(user) = store.users.get_mut(&opts.user) {
                     user.remove(key);
                 }
-                report.succeeded.push(key.clone());
+                report.succeeded.push(key_report_name("Entry", key));
             }
             Err(e) => report.errors.push(format!(
                 "{}: {} (snapshot kept, restore can be retried)",
@@ -514,7 +542,7 @@ mod tests {
         let background = r"Software\Classes\Directory\Background\shell\WinTune.e1\command";
         assert_eq!(
             env.text(background, "").unwrap(),
-            format!("\"{exe}\" \"%V\"")
+            format!(r#""{exe}" "%V\.""#)
         );
         assert!(!env.exists(r"Software\Classes\Drive\shell\WinTune.e1"));
         assert!(!env.exists(r"Software\Classes\*\shell\WinTune.e1"));
@@ -677,5 +705,107 @@ mod tests {
             report.errors
         );
         assert!(!env.exists(FOLDER));
+    }
+
+    fn utf16(s: &str) -> Vec<u8> {
+        s.encode_utf16()
+            .chain(Some(0))
+            .flat_map(u16::to_le_bytes)
+            .collect()
+    }
+
+    fn saved_verb(store: &MenuBackupStore, user: &str, key: &str) -> Option<Vec<u8>> {
+        store.users[user][key]
+            .snapshot
+            .values
+            .get("MUIVerb")
+            .map(|(_, b)| b.clone())
+    }
+
+    #[test]
+    fn a_second_apply_keeps_the_snapshot_from_before_the_first() {
+        let env = Env::new();
+        let mut store = MenuBackupStore::default();
+        env.set_text(FOLDER, "MUIVerb", "Before");
+        let first = env.entry("e1", "First", &[Place::Folder]);
+        apply(&env, "A", &mut store, &[first]);
+        let second = env.entry("e1", "Second", &[Place::Folder]);
+        let report = apply(&env, "A", &mut store, &[second]);
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(env.text(FOLDER, "MUIVerb").unwrap(), "Second");
+        assert_eq!(saved_verb(&store, "A", FOLDER), Some(utf16("Before")));
+
+        let keys = vec![FOLDER.to_string()];
+        let report = restore_keys(&env.target(), &mut store, &keys, &env.opts("A"));
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(env.text(FOLDER, "MUIVerb").unwrap(), "Before");
+    }
+
+    #[test]
+    fn an_orphan_with_content_is_deleted_snapshotted_and_restorable() {
+        let env = Env::new();
+        let mut store = MenuBackupStore::default();
+        let orphan = r"Software\Classes\Directory\shell\WinTune.e9";
+        env.set_text(orphan, "MUIVerb", "X");
+        let report = apply(&env, "A", &mut store, &[]);
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert!(!env.exists(orphan));
+        assert_eq!(saved_verb(&store, "A", orphan), Some(utf16("X")));
+        // Named for people, not counted as an applied entry, no registry path.
+        assert!(report.succeeded.is_empty(), "{:?}", report.succeeded);
+        assert_eq!(report.removed, ["Removed entry \u{b7} Folders"]);
+
+        let keys = vec![orphan.to_string()];
+        let report = restore_keys(&env.target(), &mut store, &keys, &env.opts("A"));
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(env.text(orphan, "MUIVerb").unwrap(), "X");
+        assert_eq!(report.succeeded, ["Entry \u{b7} Folders"]);
+    }
+
+    #[test]
+    fn a_failed_reg_backup_blocks_every_write() {
+        let env = Env::new();
+        let mut store = MenuBackupStore::default();
+        let blocker = env.dir.join("reg-blocker");
+        std::fs::write(&blocker, b"x").unwrap();
+        let mut opts = env.opts("A");
+        opts.reg_backup_dir = blocker.join("sub");
+        let entry = env.entry("e1", "Open", &[Place::Folder]);
+        let report = apply_entries(
+            &env.target(),
+            &mut store,
+            &[entry],
+            &Programs::default(),
+            &opts,
+        );
+        assert!(
+            report.errors[0].starts_with("Nothing applied"),
+            "{:?}",
+            report.errors
+        );
+        assert!(!env.exists(FOLDER));
+        assert!(report.succeeded.is_empty());
+    }
+
+    #[test]
+    fn an_ampersand_in_a_label_is_doubled_and_compared_the_same_way() {
+        let env = Env::new();
+        let mut store = MenuBackupStore::default();
+        let entry = env.entry("e1", "Tom & Jerry", &[Place::Folder]);
+        let report = apply(&env, "A", &mut store, std::slice::from_ref(&entry));
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(env.text(FOLDER, "MUIVerb").unwrap(), "Tom && Jerry");
+        assert_eq!(
+            entry_status(&env.target(), &entry, &Programs::default()),
+            EntryStatus::Applied
+        );
+    }
+
+    #[test]
+    fn key_place_reads_the_class_of_a_verb_key() {
+        for place in Place::ALL {
+            assert_eq!(key_place(&entry_key(place, "e1")), Some(place));
+        }
+        assert_eq!(key_place(r"Software\Classes\Other\shell\WinTune.e1"), None);
     }
 }

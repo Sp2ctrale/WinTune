@@ -986,6 +986,15 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="report.restored_menu" xml:space="preserve">
     <value>{0} entrée(s) du menu contextuel restaurée(s)</value>
   </data>
+  <data name="report.removed_menu" xml:space="preserve">
+    <value>{0} entrée(s) du menu contextuel supprimée(s)</value>
+  </data>
+  <data name="report.removed_menu_also" xml:space="preserve">
+    <value>{0} supprimée(s)</value>
+  </data>
+  <data name="menu.nothing_to_apply" xml:space="preserve">
+    <value>Rien à appliquer : tout est déjà appliqué.</value>
+  </data>
   <data name="history.module.context_menu" xml:space="preserve">
     <value>Menu contextuel</value>
   </data>
@@ -1027,6 +1036,12 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   </data>
   <data name="menu.problem.icon_not_found" xml:space="preserve">
     <value>Le fichier d'icône est introuvable.</value>
+  </data>
+  <data name="menu.problem.not_an_exe" xml:space="preserve">
+    <value>Le fichier du programme doit être un .exe.</value>
+  </data>
+  <data name="menu.problem.leading_at" xml:space="preserve">
+    <value>Le libellé ne peut pas commencer par @.</value>
   </data>
   <data name="menu.problem.duplicate_label" xml:space="preserve">
     <value>Une autre entrée porte le même libellé dans : {0}.</value>

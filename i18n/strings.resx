@@ -987,6 +987,15 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="report.restored_menu" xml:space="preserve">
     <value>Restored {0} context menu entry(ies)</value>
   </data>
+  <data name="report.removed_menu" xml:space="preserve">
+    <value>Removed {0} context menu entry(ies)</value>
+  </data>
+  <data name="report.removed_menu_also" xml:space="preserve">
+    <value>removed {0}</value>
+  </data>
+  <data name="menu.nothing_to_apply" xml:space="preserve">
+    <value>Nothing to apply: everything is already applied.</value>
+  </data>
   <data name="history.module.context_menu" xml:space="preserve">
     <value>Context menu</value>
   </data>
@@ -1028,6 +1037,12 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   </data>
   <data name="menu.problem.icon_not_found" xml:space="preserve">
     <value>The icon file was not found.</value>
+  </data>
+  <data name="menu.problem.not_an_exe" xml:space="preserve">
+    <value>The program file must be an .exe.</value>
+  </data>
+  <data name="menu.problem.leading_at" xml:space="preserve">
+    <value>The label cannot start with @.</value>
   </data>
   <data name="menu.problem.duplicate_label" xml:space="preserve">
     <value>Another entry has the same label in {0}.</value>

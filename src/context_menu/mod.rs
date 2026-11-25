@@ -8,9 +8,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 pub use engine::{
-    apply_entries, default_menu_store_path, entry_key, entry_status, load_menu_store, orphan_keys,
-    restore_keys, save_menu_store, EntryStatus, MenuBackup, MenuBackupStore, MenuOptions,
-    MenuTarget,
+    apply_entries, default_menu_store_path, entry_key, entry_status, key_place, load_menu_store,
+    orphan_keys, restore_keys, save_menu_store, EntryStatus, MenuBackup, MenuBackupStore,
+    MenuOptions, MenuTarget,
 };
 pub use programs::{command_line, icon_value, Programs};
 
@@ -40,6 +40,16 @@ impl Place {
             Place::Background => r"Directory\Background",
             Place::Drive => "Drive",
             Place::Files => "*",
+        }
+    }
+
+    /// The place's name in reports and History records (always English).
+    pub fn english_name(self) -> &'static str {
+        match self {
+            Place::Folder => "Folders",
+            Place::Background => "Folder background",
+            Place::Drive => "Drives",
+            Place::Files => "Files",
         }
     }
 
@@ -97,12 +107,22 @@ pub fn new_entry_id(existing: &[MenuEntry]) -> String {
 
 pub const MAX_LABEL_CHARS: usize = 80;
 
+/// A pasted program path without the whitespace and the quotes Explorer's
+/// "Copy as path" puts around it.
+pub fn clean_program_path(path: &str) -> String {
+    path.trim().trim_matches('"').trim().to_string()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EntryProblem {
     EmptyLabel,
     LabelTooLong,
     NoPlace,
     ProgramNotFound,
+    /// A custom program path that does not end in `.exe`.
+    NotAnExe,
+    /// The verb text reads a leading `@` as an indirect string (`@file,-id`).
+    LeadingAt,
     IconNotFound,
     DuplicateLabel(Place),
     /// Terminal, PowerShell and cmd start in a folder; a file has none.
@@ -124,7 +144,22 @@ pub fn entry_problems(entries: &[MenuEntry], programs: &Programs) -> Vec<(String
         if entry.places.is_empty() {
             problems.push((id(), EntryProblem::NoPlace));
         }
-        if programs.resolve(&entry.program).is_none() {
+        if label.starts_with('@') {
+            problems.push((id(), EntryProblem::LeadingAt));
+        }
+        let not_an_exe = match &entry.program {
+            ProgramChoice::Custom(path) => {
+                let path = clean_program_path(path);
+                !path.is_empty()
+                    && !std::path::Path::new(&path)
+                        .extension()
+                        .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+            }
+            _ => false,
+        };
+        if not_an_exe {
+            problems.push((id(), EntryProblem::NotAnExe));
+        } else if programs.resolve(&entry.program).is_none() {
             problems.push((id(), EntryProblem::ProgramNotFound));
         }
         let is_shell = matches!(
@@ -230,6 +265,62 @@ mod tests {
         second.places = BTreeSet::from([Place::Files]);
         assert!(entry_problems(&[first, second], &programs).is_empty());
         let _ = std::fs::remove_file(exe);
+    }
+
+    #[test]
+    fn a_leading_at_or_a_non_exe_custom_program_is_a_problem() {
+        let exe = temp_file("leading-at.exe");
+        let txt = temp_file("not-an-exe.txt");
+        let upper = temp_file("upper.EXE");
+        let programs = Programs::default();
+        let custom = |label: &str, path: &PathBuf| {
+            let program = ProgramChoice::Custom(path.display().to_string());
+            problems_of(&[entry("e1", label, &[Place::Folder], program)], &programs)
+        };
+        assert_eq!(custom("@shell32.dll,-1", &exe), [EntryProblem::LeadingAt]);
+        assert_eq!(custom("  @x", &exe), [EntryProblem::LeadingAt]);
+        assert!(custom("a@b", &exe).is_empty());
+        assert_eq!(custom("Open", &txt), [EntryProblem::NotAnExe]);
+        assert!(custom("Open", &upper).is_empty());
+        let missing = ProgramChoice::Custom(r"C:\missing.exe".into());
+        let e = entry("e1", "Open", &[Place::Folder], missing);
+        assert_eq!(
+            problems_of(&[e], &programs),
+            [EntryProblem::ProgramNotFound]
+        );
+        for f in [exe, txt, upper] {
+            let _ = std::fs::remove_file(f);
+        }
+    }
+
+    #[test]
+    fn a_pasted_path_loses_its_quotes_and_spaces() {
+        assert_eq!(clean_program_path("  \"C:\\A b\\x.exe\" "), r"C:\A b\x.exe");
+        assert_eq!(clean_program_path(r"C:\x.exe"), r"C:\x.exe");
+        assert_eq!(clean_program_path(" \"\" "), "");
+        let exe = temp_file("pasted path.exe");
+        let pasted = format!("  \"{}\"  ", exe.display());
+        let programs = Programs::default();
+        let program = ProgramChoice::Custom(pasted);
+        let e = entry("e1", "Open", &[Place::Folder], program);
+        assert!(problems_of(&[e], &programs).is_empty());
+        let _ = std::fs::remove_file(exe);
+    }
+
+    #[test]
+    fn a_preset_that_vanished_is_a_program_problem() {
+        let exe = temp_file("vanished-preset.exe");
+        let programs = Programs {
+            vscode: Some(exe.clone()),
+            ..Programs::default()
+        };
+        let e = entry("e1", "Code", &[Place::Folder], ProgramChoice::VsCode);
+        assert!(problems_of(std::slice::from_ref(&e), &programs).is_empty());
+        std::fs::remove_file(&exe).unwrap();
+        assert_eq!(
+            problems_of(&[e], &programs),
+            [EntryProblem::ProgramNotFound]
+        );
     }
 
     #[test]

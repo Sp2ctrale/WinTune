@@ -42,13 +42,19 @@ impl Programs {
     /// The executable for a choice; a custom path only counts if the file exists.
     pub fn resolve(&self, choice: &ProgramChoice) -> Option<PathBuf> {
         match choice {
-            ProgramChoice::VsCode => self.vscode.clone(),
-            ProgramChoice::Terminal => self.terminal.clone(),
+            // Presets were detected once at startup: check they are still there.
+            ProgramChoice::VsCode => self.vscode.clone().filter(|p| p.is_file()),
+            ProgramChoice::Terminal => self.terminal.clone().filter(|p| p.is_file()),
             // The preset starts through cmd.exe, so both must exist.
-            ProgramChoice::PowerShell => self.cmd.as_ref().and(self.powershell.clone()),
-            ProgramChoice::Cmd => self.cmd.clone(),
+            ProgramChoice::PowerShell => self
+                .cmd
+                .as_ref()
+                .filter(|p| p.is_file())
+                .and(self.powershell.clone().filter(|p| p.is_file())),
+            ProgramChoice::Cmd => self.cmd.clone().filter(|p| p.is_file()),
             ProgramChoice::Custom(path) => {
-                if path.trim().is_empty() {
+                let path = super::clean_program_path(path);
+                if path.is_empty() {
                     None
                 } else {
                     existing(PathBuf::from(path))
@@ -60,22 +66,36 @@ impl Programs {
 
 /// The `command` value of the verb, or `None` when a program it needs is missing.
 /// Every placeholder is quoted so a path with spaces, apostrophes or accents
-/// reaches the program as one argument. A drive root ends in a backslash, so
-/// drives use `"%1."` / `"%V."` to keep the closing quote. The PowerShell preset
-/// goes through `cmd.exe` because cmd quoting ignores apostrophes; its one known
-/// limit is that cmd expands `%VAR%` text inside folder names.
+/// reaches the program as one argument. A drive root ends in a backslash, which
+/// would swallow the closing quote, so Drive uses `"%1."` / `"%V."` and
+/// Background (also shown on a drive root's empty area) uses `"%V\."`; both
+/// dots name the same folder. The Command Prompt and PowerShell presets go
+/// through `cmd.exe` (its quoting ignores apostrophes); their one known limit is
+/// that cmd expands `%VAR%` text inside folder names. Windows Terminal's `-d`
+/// cannot take a folder name that contains a semicolon (known limit).
 pub fn command_line(choice: &ProgramChoice, programs: &Programs, place: Place) -> Option<String> {
     let exe = programs.resolve(choice)?;
     let exe = exe.display();
-    let dot = if place == Place::Drive { "." } else { "" };
     Some(match choice {
         ProgramChoice::VsCode | ProgramChoice::Custom(_) => {
-            format!(r#""{exe}" "{}{dot}""#, place.placeholder())
+            let arg = match place {
+                Place::Background => r"%V\.",
+                Place::Drive => "%1.",
+                Place::Folder | Place::Files => "%1",
+            };
+            format!(r#""{exe}" "{arg}""#)
         }
-        ProgramChoice::Terminal => format!(r#""{exe}" -d "%V{dot}""#),
+        ProgramChoice::Terminal => {
+            let arg = match place {
+                Place::Background => r"%V\.",
+                Place::Drive => "%V.",
+                Place::Folder | Place::Files => "%V",
+            };
+            format!(r#""{exe}" -d "{arg}""#)
+        }
         ProgramChoice::PowerShell => {
             let cmd = programs.cmd.as_ref()?.display();
-            format!(r#""{cmd}" /s /c "cd /d "%V" && "{exe}" -NoExit""#)
+            format!(r#""{cmd}" /s /c "pushd "%V" && "{exe}" -NoExit""#)
         }
         ProgramChoice::Cmd => format!(r#""{exe}" /s /k pushd "%V""#),
     })
@@ -104,17 +124,22 @@ mod tests {
         }
     }
 
-    fn presets() -> Programs {
-        Programs {
+    /// Presets that exist on disk, in a folder of their own.
+    fn presets(name: &str) -> (Programs, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("wintune cm presets {name}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = |n: &str| {
+            let path = dir.join(n);
+            std::fs::write(&path, b"x").unwrap();
+            path
+        };
+        let programs = Programs {
             vscode: None,
-            terminal: Some(PathBuf::from(
-                r"C:\Users\u\AppData\Local\Microsoft\WindowsApps\wt.exe",
-            )),
-            powershell: Some(PathBuf::from(
-                r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
-            )),
-            cmd: Some(PathBuf::from(r"C:\Windows\System32\cmd.exe")),
-        }
+            terminal: Some(file("wt.exe")),
+            powershell: Some(file("powershell.exe")),
+            cmd: Some(file("cmd.exe")),
+        };
+        (programs, dir)
     }
 
     #[test]
@@ -123,49 +148,80 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let exe = dir.join("app.exe");
         std::fs::write(&exe, b"x").unwrap();
-        let programs = presets();
+        let (programs, pdir) = presets("lines");
         let custom = ProgramChoice::Custom(exe.display().to_string());
         let line = |c: &ProgramChoice, p| command_line(c, &programs, p).unwrap();
         let q = exe.display();
         assert_eq!(line(&custom, Place::Folder), format!(r#""{q}" "%1""#));
-        assert_eq!(line(&custom, Place::Background), format!(r#""{q}" "%V""#));
+        assert_eq!(line(&custom, Place::Background), format!(r#""{q}" "%V\.""#));
         assert_eq!(line(&custom, Place::Drive), format!(r#""{q}" "%1.""#));
         assert_eq!(line(&custom, Place::Files), format!(r#""{q}" "%1""#));
         let _ = std::fs::remove_dir_all(&dir);
 
+        let wt = programs.terminal.clone().unwrap();
+        let wt = wt.display();
+        let terminal = ProgramChoice::Terminal;
+        assert_eq!(line(&terminal, Place::Folder), format!(r#""{wt}" -d "%V""#));
         assert_eq!(
-            line(&ProgramChoice::Terminal, Place::Background),
-            r#""C:\Users\u\AppData\Local\Microsoft\WindowsApps\wt.exe" -d "%V""#
+            line(&terminal, Place::Background),
+            format!(r#""{wt}" -d "%V\.""#)
         );
-        assert!(line(&ProgramChoice::Terminal, Place::Drive).ends_with(r#"-d "%V.""#));
+        assert_eq!(line(&terminal, Place::Drive), format!(r#""{wt}" -d "%V.""#));
+        let cmd = programs.cmd.clone().unwrap();
+        let ps = programs.powershell.clone().unwrap();
         for place in Place::ALL {
             assert_eq!(
                 line(&ProgramChoice::PowerShell, place),
-                r#""C:\Windows\System32\cmd.exe" /s /c "cd /d "%V" && "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -NoExit""#
+                format!(
+                    r#""{}" /s /c "pushd "%V" && "{}" -NoExit""#,
+                    cmd.display(),
+                    ps.display()
+                )
+            );
+            assert_eq!(
+                line(&ProgramChoice::Cmd, place),
+                format!(r#""{}" /s /k pushd "%V""#, cmd.display())
             );
         }
-        assert_eq!(
-            line(&ProgramChoice::Cmd, Place::Drive),
-            r#""C:\Windows\System32\cmd.exe" /s /k pushd "%V""#
-        );
+        let _ = std::fs::remove_dir_all(&pdir);
     }
 
     #[test]
     fn command_line_is_none_when_a_needed_program_is_missing() {
+        let (full, dir) = presets("missing");
         let only_ps = Programs {
-            powershell: presets().powershell,
+            powershell: full.powershell.clone(),
             ..Programs::default()
         };
         let ps = ProgramChoice::PowerShell;
         assert_eq!(command_line(&ps, &only_ps, Place::Folder), None);
         assert_eq!(only_ps.resolve(&ps), None);
         let only_cmd = Programs {
-            cmd: presets().cmd,
+            cmd: full.cmd.clone(),
             ..Programs::default()
         };
         assert_eq!(command_line(&ps, &only_cmd, Place::Folder), None);
         let terminal = ProgramChoice::Terminal;
         assert_eq!(command_line(&terminal, &only_cmd, Place::Folder), None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_preset_that_vanished_since_startup_no_longer_resolves() {
+        let (programs, dir) = presets("vanished");
+        assert!(programs.resolve(&ProgramChoice::Terminal).is_some());
+        assert!(programs.resolve(&ProgramChoice::PowerShell).is_some());
+        std::fs::remove_file(programs.terminal.as_ref().unwrap()).unwrap();
+        std::fs::remove_file(programs.powershell.as_ref().unwrap()).unwrap();
+        assert_eq!(programs.resolve(&ProgramChoice::Terminal), None);
+        assert_eq!(programs.resolve(&ProgramChoice::PowerShell), None);
+        assert_eq!(
+            command_line(&ProgramChoice::Terminal, &programs, Place::Folder),
+            None
+        );
+        std::fs::remove_file(programs.cmd.as_ref().unwrap()).unwrap();
+        assert_eq!(programs.resolve(&ProgramChoice::Cmd), None);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

@@ -33,7 +33,12 @@ impl HistoryEntry {
             time: clock::now_local(),
             module: module.to_string(),
             action: action.to_string(),
-            succeeded: report.succeeded.clone(),
+            succeeded: report
+                .succeeded
+                .iter()
+                .chain(&report.removed)
+                .cloned()
+                .collect(),
             errors: report.errors.clone(),
             warnings: report.warnings.clone(),
             reg_backup: report
@@ -113,6 +118,7 @@ mod tests {
     fn from_report_keeps_outcome_and_timestamps_it() {
         let report = OperationReport {
             succeeded: vec![".rs".into()],
+            removed: vec![],
             errors: vec![".x: boom".into()],
             warnings: vec!["w".into()],
             reg_backup_file: Some(PathBuf::from("C:\\b\\x.reg")),

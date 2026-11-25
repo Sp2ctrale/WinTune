@@ -1122,7 +1122,13 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="menu.restore_message" xml:space="preserve">
     <value>Remettre en place ce qui existait avant que WinTune ne modifie {0} ?</value>
   </data>
-  <data name="menu.pending"xml:space="preserve">
+  <data name="menu.removed_entry" xml:space="preserve">
+    <value>Entrée supprimée</value>
+  </data>
+  <data name="menu.restore_many" xml:space="preserve">
+    <value>{0} entrées du menu contextuel</value>
+  </data>
+  <data name="menu.pending" xml:space="preserve">
     <value>{0} non appliquée(s)</value>
   </data>
   <data name="menu.up_to_date" xml:space="preserve">

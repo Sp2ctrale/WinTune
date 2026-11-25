@@ -421,3 +421,31 @@ fn known_history_labels_are_translated_and_unknown_ones_kept() {
     );
     assert_eq!(history_module(fr, "Legacy thing"), "Legacy thing");
 }
+
+#[test]
+fn menu_pending_resolves_to_its_texts_in_both_languages() {
+    assert_eq!(Tr::new("en").t_args("menu.pending", &[&3]), "3 not applied");
+    let fr = Tr::new("fr").t_args("menu.pending", &[&3]);
+    assert_ne!(fr, "menu.pending");
+    assert_ne!(fr, "3 not applied");
+    assert!(fr.contains('3'), "{fr}");
+}
+
+#[test]
+fn every_data_element_in_the_shipped_resx_is_well_formed() {
+    for file in ["strings.resx", "strings.fr.resx"] {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("i18n")
+            .join(file);
+        let text = std::fs::read_to_string(path).unwrap();
+        for line in text
+            .lines()
+            .filter(|l| l.trim_start().starts_with("<data "))
+        {
+            assert!(
+                line.contains("\" xml:space=\"preserve\">"),
+                "{file}: ill-formed element {line:?}"
+            );
+        }
+    }
+}

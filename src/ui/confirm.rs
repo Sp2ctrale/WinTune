@@ -5,6 +5,9 @@
 use super::{kit, WinTuneApp};
 use eframe::egui;
 
+/// Entry names listed in the restore question before it gives a count.
+const MAX_NAMED: usize = 3;
+
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum ConfirmAction {
     /// `index` is a hint: the rule is found again by `extension` in case the
@@ -93,10 +96,20 @@ impl WinTuneApp {
             return;
         }
         let tr = self.tr;
-        let names: Vec<String> = keys.iter().map(|k| self.menu_key_title(k)).collect();
+        let mut names: Vec<String> = Vec::new();
+        for name in keys.iter().map(|k| self.menu_key_title(k)) {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        let named = if names.len() > MAX_NAMED {
+            tr.t_args("menu.restore_many", &[&names.len()])
+        } else {
+            names.join(", ")
+        };
         self.pending_confirm = Some(Confirm {
             title: tr.t("menu.restore_title"),
-            message: tr.t_args("menu.restore_message", &[&names.join(", ")]),
+            message: tr.t_args("menu.restore_message", &[&named]),
             confirm_label: tr.t("confirm.restore"),
             action: ConfirmAction::RestoreMenuKeys(keys),
         });

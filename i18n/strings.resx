@@ -1123,7 +1123,13 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="menu.restore_message" xml:space="preserve">
     <value>Put back what was there before WinTune changed {0}?</value>
   </data>
-  <data name="menu.pending"xml:space="preserve">
+  <data name="menu.removed_entry" xml:space="preserve">
+    <value>Removed entry</value>
+  </data>
+  <data name="menu.restore_many" xml:space="preserve">
+    <value>{0} context menu entries</value>
+  </data>
+  <data name="menu.pending" xml:space="preserve">
     <value>{0} not applied</value>
   </data>
   <data name="menu.up_to_date" xml:space="preserve">

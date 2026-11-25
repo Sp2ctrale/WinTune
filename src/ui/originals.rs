@@ -104,7 +104,7 @@ impl WinTuneApp {
                 .map(|(key, backup)| OriginalRow {
                     key: key.clone(),
                     title: self.menu_key_title(key),
-                    description: tr.t_args("originals.saved_on", &[&backup.timestamp]),
+                    description: self.menu_key_description(key, &backup.timestamp),
                 })
                 .collect();
         }
@@ -140,15 +140,39 @@ impl WinTuneApp {
             .collect()
     }
 
-    /// What a saved context menu key is called: the label of the listed
-    /// entry whose verb key it is (in any place), else the key path.
+    /// What a saved context menu key is called and where it applies: the
+    /// label of the listed entry whose verb key it is, else a generic
+    /// "removed entry"; the place comes from the key's class path.
+    pub(super) fn menu_key_name(&self, key: &str) -> (String, Option<Place>) {
+        let place = Place::ALL.into_iter().find(|p| {
+            key.strip_prefix(r"Software\Classes\")
+                .and_then(|rest| rest.strip_prefix(p.class_path()))
+                .is_some_and(|rest| rest.starts_with(r"\shell\"))
+        });
+        let label = place.and_then(|p| {
+            self.menu_entries()
+                .iter()
+                .find(|e| !e.label.trim().is_empty() && entry_key(p, &e.id) == key)
+                .map(|e| e.label.trim().to_string())
+        });
+        (
+            label.unwrap_or_else(|| self.tr.t("menu.removed_entry")),
+            place,
+        )
+    }
+
+    /// Row title for a saved context menu key (see `menu_key_name`).
     pub(super) fn menu_key_title(&self, key: &str) -> String {
-        self.menu_entries()
-            .iter()
-            .find(|e| {
-                !e.label.trim().is_empty() && Place::ALL.iter().any(|p| entry_key(*p, &e.id) == key)
-            })
-            .map_or_else(|| key.to_string(), |e| e.label.trim().to_string())
+        self.menu_key_name(key).0
+    }
+
+    /// "Folders · Saved 2026-…" (the place alone when it is unknown).
+    fn menu_key_description(&self, key: &str, timestamp: &str) -> String {
+        let saved = self.tr.t_args("originals.saved_on", &[&timestamp]);
+        match self.menu_key_name(key).1 {
+            Some(p) => format!("{} \u{b7} {saved}", messages::place_name(self.tr, p)),
+            None => saved,
+        }
     }
 
     /// The "Saved originals" part of History: one section per module with
@@ -694,7 +718,12 @@ mod tests {
             [&entry_key(Place::Folder, "e1")]
             .timestamp
             .clone();
-        assert!(drawn_texts(&out).contains(&app.tr.t_args("originals.saved_on", &[&saved])));
+        let place = messages::place_name(app.tr, Place::Folder);
+        let desc = format!(
+            "{place} \u{b7} {}",
+            app.tr.t_args("originals.saved_on", &[&saved])
+        );
+        assert!(drawn_texts(&out).contains(&desc));
 
         let label = restore_label(&app);
         let at = button_on_row(&mut app, &ctx, "Open one", &label);
@@ -721,6 +750,77 @@ mod tests {
             (e.module.as_str(), e.action.as_str()),
             ("Context menu", "Restore")
         );
+    }
+
+    #[test]
+    fn a_two_place_entry_gives_distinguishable_rows_and_a_deduped_confirm() {
+        use crate::context_menu::{entry_key, MenuEntry, Place, ProgramChoice};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut config = fx.config();
+        config
+            .context_menu
+            .entries_mut("TEST\\user")
+            .push(MenuEntry {
+                id: "e1".into(),
+                label: "Open one".into(),
+                program: ProgramChoice::Cmd,
+                places: [Place::Folder, Place::Background].into_iter().collect(),
+                icon: None,
+            });
+        let mut app = fx.app_with(&ctx, config);
+        app.start_menu_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        app.open_page(ActiveTab::History);
+
+        let out = settle(&mut app, &ctx);
+        let texts = drawn_texts(&out);
+        for place in [Place::Folder, Place::Background] {
+            let name = messages::place_name(app.tr, place);
+            let saved = app.menu_store.backups_of("TEST\\user").unwrap()[&entry_key(place, "e1")]
+                .timestamp
+                .clone();
+            let desc = format!(
+                "{name} \u{b7} {}",
+                app.tr.t_args("originals.saved_on", &[&saved])
+            );
+            assert!(texts.contains(&desc), "{desc:?} not drawn: {texts:?}");
+        }
+
+        let label = restore_all(&app, 2);
+        let module = app.tr.t("history.module.context_menu");
+        let at = button_on_row(&mut app, &ctx, &module, &label);
+        click_at(&mut app, &ctx, at);
+        let confirm = app.pending_confirm.as_ref().expect("confirm");
+        assert_eq!(
+            confirm.message.matches("Open one").count(),
+            1,
+            "{}",
+            confirm.message
+        );
+    }
+
+    #[test]
+    fn a_removed_entry_is_named_generically_with_its_place() {
+        use crate::context_menu::{entry_key, Place};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = applied_menu_entry(&fx, &ctx);
+        app.menu_entries_mut().clear();
+
+        let out = settle(&mut app, &ctx);
+        let texts = drawn_texts(&out);
+        let title = app.tr.t("menu.removed_entry");
+        assert!(in_originals(&app, &out, &title).is_some(), "{texts:?}");
+        let name = messages::place_name(app.tr, Place::Folder);
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.starts_with(&format!("{name} \u{b7} "))),
+            "{texts:?}"
+        );
+        let key = entry_key(Place::Folder, "e1");
+        assert!(!texts.iter().any(|t| t.contains(&key)), "{texts:?}");
     }
 
     #[test]

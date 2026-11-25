@@ -35,6 +35,8 @@ use std::path::PathBuf;
 #[derive(Debug, Default)]
 pub struct OperationReport {
     pub succeeded: Vec<String>,
+    /// Things taken away (not counted as `succeeded`), named for people.
+    pub removed: Vec<String>,
     pub errors: Vec<String>,
     pub warnings: Vec<String>,
     pub reg_backup_file: Option<PathBuf>,

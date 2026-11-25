@@ -385,9 +385,6 @@
   <data name="nav.group.tools" xml:space="preserve">
     <value>Tools</value>
   </data>
-  <data name="nav.coming_soon" xml:space="preserve">
-    <value>Coming soon</value>
-  </data>
   <data name="history.ok" xml:space="preserve">
     <value>{0} ok</value>
   </data>
@@ -965,5 +962,192 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   </data>
   <data name="icons.imported" xml:space="preserve">
     <value>Imported {0} of {1} .ico files.</value>
+  </data>
+  <data name="menu.subtitle" xml:space="preserve">
+    <value>For {0}. Right-click entries you add, per account.</value>
+  </data>
+  <data name="home.menu_status" xml:space="preserve">
+    <value>{0} entries, {1} changed</value>
+  </data>
+  <data name="job.apply_menu" xml:space="preserve">
+    <value>Applying context menu entries…</value>
+  </data>
+  <data name="job.restore_menu" xml:space="preserve">
+    <value>Restoring context menu entries…</value>
+  </data>
+  <data name="job.name.apply_menu" xml:space="preserve">
+    <value>Applying context menu entries</value>
+  </data>
+  <data name="job.name.restore_menu" xml:space="preserve">
+    <value>Restoring context menu entries</value>
+  </data>
+  <data name="report.applied_menu" xml:space="preserve">
+    <value>Applied {0} context menu entry(ies)</value>
+  </data>
+  <data name="report.restored_menu" xml:space="preserve">
+    <value>Restored {0} context menu entry(ies)</value>
+  </data>
+  <data name="report.removed_menu" xml:space="preserve">
+    <value>Removed {0} context menu entry(ies)</value>
+  </data>
+  <data name="report.removed_menu_also" xml:space="preserve">
+    <value>removed {0}</value>
+  </data>
+  <data name="menu.nothing_to_apply" xml:space="preserve">
+    <value>Nothing to apply: everything is already applied.</value>
+  </data>
+  <data name="history.module.context_menu" xml:space="preserve">
+    <value>Context menu</value>
+  </data>
+  <data name="menu.status.applied" xml:space="preserve">
+    <value>Applied</value>
+  </data>
+  <data name="menu.status.not_applied" xml:space="preserve">
+    <value>Not applied</value>
+  </data>
+  <data name="menu.status.changed" xml:space="preserve">
+    <value>Out of date</value>
+  </data>
+  <data name="menu.changed_hint" xml:space="preserve">
+    <value>The registry differs from this entry (edited here or by another program). Apply to update it.</value>
+  </data>
+  <data name="menu.place.folder" xml:space="preserve">
+    <value>Folders</value>
+  </data>
+  <data name="menu.place.background" xml:space="preserve">
+    <value>Folder background</value>
+  </data>
+  <data name="menu.place.drive" xml:space="preserve">
+    <value>Drives</value>
+  </data>
+  <data name="menu.place.files" xml:space="preserve">
+    <value>Files</value>
+  </data>
+  <data name="menu.problem.empty_label" xml:space="preserve">
+    <value>The label is empty.</value>
+  </data>
+  <data name="menu.problem.label_too_long" xml:space="preserve">
+    <value>The label is longer than 80 characters.</value>
+  </data>
+  <data name="menu.problem.no_place" xml:space="preserve">
+    <value>Pick at least one place where the entry appears.</value>
+  </data>
+  <data name="menu.problem.program_not_found" xml:space="preserve">
+    <value>The program was not found on this PC.</value>
+  </data>
+  <data name="menu.problem.icon_not_found" xml:space="preserve">
+    <value>The icon file was not found.</value>
+  </data>
+  <data name="menu.problem.not_an_exe" xml:space="preserve">
+    <value>The program file must be an .exe.</value>
+  </data>
+  <data name="menu.problem.leading_at" xml:space="preserve">
+    <value>The label cannot start with @.</value>
+  </data>
+  <data name="menu.problem.duplicate_label" xml:space="preserve">
+    <value>Another entry has the same label in {0}.</value>
+  </data>
+  <data name="menu.problem.shell_on_files" xml:space="preserve">
+    <value>A terminal needs a folder: untick Files.</value>
+  </data>
+  <data name="menu.problem_line" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="menu.blocked.problems" xml:space="preserve">
+    <value>Fix these first:
+{0}</value>
+  </data>
+  <data name="menu.win11_banner" xml:space="preserve">
+    <value>On Windows 11 these entries appear under “Show more options”.</value>
+  </data>
+  <data name="menu.use_classic" xml:space="preserve">
+    <value>Use the classic menu</value>
+  </data>
+  <data name="menu.my_entries" xml:space="preserve">
+    <value>My entries</value>
+  </data>
+  <data name="menu.add" xml:space="preserve">
+    <value>Add entry</value>
+  </data>
+  <data name="menu.empty" xml:space="preserve">
+    <value>No entries yet. Add one to see it in the right-click menu.</value>
+  </data>
+  <data name="menu.new_label" xml:space="preserve">
+    <value>New entry</value>
+  </data>
+  <data name="menu.details" xml:space="preserve">
+    <value>Entry details</value>
+  </data>
+  <data name="menu.label" xml:space="preserve">
+    <value>Label</value>
+  </data>
+  <data name="menu.program" xml:space="preserve">
+    <value>Program</value>
+  </data>
+  <data name="menu.program.vscode" xml:space="preserve">
+    <value>VS Code</value>
+  </data>
+  <data name="menu.program.terminal" xml:space="preserve">
+    <value>Windows Terminal</value>
+  </data>
+  <data name="menu.program.powershell" xml:space="preserve">
+    <value>PowerShell</value>
+  </data>
+  <data name="menu.program.cmd" xml:space="preserve">
+    <value>Command Prompt</value>
+  </data>
+  <data name="menu.program.other" xml:space="preserve">
+    <value>Other program…</value>
+  </data>
+  <data name="menu.program_missing" xml:space="preserve">
+    <value>Not found on this PC.</value>
+  </data>
+  <data name="menu.path" xml:space="preserve">
+    <value>Program file</value>
+  </data>
+  <data name="menu.browse" xml:space="preserve">
+    <value>Browse…</value>
+  </data>
+  <data name="menu.appears_on" xml:space="preserve">
+    <value>Appears on</value>
+  </data>
+  <data name="menu.icon" xml:space="preserve">
+    <value>Icon</value>
+  </data>
+  <data name="menu.icon_default" xml:space="preserve">
+    <value>Program’s icon</value>
+  </data>
+  <data name="menu.change" xml:space="preserve">
+    <value>Change…</value>
+  </data>
+  <data name="menu.reset" xml:space="preserve">
+    <value>Reset</value>
+  </data>
+  <data name="menu.remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="menu.remove_title" xml:space="preserve">
+    <value>Remove this entry?</value>
+  </data>
+  <data name="menu.remove_message" xml:space="preserve">
+    <value>“{0}” leaves the list. Its right-click entries are removed at the next Apply, and the original stays in History.</value>
+  </data>
+  <data name="menu.restore_title" xml:space="preserve">
+    <value>Put back the original</value>
+  </data>
+  <data name="menu.restore_message" xml:space="preserve">
+    <value>Put back what was there before WinTune changed {0}?</value>
+  </data>
+  <data name="menu.removed_entry" xml:space="preserve">
+    <value>Removed entry</value>
+  </data>
+  <data name="menu.restore_many" xml:space="preserve">
+    <value>{0} context menu entries</value>
+  </data>
+  <data name="menu.pending" xml:space="preserve">
+    <value>{0} not applied</value>
+  </data>
+  <data name="menu.up_to_date" xml:space="preserve">
+    <value>Everything is applied</value>
   </data>
 </root>

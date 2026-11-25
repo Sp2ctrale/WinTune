@@ -60,8 +60,144 @@ Refused names: structural `Classes` keys (`CLSID`, `Interface`,
 All values are REG_DWORD, and every Start & Privacy change is picked up the
 next time Start opens.
 
+## Context menu
+
+Keys the Context menu module works with (all under `HKEY_CURRENT_USER`, so no
+elevation is needed; HKCU entries are merged over HKLM by `HKCR`):
+
+| Key | Used for |
+| --- | --- |
+| `Software\Classes\*\shell\<verb>` | Entries for every file |
+| `Software\Classes\Directory\shell\<verb>` | Entries for folders |
+| `Software\Classes\Drive\shell\<verb>` | Entries for drives |
+| `Software\Classes\Directory\Background\shell\<verb>` | Entries for the folder background (not probed) |
+| `<verb>\command` (default value) | Command line. Placeholder for the clicked item: `%1` for Files (`*`), Folders (`Directory`) and Drives (`Drive`); `%V` for the folder background (`Directory\Background`, which Explorer also shows on a drive root's empty area). WinTune quotes it and adds a dot or `\.` where a drive root can arrive (see "What WinTune writes") |
+| `Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked` | Value name = handler CLSID, data `""` (undocumented) |
+
+Values on a verb key: `MUIVerb` (label), `Icon` (path, optionally `,index`),
+`Extended` (only with Shift), `ProgrammaticAccessOnly` (hides the verb from
+the menu). `MUIVerb`, `Icon` and `ProgrammaticAccessOnly` are described in
+Microsoft Learn, *Creating Shortcut Menu Handlers* / *Customizing a Shortcut
+Menu*. `Blocked` is undocumented.
+
+### What WinTune writes
+
+For each entry and each place it is ticked for, WinTune creates one verb key
+`HKCU\Software\Classes\<class>\shell\WinTune.<id>` (`<id>` is `e1`, `e2`, ...)
+with these values. Nothing is written under `HKLM`, and only keys named
+`WinTune.*` are ever created or deleted.
+
+| Place | `<class>` | Placeholder written for a program that takes the path as an argument (VS Code, any `.exe`) |
+| --- | --- | --- |
+| Folders | `Directory` | `%1` |
+| Folder background | `Directory\Background` | `%V\.` |
+| Drives | `Drive` | `%1.` |
+| Files | `*` | `%1` |
+
+| Value | Type | Content |
+| --- | --- | --- |
+| `MUIVerb` (on the verb key) | REG_SZ | The entry's label, trimmed, with each `&` written as `&&` (a single `&` would turn the next letter into an accelerator). A label starting with `@` is refused: `MUIVerb` reads it as an indirect string (`@file,-id`) |
+| `Icon` (on the verb key) | REG_SZ | The icon file chosen for the entry, else the program's `.exe`, in quotes |
+| `command\(Default)` | REG_SZ | See below |
+
+Command line by program (`<exe>` is the program's full path). A drive root
+ends in a backslash (`C:\`), and `\"` would be read as an escaped quote and
+leave `C:"`. So Drives passes `%1.` (`C:\.`), and the folder background, which
+Explorer also shows on a drive root's empty area, passes `%V\.` (`C:\\.` there,
+`C:\folder\.` in a folder; all name the same folder). Folders and Files pass
+the plain placeholder.
+
+| Program | Folders | Folder background | Drives | Files |
+| --- | --- | --- | --- | --- |
+| VS Code, any `.exe` | `"<exe>" "%1"` | `"<exe>" "%V\."` | `"<exe>" "%1."` | `"<exe>" "%1"` |
+| Windows Terminal | `"<exe>" -d "%V"` | `"<exe>" -d "%V\."` | `"<exe>" -d "%V."` | refused |
+| PowerShell | `"<cmd.exe>" /s /c "pushd "%V" && "<exe>" -NoExit"` | same | same | refused |
+| Command Prompt | `"<exe>" /s /k pushd "%V"` | same | same | refused |
+
+Terminal, PowerShell and Command Prompt start in a folder, so they are refused
+on Files. The PowerShell and Command Prompt presets go through `cmd.exe`
+(PowerShell with `pushd`, so a network folder gets a temporary drive letter)
+because cmd's quoting copes with apostrophes in folder names. Known limits:
+`cmd` expands `%VAR%` text inside a folder name, in both presets; and a
+semicolon in a folder name can break Windows Terminal's `-d`, which splits its
+command line at semicolons. Apply makes the keys match the list: the verb key of a removed
+entry, or of a place that was unticked, is deleted. Before the first change to
+a key, its original state is saved in
+`%ProgramData%\Wintune\context-menu-backups.json` (per user, by key path) and
+a `.reg` export is written; History, Saved originals, Context menu puts it
+back. On Windows 11 these entries appear under "Show more options".
+
+### Real-machine probe
+
+Script: `scripts/context-menu-probe.ps1` (Windows PowerShell 5.1, unelevated).
+It reads menus with `Shell.Application ... ParseName(...).Verbs()` (classic
+verbs and shellex handlers; modern entries are not listed), compares labels
+with `&` removed, never calls `DoIt()`, and restores every key it touched.
+Run on Windows `10.0.26300.0` (Windows 11), French UI.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| 1. Own verb with `MUIVerb` `WinTune probe é'`, `Icon`, `command`, under `Directory`, `Drive` and `*` | PASS | The verb shows in `Verbs()` of a folder named `probe 'é x`, of drive `C:\` and of a temp file. Quotes and accents in the label and path are fine. |
+| 2a. HKCU copy of an HKLM `Directory\shell` verb with only `ProgrammaticAccessOnly` = `""` | PASS | `AnyCode` ("Open with Visual Studio") disappears from `Verbs()`. |
+| 2b. Same HKCU copy with only `MUIVerb` = `Probe renamed` | PASS | The label changes to `Probe renamed`; the old label is gone; `HKCR\Directory\shell\AnyCode\command` still returns the HKLM command line (HKCU copy has no `command` of its own). |
+| 3. `{596AB062-B4D2-4215-9F74-E9109B0A8153}` (Restore previous versions) as a value in HKCU `Blocked` | PASS (new-process read) | Precondition: the verb "Restaurer les versions précédentes" is present in `Verbs()` of `C:\Windows` (read from a new PowerShell process, before the write). After the write, a new PowerShell process no longer lists it and nothing else vanished (19 verbs before, 18 after). A first attempt that read before and after in the same process saw no change (24 and 24): an in-process handler cache hides the effect, so always re-read in a new process. Proves only `Verbs()` from a fresh non-Explorer process; Explorer itself and an Explorer restart are untested. |
+
+Consequences: hiding a system (HKLM) classic verb with a
+`ProgrammaticAccessOnly` HKCU copy and renaming it with a `MUIVerb`-only copy
+both work without touching HKLM. `Blocked` hides a shellex handler's verb in
+a fresh process; whether the open Explorer honours it immediately is still to
+be confirmed by the owner (PR 2 / spec section 8).
+
+### Needs the owner's eyes
+
+These cannot be seen through `Verbs()` and need a look at the real menu:
+
+- Where the entries land on Windows 11: only under "Show more options" (the
+  classic menu) or also in the new compact menu.
+- Modern entries (for example "Open in Terminal") and whether `Blocked`
+  hides them.
+- Side effects of `Blocked` on Properties tabs (a blocked handler can also
+  remove its tab or overlay).
+
+#### Pre-merge checklist for the Context menu entries
+
+Not run by the developer: the command lines above were checked against the
+quoting rules and the tests, but no program was launched. The owner runs this
+before merging. Make one WinTune entry per program (VS Code, Windows Terminal,
+PowerShell, Command Prompt, and one custom `.exe`, for example any editor that
+accepts a folder argument), ticking every place the program allows (Terminal,
+PowerShell and Command Prompt cannot be ticked on Files). Click Apply, then use
+**Show more options** on Windows 11.
+
+Test locations: a folder named `probe 'é x` (apostrophe, accent, spaces), a
+drive root (`C:\`), and a network share (`\\server\share`, or a mapped drive)
+if one is available. Expected result of every row: the program opens in that
+folder (VS Code and the custom `.exe` open it as the folder; terminals start
+with that folder as their current directory, and the prompt shows it).
+
+| Program | Folder (right-click the folder) | Background (empty space inside it) | Background of a drive root (empty space in `C:\`) | Drive (right-click `C:` in This PC) | Files (right-click a file) |
+| --- | --- | --- | --- | --- | --- |
+| VS Code | opens `probe 'é x` | opens `probe 'é x` | opens `C:\` | opens `C:\` | opens the file |
+| Windows Terminal | starts in `probe 'é x` | starts in `probe 'é x` | starts in `C:\` | starts in `C:\` | not offered |
+| PowerShell | starts in `probe 'é x` | starts in `probe 'é x` | starts in `C:\` | starts in `C:\` | not offered |
+| Command Prompt | starts in `probe 'é x` | starts in `probe 'é x` | starts in `C:\` | starts in `C:\` | not offered |
+| Custom `.exe` | receives `probe 'é x` as one argument | receives `probe 'é x` | receives `C:\` | receives `C:\` | receives the file's path |
+
+Repeat the Folder and Background columns for the network share (PowerShell
+and Command Prompt use `pushd`, so they should start in a temporary drive
+letter that points to the share; the others open the UNC path). Also check
+that an entry labelled `Tom & Jerry` shows exactly that text, with no
+underlined letter.
+
+Record anything that does not match, with the program, the place and the
+folder, before merging.
+
 ## Sources
 
+- Microsoft Learn, *Creating Shortcut Menu Handlers* and *Merged View of
+  HKEY_CLASSES_ROOT*: verb keys, `MUIVerb`, `Icon`, `ProgrammaticAccessOnly`,
+  and why HKCU entries override HKLM ones in `HKCR`. The `Blocked` key is
+  undocumented.
 - Microsoft Learn, *Reference for Windows 11 settings* and *Reference for
   Windows 11 and Windows 10 settings*: `TaskbarAl`, `ShowTaskViewButton`,
   `Start_IrisRecommendations`, `Start_Layout`, `ShowRecentList`,

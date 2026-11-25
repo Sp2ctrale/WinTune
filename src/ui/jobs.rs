@@ -6,6 +6,9 @@ use crate::associations::{
     apply_extensions, find_rule_problems, rollback_extensions, save_backup_store, ApplyOptions,
     OperationReport,
 };
+use crate::context_menu::{
+    apply_entries, entry_problems, restore_keys, MenuBackupStore, MenuOptions,
+};
 use crate::detector::{build_editor_command, editor_display_name};
 use crate::gallery::{build_compressed_pak, PakStats};
 use crate::models::{BackupStore, ExtensionConfig};
@@ -29,6 +32,14 @@ pub(super) struct TweakOutcome {
     pub(super) module: &'static str,
 }
 
+/// Result of a context menu job, with the snapshot store after it.
+pub(super) struct MenuOutcome {
+    pub(super) report: OperationReport,
+    pub(super) store: MenuBackupStore,
+    /// True for "restore", false for "apply".
+    pub(super) restored: bool,
+}
+
 pub(super) enum RunningJob {
     Apply(BackgroundJob<StoreOutcome>),
     Rollback(BackgroundJob<StoreOutcome>),
@@ -40,6 +51,11 @@ pub(super) enum RunningJob {
         /// True for "restore originals", false for "apply changes".
         restore: bool,
     },
+    /// A context menu job: apply the list, or restore saved originals.
+    ContextMenu {
+        job: BackgroundJob<MenuOutcome>,
+        restore: bool,
+    },
 }
 
 impl RunningJob {
@@ -49,6 +65,7 @@ impl RunningJob {
             RunningJob::Rollback(j) => j.title(),
             RunningJob::BuildPak(j) => j.title(),
             RunningJob::Tweaks { job, .. } => job.title(),
+            RunningJob::ContextMenu { job, .. } => job.title(),
         }
     }
 
@@ -60,6 +77,8 @@ impl RunningJob {
             RunningJob::BuildPak(_) => "job.build_pak",
             RunningJob::Tweaks { restore: true, .. } => "job.restore_tweaks",
             RunningJob::Tweaks { .. } => "job.apply_tweaks",
+            RunningJob::ContextMenu { restore: true, .. } => "job.restore_menu",
+            RunningJob::ContextMenu { .. } => "job.apply_menu",
         }
     }
 
@@ -71,6 +90,8 @@ impl RunningJob {
             "job.rollback" => "job.name.rollback",
             "job.build_pak" => "job.name.build_pak",
             "job.restore_tweaks" => "job.name.restore_tweaks",
+            "job.apply_menu" => "job.name.apply_menu",
+            "job.restore_menu" => "job.name.restore_menu",
             _ => "job.name.apply_tweaks",
         }
     }
@@ -86,6 +107,8 @@ impl RunningJob {
                 ..
             } => Some((module, "Restore")),
             RunningJob::Tweaks { module, .. } => Some((module, "Apply")),
+            RunningJob::ContextMenu { restore: true, .. } => Some(("Context menu", "Restore")),
+            RunningJob::ContextMenu { .. } => Some(("Context menu", "Apply")),
             RunningJob::BuildPak(_) => None,
         }
     }
@@ -96,6 +119,7 @@ impl RunningJob {
             RunningJob::Rollback(j) => j.progress(),
             RunningJob::BuildPak(j) => j.progress(),
             RunningJob::Tweaks { job, .. } => job.progress(),
+            RunningJob::ContextMenu { job, .. } => job.progress(),
         }
     }
 }
@@ -219,6 +243,122 @@ impl WinTuneApp {
         self.job = Some(RunningJob::BuildPak(job));
     }
 
+    /// Why a context menu change cannot start: the unreadable store or config
+    /// (which would be overwritten by the next save), or, for an apply, the
+    /// entries that cannot be written. Shown as the toast and as the hover of
+    /// the disabled Apply button.
+    pub(super) fn menu_blocked_reason(&self, applying: bool) -> Option<String> {
+        let tr = self.tr;
+        if let Some(reason) = self.menu_store_blocked_reason() {
+            return Some(reason);
+        }
+        if let Some(e) = &self.config_error {
+            let detail = crate::i18n::messages::load_error(tr, e);
+            return Some(tr.t_args("tweaks.blocked", &[&detail]));
+        }
+        if !applying {
+            return None;
+        }
+        let entries = self.menu_entries();
+        let lines: Vec<String> = entry_problems(entries, &self.env.programs)
+            .iter()
+            .map(|(id, problem)| {
+                let name = entries
+                    .iter()
+                    .find(|e| &e.id == id)
+                    .map(|e| e.label.trim())
+                    .filter(|label| !label.is_empty())
+                    .unwrap_or(id);
+                tr.t_args(
+                    "menu.problem_line",
+                    &[&name, &crate::i18n::messages::entry_problem(tr, problem)],
+                )
+            })
+            .collect();
+        (!lines.is_empty()).then(|| tr.t_args("menu.blocked.problems", &[&lines.join("\n")]))
+    }
+
+    /// Why a restore cannot start: only an unreadable snapshot store. A restore
+    /// never writes the config, so an unreadable config does not stop it.
+    fn menu_store_blocked_reason(&self) -> Option<String> {
+        self.menu_store_error.as_ref().map(|e| {
+            let detail = crate::i18n::messages::load_error(self.tr, e);
+            self.tr.t_args("tweaks.blocked", &[&detail])
+        })
+    }
+
+    /// Writes the list of this account to the registry on a background thread.
+    pub(super) fn start_menu_apply(&mut self, ctx: &egui::Context) {
+        if self.refuse_if_busy() {
+            return;
+        }
+        if let Some(reason) = self.menu_blocked_reason(true) {
+            self.notify(ToastKind::Error, reason);
+            return;
+        }
+        let entries = self.menu_entries().to_vec();
+        self.spawn_menu_job(
+            ctx,
+            false,
+            "Applying context menu entries",
+            move |env, store, opts| {
+                apply_entries(&(env.menu_target)(), store, &entries, &env.programs, opts)
+            },
+        );
+    }
+
+    /// Puts the given keys (as `entry_key` paths) back to their saved originals.
+    pub(super) fn start_menu_restore(&mut self, ctx: &egui::Context, keys: Vec<String>) {
+        if self.refuse_if_busy() {
+            return;
+        }
+        if let Some(reason) = self.menu_store_blocked_reason() {
+            self.notify(ToastKind::Error, reason);
+            return;
+        }
+        self.spawn_menu_job(
+            ctx,
+            true,
+            "Restoring context menu entries",
+            move |env, store, opts| restore_keys(&(env.menu_target)(), store, &keys, opts),
+        );
+    }
+
+    fn spawn_menu_job(
+        &mut self,
+        ctx: &egui::Context,
+        restored: bool,
+        title: &'static str,
+        run: impl FnOnce(&super::AppEnv, &mut MenuBackupStore, &MenuOptions) -> OperationReport
+            + Send
+            + 'static,
+    ) {
+        let env = self.env.clone();
+        let mut store = self.menu_store.clone();
+        let user = self.env.user_label.clone();
+        let job = BackgroundJob::spawn(title, repaint(ctx), move |sink| {
+            let progress = |done: usize, total: usize, label: &str| sink.report(done, total, label);
+            let opts = MenuOptions {
+                user,
+                store_path: env.menu_store_path.clone(),
+                reg_backup_dir: env.reg_backup_dir.clone(),
+                progress: &progress,
+            };
+            let report = run(&env, &mut store, &opts);
+            // Here, not on the UI thread: Explorer can take seconds to answer.
+            (env.notify_shell)();
+            MenuOutcome {
+                report,
+                store,
+                restored,
+            }
+        });
+        self.job = Some(RunningJob::ContextMenu {
+            job,
+            restore: restored,
+        });
+    }
+
     /// Called every frame: forwards progress and handles a finished job.
     pub(super) fn poll_job(&mut self) {
         let Some(job) = self.job.as_mut() else {
@@ -243,6 +383,11 @@ impl WinTuneApp {
             RunningJob::Tweaks { job, .. } => match job.poll() {
                 JobPoll::Running => return,
                 JobPoll::Finished(outcome) => Finished::Tweaks(outcome),
+                JobPoll::Panicked(msg) => Finished::Panicked(msg),
+            },
+            RunningJob::ContextMenu { job, .. } => match job.poll() {
+                JobPoll::Running => return,
+                JobPoll::Finished(outcome) => Finished::Menu(outcome),
                 JobPoll::Panicked(msg) => Finished::Panicked(msg),
             },
         };
@@ -289,6 +434,7 @@ impl WinTuneApp {
                 self.notify(ToastKind::Error, text);
             }
             Finished::Tweaks(outcome) => self.finish_tweaks_job(outcome),
+            Finished::Menu(outcome) => self.finish_menu_job(outcome),
             Finished::Panicked(msg) => {
                 if let Some((module, action)) = history_label {
                     // It may have written part of its changes: keep a trace.
@@ -304,8 +450,23 @@ impl WinTuneApp {
                 self.reload_backup_store();
                 self.reload_tweak_store();
                 self.refresh_tweak_statuses();
+                self.reload_menu_store();
+                self.refresh_menu_statuses();
             }
         }
+    }
+
+    fn finish_menu_job(&mut self, outcome: MenuOutcome) {
+        self.menu_store = outcome.store;
+        let kind = if outcome.restored {
+            ReportKind::RestoredMenu
+        } else {
+            ReportKind::AppliedMenu
+        };
+        self.show_report(kind, &outcome.report);
+        let action = if outcome.restored { "Restore" } else { "Apply" };
+        self.record_history("Context menu", action, &outcome.report);
+        self.refresh_menu_statuses();
     }
 }
 
@@ -314,6 +475,7 @@ enum Finished {
     Rollback(StoreOutcome),
     BuildPak(Result<PakStats, String>),
     Tweaks(TweakOutcome),
+    Menu(MenuOutcome),
     Panicked(String),
 }
 
@@ -466,6 +628,239 @@ mod tests {
         run_until_idle(&mut app, &ctx);
     }
 
+    fn two_menu_entries(fx: &TempIcons, ctx: &egui::Context) -> WinTuneApp {
+        use crate::context_menu::{MenuEntry, Place, ProgramChoice};
+        let mut config = fx.config();
+        for (id, label) in [("e1", "Open one"), ("e2", "Open two")] {
+            config
+                .context_menu
+                .entries_mut("TEST\\user")
+                .push(MenuEntry {
+                    id: id.into(),
+                    label: label.into(),
+                    program: ProgramChoice::Cmd,
+                    places: [Place::Folder, Place::Background].into_iter().collect(),
+                    icon: None,
+                });
+        }
+        fx.app_with(ctx, config)
+    }
+
+    #[test]
+    fn a_menu_apply_runs_in_background_and_is_logged() {
+        use crate::context_menu::{entry_key, EntryStatus, Place};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = two_menu_entries(&fx, &ctx);
+        app.refresh_menu_statuses();
+        assert!(app
+            .menu_statuses
+            .values()
+            .all(|s| *s == EntryStatus::NotApplied));
+
+        app.start_menu_apply(&ctx);
+        assert!(app.is_busy());
+        run_until_idle(&mut app, &ctx);
+
+        for id in ["e1", "e2"] {
+            for place in [Place::Folder, Place::Background] {
+                let key = fx.hkcu(&entry_key(place, id));
+                assert!(fx.key_exists(&key), "{key}");
+            }
+        }
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Context menu", "Apply")
+        );
+        assert_eq!(app.menu_statuses.len(), 2);
+        assert!(app
+            .menu_statuses
+            .values()
+            .all(|s| *s == EntryStatus::Applied));
+        assert!(app.menu_store.backups_of("TEST\\user").is_some());
+        assert!(
+            app.last_notice().starts_with("Applied 2 context menu"),
+            "{}",
+            app.last_notice()
+        );
+    }
+
+    #[test]
+    fn a_menu_restore_runs_in_background_and_is_logged() {
+        use crate::context_menu::{entry_key, Place};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = two_menu_entries(&fx, &ctx);
+        app.start_menu_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+
+        let keys = vec![entry_key(Place::Folder, "e1")];
+        app.start_menu_restore(&ctx, keys);
+        assert!(app.is_busy());
+        run_until_idle(&mut app, &ctx);
+
+        assert!(!fx.key_exists(&fx.hkcu(&entry_key(Place::Folder, "e1"))));
+        assert!(fx.key_exists(&fx.hkcu(&entry_key(Place::Folder, "e2"))));
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Context menu", "Restore")
+        );
+    }
+
+    #[test]
+    fn menu_apply_is_refused_while_the_store_is_unreadable() {
+        use crate::context_menu::{entry_key, Place};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = two_menu_entries(&fx, &ctx);
+        std::fs::write(&app.env.menu_store_path, "{ not json").unwrap();
+        app.reload_menu_store();
+        assert!(app.menu_store_error.is_some());
+
+        app.start_menu_apply(&ctx);
+
+        assert!(!app.is_busy());
+        assert!(!fx.key_exists(&fx.hkcu(&entry_key(Place::Folder, "e1"))));
+        assert!(
+            app.last_notice().starts_with("Changes are blocked"),
+            "{}",
+            app.last_notice()
+        );
+        app.start_menu_restore(&ctx, vec![entry_key(Place::Folder, "e1")]);
+        assert!(!app.is_busy());
+    }
+
+    #[test]
+    fn menu_apply_is_refused_while_the_config_is_unreadable() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = two_menu_entries(&fx, &ctx);
+        app.config_error = Some(corrupt("config.json", "bad json"));
+        app.start_menu_apply(&ctx);
+        assert!(!app.is_busy());
+        assert!(app.last_notice().starts_with("Changes are blocked"));
+    }
+
+    #[test]
+    fn menu_apply_is_refused_with_the_problem_named() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = two_menu_entries(&fx, &ctx);
+        app.menu_entries_mut()[1].label = "  ".into();
+
+        app.start_menu_apply(&ctx);
+
+        assert!(!app.is_busy());
+        let shown = app.last_notice();
+        assert!(
+            shown.contains("Open one") || shown.contains("e2"),
+            "{shown}"
+        );
+        assert!(shown.contains("The label is empty."), "{shown}");
+        assert!(!app.env.menu_store_path.exists(), "store written");
+    }
+
+    #[test]
+    fn a_menu_restore_still_runs_while_the_config_is_unreadable() {
+        use crate::context_menu::{entry_key, Place};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = two_menu_entries(&fx, &ctx);
+        app.start_menu_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        app.config_error = Some(corrupt("config.json", "bad json"));
+
+        // Apply is blocked (it saves the config), a restore never writes it.
+        app.start_menu_apply(&ctx);
+        assert!(!app.is_busy());
+        let key = entry_key(Place::Folder, "e1");
+        app.request_restore_menu_keys(vec![key.clone()]);
+        app.resolve_confirm(&ctx, true);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+        assert!(!fx.key_exists(&fx.hkcu(&key)));
+        let saved = app.menu_store.backups_of("TEST\\user").unwrap();
+        assert!(saved.get(&key).is_none());
+    }
+
+    #[test]
+    fn the_menu_toast_counts_written_entries_and_names_removed_keys_apart() {
+        use crate::context_menu::{entry_key, Place};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = two_menu_entries(&fx, &ctx);
+        app.start_menu_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+
+        app.menu_entries_mut().retain(|e| e.id != "e2");
+        app.start_menu_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+
+        let toast = app.last_notice();
+        assert!(
+            toast.starts_with("Applied 1 context menu entry(ies), removed 2"),
+            "{toast}"
+        );
+        assert!(!toast.contains("Software"), "{toast}");
+        let last = app.history.first().expect("history entry");
+        assert!(
+            last.succeeded
+                .contains(&"Removed entry \u{b7} Folders".to_string()),
+            "{:?}",
+            last.succeeded
+        );
+        assert!(!last.succeeded.iter().any(|n| n.contains("Software")));
+        assert!(!fx.key_exists(&fx.hkcu(&entry_key(Place::Folder, "e2"))));
+
+        // Only removals: no "Applied 0".
+        app.menu_entries_mut().clear();
+        app.start_menu_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        let toast = app.last_notice();
+        assert!(
+            toast.starts_with("Removed 2 context menu entry(ies)"),
+            "{toast}"
+        );
+    }
+
+    #[test]
+    fn a_second_menu_job_is_refused_while_one_runs() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = two_menu_entries(&fx, &ctx);
+        let release = hold_job(&mut app);
+        app.start_menu_apply(&ctx);
+        assert!(app.last_notice().contains("still running"));
+        drop(release);
+        run_until_idle(&mut app, &ctx);
+    }
+
+    #[test]
+    fn a_panicking_menu_job_is_logged_and_reloads_the_store() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = two_menu_entries(&fx, &ctx);
+        app.menu_store_error = Some(corrupt("context-menu-backups.json", "sentinel"));
+        app.job = Some(RunningJob::ContextMenu {
+            job: BackgroundJob::spawn(
+                "Applying context menu entries",
+                || {},
+                |_| -> MenuOutcome { panic!("boom") },
+            ),
+            restore: false,
+        });
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(app.menu_store_error, None);
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Context menu", "Apply")
+        );
+        assert!(app.last_notice().contains("failed unexpectedly"));
+    }
+
     #[test]
     fn every_job_title_key_exists_in_english() {
         let tr = crate::i18n::Tr::english();
@@ -481,6 +876,10 @@ mod tests {
             "job.name.build_pak",
             "job.name.apply_tweaks",
             "job.name.restore_tweaks",
+            "job.apply_menu",
+            "job.restore_menu",
+            "job.name.apply_menu",
+            "job.name.restore_menu",
         ] {
             assert_ne!(tr.t(key), key);
         }

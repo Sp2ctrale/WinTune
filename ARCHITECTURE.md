@@ -6,14 +6,15 @@ the library, so it can be tested without the GUI and without elevation.
 
 ```
                  ┌──────────────────────── ui (egui) ────────────────────────┐
-                 │ pages: home · associations · tweaks (×2) · icons · history │
+                 │ pages: home · assoc. · tweaks (×2) · menu · icons · history│
                  │ navigation · toasts · progress bar · history · dialog      │
                  │ jobs ── tasks::BackgroundJob (one at a time, with progress)│
                  └───────────────┬───────────────────────────┬────────────────┘
                                  │ AppEnv (injectable)        │
           ┌──────────────────────┴───────┐        ┌──────────┴───────────┐
-          │ associations (HKLM + HKU)    │        │ tweaks (HKCU)        │
-          │ AssocTarget                  │        │ TweakTarget          │
+          │ associations (HKLM + HKU)    │        │ tweaks · context_menu│
+          │ AssocTarget                  │        │ (HKCU) TweakTarget / │
+          │                              │        │ MenuTarget           │
           └──────────────┬───────────────┘        └──────────┬───────────┘
                          └──────────── regsnap ──────────────┘
                      snapshot / restore / delete-tree / .reg export
@@ -29,8 +30,8 @@ the library, so it can be tested without the GUI and without elevation.
   and typed default values. An unreadable key is an error, never "missing".
   `export_reg_full` writes `.reg` files that delete then recreate a key, so
   importing one restores the exact state.
-- **Engines**: `associations` and `tweaks`. Each one works on an injectable
-  target (`AssocTarget`, `TweakTarget`). Production uses the real hives;
+- **Engines**: `associations`, `tweaks` and `context_menu`. Each one works on
+  an injectable target (`AssocTarget`, `TweakTarget`, `MenuTarget`). Production uses the real hives;
   tests point the target at `HKCU\Software\WinTuneTest\<unique>`.
 - **Stores**: small JSON files under `%ProgramData%\Wintune`.
 
@@ -39,6 +40,7 @@ the library, so it can be tested without the GUI and without elevation.
 | `config.json` | `ui` | Saved atomically. If it is unreadable, defaults are used in memory and **saving is refused** (the file is never overwritten) |
 | `backups.json` | `associations` | Missing means empty. Unreadable means an error, and all association changes are blocked |
 | `tweaks-backups.json` | `tweaks` | Same rule as `backups.json`. Entries are keyed by user (HKCU is per user), then by tweak id |
+| `context-menu-backups.json` | `context_menu` | Same rule as `backups.json`. Snapshots are keyed by user, then by registry key path (`Software\Classes\<place>\shell\WinTune.<id>`), so one entry in one place is one snapshot |
 | `history.jsonl` | `history` | Append-only. A damaged line is skipped, never fatal |
 | `reg-backups\*.reg` | engines | A `.reg` safety net written before each apply |
 
@@ -53,6 +55,43 @@ reports. The UI shows that English only inside report details (for example
 the "Configuration not saved" warning); everywhere else
 `i18n::messages::load_error` turns the code into a translated sentence
 (`load.corrupt`, `load.unreadable`) around the raw detail.
+
+## Context menu engine
+
+`context_menu` (`src/context_menu/`) lets a user add entries to Explorer's
+right-click menu. The list lives in `config.json` under `context_menu.users`,
+keyed by account, so an account only ever sees and edits its own entries.
+
+- **Model** (`mod.rs`): a `MenuEntry` has an id, a label, a `ProgramChoice`
+  (VS Code, Terminal, PowerShell, Cmd or a custom `.exe`), a set of `Place`s
+  (folders, folder background, drives, files) and an optional icon.
+  `entry_problems` validates the whole list and returns codes
+  (`EntryProblem`), which `i18n/messages.rs` turns into text.
+- **Programs** (`programs.rs`): `Programs` holds the detected executables and
+  `command_line` builds the `command` value. Every placeholder is quoted. A
+  drive root ends in a backslash, so Drive passes `"%1."` (`-d "%V."` for
+  Terminal) and the folder background, which Explorer also shows on a drive
+  root, passes `"%V\."` (`-d "%V\."`), so the closing quote survives. The
+  PowerShell and Command Prompt presets go through `cmd.exe` (`pushd`) so
+  apostrophes in folder names and network folders work. Presets are checked
+  against the disk every time they are resolved, not only at startup.
+- **Registry** (`engine.rs`): one verb key per entry and place,
+  `HKCU\Software\Classes\<Directory|Directory\Background|Drive|*>\shell\WinTune.<id>`,
+  with `MUIVerb`, `Icon` and a `command` subkey. `apply_entries` makes the
+  registry match the list: it snapshots every key it is about to create,
+  change or delete (in `context-menu-backups.json`, plus a `.reg` export),
+  then writes, and deletes the keys of removed entries and unticked places.
+  Only keys named `WinTune.*` are ever touched. `entry_status` is read-only
+  and says Applied, Not applied or Changed (with the places that differ);
+  `orphan_keys` finds keys of entries no longer in the list; `restore_keys`
+  puts snapshots back.
+- **Page** (`ui/context_menu_tab.rs`): a list of entries with a state pill, an
+  editor for the selected one, a Windows 11 banner linking to the Classic
+  context menu tweak, and an action bar showing what is not applied. Apply and
+  restore run as a job (`ui/jobs.rs`) and are logged under "Context menu".
+  History's Saved originals has a Context menu group that restores through
+  `restore_keys`, and the operations filter has a matching chip.
+- **Windows 11.** Entries written this way appear under "Show more options".
 
 ## Safety model (every module that writes to the registry)
 
@@ -73,8 +112,7 @@ the "Configuration not saved" warning); everywhere else
 - **The frame** (`ui/shell.rs`). A grouped navigation on the left, one page
   in the middle, and two kinds of notice: toasts for results and a progress
   bar while a job runs. The pages are Home, File associations, Explorer &
-  Taskbar, Start & Privacy, Icons, History and Settings. A Context menu entry
-  is shown disabled ("coming soon"). Home (`home.rs`) shows one tile per
+  Taskbar, Start & Privacy, Context menu, Icons, History and Settings. Home (`home.rs`) shows one tile per
   module, a drift banner and the recent operations. Settings (`settings.rs`)
   and History (`history_panel.rs`) are pages too. `config.json` is saved by `autosave.rs`
   one second after the last edit, and always before the window closes.

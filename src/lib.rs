@@ -3,6 +3,7 @@
 
 pub mod associations;
 pub mod clock;
+pub mod context_menu;
 pub mod detector;
 pub mod gallery;
 pub mod history;

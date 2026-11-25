@@ -384,9 +384,6 @@
   <data name="nav.group.tools" xml:space="preserve">
     <value>Outils</value>
   </data>
-  <data name="nav.coming_soon" xml:space="preserve">
-    <value>Bientôt disponible</value>
-  </data>
   <data name="history.ok" xml:space="preserve">
     <value>{0} réussie(s)</value>
   </data>
@@ -964,5 +961,192 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   </data>
   <data name="icons.imported" xml:space="preserve">
     <value>{0} fichier(s) .ico importé(s) sur {1}.</value>
+  </data>
+  <data name="menu.subtitle" xml:space="preserve">
+    <value>Pour {0}. Les entrées de clic droit que vous ajoutez, par compte.</value>
+  </data>
+  <data name="home.menu_status" xml:space="preserve">
+    <value>{0} entrée(s), {1} modifiée(s)</value>
+  </data>
+  <data name="job.apply_menu" xml:space="preserve">
+    <value>Application des entrées du menu contextuel…</value>
+  </data>
+  <data name="job.restore_menu" xml:space="preserve">
+    <value>Restauration des entrées du menu contextuel…</value>
+  </data>
+  <data name="job.name.apply_menu" xml:space="preserve">
+    <value>L'application des entrées du menu contextuel</value>
+  </data>
+  <data name="job.name.restore_menu" xml:space="preserve">
+    <value>La restauration des entrées du menu contextuel</value>
+  </data>
+  <data name="report.applied_menu" xml:space="preserve">
+    <value>{0} entrée(s) du menu contextuel appliquée(s)</value>
+  </data>
+  <data name="report.restored_menu" xml:space="preserve">
+    <value>{0} entrée(s) du menu contextuel restaurée(s)</value>
+  </data>
+  <data name="report.removed_menu" xml:space="preserve">
+    <value>{0} entrée(s) du menu contextuel supprimée(s)</value>
+  </data>
+  <data name="report.removed_menu_also" xml:space="preserve">
+    <value>{0} supprimée(s)</value>
+  </data>
+  <data name="menu.nothing_to_apply" xml:space="preserve">
+    <value>Rien à appliquer : tout est déjà appliqué.</value>
+  </data>
+  <data name="history.module.context_menu" xml:space="preserve">
+    <value>Menu contextuel</value>
+  </data>
+  <data name="menu.status.applied" xml:space="preserve">
+    <value>Appliquée</value>
+  </data>
+  <data name="menu.status.not_applied" xml:space="preserve">
+    <value>Non appliquée</value>
+  </data>
+  <data name="menu.status.changed" xml:space="preserve">
+    <value>Pas à jour</value>
+  </data>
+  <data name="menu.changed_hint" xml:space="preserve">
+    <value>Le registre diffère de cette entrée (modifié ici ou par un autre programme). Appliquez pour la mettre à jour.</value>
+  </data>
+  <data name="menu.place.folder" xml:space="preserve">
+    <value>Dossiers</value>
+  </data>
+  <data name="menu.place.background" xml:space="preserve">
+    <value>Arrière-plan des dossiers</value>
+  </data>
+  <data name="menu.place.drive" xml:space="preserve">
+    <value>Lecteurs</value>
+  </data>
+  <data name="menu.place.files" xml:space="preserve">
+    <value>Fichiers</value>
+  </data>
+  <data name="menu.problem.empty_label" xml:space="preserve">
+    <value>Le libellé est vide.</value>
+  </data>
+  <data name="menu.problem.label_too_long" xml:space="preserve">
+    <value>Le libellé dépasse 80 caractères.</value>
+  </data>
+  <data name="menu.problem.no_place" xml:space="preserve">
+    <value>Choisissez au moins un endroit où l'entrée apparaît.</value>
+  </data>
+  <data name="menu.problem.program_not_found" xml:space="preserve">
+    <value>Le programme est introuvable sur ce PC.</value>
+  </data>
+  <data name="menu.problem.icon_not_found" xml:space="preserve">
+    <value>Le fichier d'icône est introuvable.</value>
+  </data>
+  <data name="menu.problem.not_an_exe" xml:space="preserve">
+    <value>Le fichier du programme doit être un .exe.</value>
+  </data>
+  <data name="menu.problem.leading_at" xml:space="preserve">
+    <value>Le libellé ne peut pas commencer par @.</value>
+  </data>
+  <data name="menu.problem.duplicate_label" xml:space="preserve">
+    <value>Une autre entrée porte le même libellé dans : {0}.</value>
+  </data>
+  <data name="menu.problem.shell_on_files" xml:space="preserve">
+    <value>Un terminal a besoin d'un dossier : décochez Fichiers.</value>
+  </data>
+  <data name="menu.problem_line" xml:space="preserve">
+    <value>{0} : {1}</value>
+  </data>
+  <data name="menu.blocked.problems" xml:space="preserve">
+    <value>Corrigez d'abord :
+{0}</value>
+  </data>
+  <data name="menu.win11_banner" xml:space="preserve">
+    <value>Sous Windows 11, ces entrées apparaissent sous « Afficher plus d’options ».</value>
+  </data>
+  <data name="menu.use_classic" xml:space="preserve">
+    <value>Utiliser le menu classique</value>
+  </data>
+  <data name="menu.my_entries" xml:space="preserve">
+    <value>Mes entrées</value>
+  </data>
+  <data name="menu.add" xml:space="preserve">
+    <value>Ajouter une entrée</value>
+  </data>
+  <data name="menu.empty" xml:space="preserve">
+    <value>Aucune entrée pour l’instant. Ajoutez-en une pour la voir dans le menu clic droit.</value>
+  </data>
+  <data name="menu.new_label" xml:space="preserve">
+    <value>Nouvelle entrée</value>
+  </data>
+  <data name="menu.details" xml:space="preserve">
+    <value>Détails de l’entrée</value>
+  </data>
+  <data name="menu.label" xml:space="preserve">
+    <value>Libellé</value>
+  </data>
+  <data name="menu.program" xml:space="preserve">
+    <value>Programme</value>
+  </data>
+  <data name="menu.program.vscode" xml:space="preserve">
+    <value>VS Code</value>
+  </data>
+  <data name="menu.program.terminal" xml:space="preserve">
+    <value>Terminal Windows</value>
+  </data>
+  <data name="menu.program.powershell" xml:space="preserve">
+    <value>PowerShell</value>
+  </data>
+  <data name="menu.program.cmd" xml:space="preserve">
+    <value>Invite de commandes</value>
+  </data>
+  <data name="menu.program.other" xml:space="preserve">
+    <value>Autre programme…</value>
+  </data>
+  <data name="menu.program_missing" xml:space="preserve">
+    <value>Introuvable sur ce PC.</value>
+  </data>
+  <data name="menu.path" xml:space="preserve">
+    <value>Fichier du programme</value>
+  </data>
+  <data name="menu.browse" xml:space="preserve">
+    <value>Parcourir…</value>
+  </data>
+  <data name="menu.appears_on" xml:space="preserve">
+    <value>Apparaît sur</value>
+  </data>
+  <data name="menu.icon" xml:space="preserve">
+    <value>Icône</value>
+  </data>
+  <data name="menu.icon_default" xml:space="preserve">
+    <value>Icône du programme</value>
+  </data>
+  <data name="menu.change" xml:space="preserve">
+    <value>Changer…</value>
+  </data>
+  <data name="menu.reset" xml:space="preserve">
+    <value>Réinitialiser</value>
+  </data>
+  <data name="menu.remove" xml:space="preserve">
+    <value>Retirer</value>
+  </data>
+  <data name="menu.remove_title" xml:space="preserve">
+    <value>Retirer cette entrée ?</value>
+  </data>
+  <data name="menu.remove_message" xml:space="preserve">
+    <value>« {0} » quitte la liste. Ses entrées de clic droit sont supprimées à la prochaine application, et l’original reste dans l’historique.</value>
+  </data>
+  <data name="menu.restore_title" xml:space="preserve">
+    <value>Remettre l’original</value>
+  </data>
+  <data name="menu.restore_message" xml:space="preserve">
+    <value>Remettre en place ce qui existait avant que WinTune ne modifie {0} ?</value>
+  </data>
+  <data name="menu.removed_entry" xml:space="preserve">
+    <value>Entrée supprimée</value>
+  </data>
+  <data name="menu.restore_many" xml:space="preserve">
+    <value>{0} entrées du menu contextuel</value>
+  </data>
+  <data name="menu.pending" xml:space="preserve">
+    <value>{0} non appliquée(s)</value>
+  </data>
+  <data name="menu.up_to_date" xml:space="preserve">
+    <value>Tout est appliqué</value>
   </data>
 </root>

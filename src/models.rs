@@ -111,6 +111,9 @@ pub struct AppConfig {
     /// UI language code; unknown codes fall back to English.
     #[serde(default = "default_language")]
     pub language: String,
+    /// Right-click entries the user added, per Windows account.
+    #[serde(default)]
+    pub context_menu: crate::context_menu::ContextMenuConfig,
 }
 
 fn default_language() -> String {
@@ -140,6 +143,7 @@ impl Default for AppConfig {
             pak_file_path: base.join("gallery.pak").to_string_lossy().into_owned(),
             extensions: default_extensions(),
             language: default_language(),
+            context_menu: Default::default(),
         }
     }
 }

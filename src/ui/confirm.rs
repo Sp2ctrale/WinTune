@@ -5,6 +5,9 @@
 use super::{kit, WinTuneApp};
 use eframe::egui;
 
+/// Entry names listed in the restore question before it gives a count.
+const MAX_NAMED: usize = 3;
+
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum ConfirmAction {
     /// `index` is a hint: the rule is found again by `extension` in case the
@@ -16,6 +19,14 @@ pub(super) enum ConfirmAction {
     Rollback(Vec<String>),
     /// Tweak ids whose original state must be put back.
     RestoreTweaks(Vec<String>),
+    /// Context menu registry keys (`entry_key` paths) whose original must be
+    /// put back.
+    RestoreMenuKeys(Vec<String>),
+    /// Takes a context menu entry out of the list; its registry keys go at
+    /// the next Apply.
+    RemoveMenuEntry {
+        id: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -62,6 +73,48 @@ impl WinTuneApp {
         self.confirm_rollback(extensions);
     }
 
+    /// Asks before taking a context menu entry out of the list.
+    pub(super) fn request_remove_menu_entry(&mut self, id: &str) {
+        let Some(entry) = self.menu_entries().iter().find(|e| e.id == id) else {
+            return;
+        };
+        let name = entry.label.trim();
+        let name = if name.is_empty() { id } else { name };
+        let tr = self.tr;
+        self.pending_confirm = Some(Confirm {
+            title: tr.t("menu.remove_title"),
+            message: tr.t_args("menu.remove_message", &[&name]),
+            confirm_label: tr.t("menu.remove"),
+            action: ConfirmAction::RemoveMenuEntry { id: id.to_string() },
+        });
+    }
+
+    /// Asks before putting context menu keys back to what was there before
+    /// WinTune changed them (History's "Restore original").
+    pub(super) fn request_restore_menu_keys(&mut self, keys: Vec<String>) {
+        if keys.is_empty() {
+            return;
+        }
+        let tr = self.tr;
+        let mut names: Vec<String> = Vec::new();
+        for name in keys.iter().map(|k| self.menu_key_title(k)) {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        let named = if names.len() > MAX_NAMED {
+            tr.t_args("menu.restore_many", &[&names.len()])
+        } else {
+            names.join(", ")
+        };
+        self.pending_confirm = Some(Confirm {
+            title: tr.t("menu.restore_title"),
+            message: tr.t_args("menu.restore_message", &[&named]),
+            confirm_label: tr.t("confirm.restore"),
+            action: ConfirmAction::RestoreMenuKeys(keys),
+        });
+    }
+
     fn confirm_rollback(&mut self, extensions: Vec<String>) {
         let tr = self.tr;
         self.pending_confirm = Some(Confirm {
@@ -90,7 +143,22 @@ impl WinTuneApp {
             ConfirmAction::RemoveRule { index, extension } => self.remove_rule(index, &extension),
             ConfirmAction::Rollback(extensions) => self.start_rollback(ctx, extensions),
             ConfirmAction::RestoreTweaks(ids) => self.start_restore_tweaks(ctx, ids),
+            ConfirmAction::RestoreMenuKeys(keys) => self.start_menu_restore(ctx, keys),
+            ConfirmAction::RemoveMenuEntry { id } => self.remove_menu_entry(&id),
         }
+    }
+
+    /// Takes the entry out of the list. Its keys stay in the registry until
+    /// the next Apply (they show as pending), and the original stays in History.
+    fn remove_menu_entry(&mut self, id: &str) {
+        if !self.menu_entries().iter().any(|e| e.id == id) {
+            return;
+        }
+        self.menu_entries_mut().retain(|e| e.id != id);
+        if self.selected_menu_entry.as_deref() == Some(id) {
+            self.selected_menu_entry = None;
+        }
+        self.refresh_menu_statuses_if_idle();
     }
 
     fn remove_rule(&mut self, hint: usize, extension: &str) {

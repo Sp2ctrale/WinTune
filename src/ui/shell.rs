@@ -76,13 +76,10 @@ impl WinTuneApp {
 
     /// Switches page. Stores are never reloaded under a running job.
     pub(super) fn open_page(&mut self, page: ActiveTab) {
-        if page == ActiveTab::ContextMenu {
-            // Shown in the navigation but not built yet: never openable.
-            return;
-        }
         if page == ActiveTab::History && !self.is_busy() {
             self.reload_backup_store();
             self.reload_tweak_store();
+            self.reload_menu_store();
         }
         if page == ActiveTab::Associations && self.active_tab != page {
             self.request_status_refresh();
@@ -90,6 +87,10 @@ impl WinTuneApp {
         if matches!(page, ActiveTab::Tweaks | ActiveTab::StartPrivacy) && !self.is_busy() {
             self.reload_tweak_store();
             self.refresh_tweak_statuses();
+        }
+        if page == ActiveTab::ContextMenu && !self.is_busy() {
+            self.reload_menu_store();
+            self.refresh_menu_statuses();
         }
         if self.active_tab != page {
             self.focus_search = false;
@@ -120,7 +121,6 @@ impl WinTuneApp {
         let settings = tr.t("nav.settings");
         let customize = tr.t("nav.group.customize");
         let tools = tr.t("nav.group.tools");
-        let coming_soon = tr.t("nav.coming_soon");
 
         let this = &*self;
         let item = |key: ActiveTab, icon: kit::Icon, label| kit::NavItem {
@@ -146,15 +146,11 @@ impl WinTuneApp {
                     ),
                     item(ActiveTab::Tweaks, kit::Icon::Explorer, &explorer),
                     item(ActiveTab::StartPrivacy, kit::Icon::Start, &start),
-                    kit::NavItem {
-                        enabled: false,
-                        disabled_hint: Some(&coming_soon),
-                        ..item(
-                            ActiveTab::ContextMenu,
-                            kit::Icon::ContextMenu,
-                            &context_menu,
-                        )
-                    },
+                    item(
+                        ActiveTab::ContextMenu,
+                        kit::Icon::ContextMenu,
+                        &context_menu,
+                    ),
                 ],
             },
             kit::NavGroup {
@@ -297,32 +293,43 @@ mod tests {
     }
 
     #[test]
-    fn context_menu_cannot_be_opened() {
+    fn the_context_menu_page_opens_from_the_nav() {
         let fx = TempIcons::new(&[]);
         let ctx = egui::Context::default();
         let mut app = fx.app(&ctx);
         let out = frame(&mut app, &ctx, RawInput::default());
 
-        // Control: a live row does open.
-        let history = text_center(&out, "History").expect("History row");
-        click_at_with(&mut app, &ctx, input_with, history);
-        assert_eq!(app.active_tab, ActiveTab::History);
+        // Home's own tile repeats the label; the sidebar is leftmost.
+        let label = app.tr.t("nav.context_menu");
+        let row = text_centers(&out, &label)
+            .into_iter()
+            .min_by(|a, b| a.x.total_cmp(&b.x))
+            .expect("Context menu row");
+        click_at_with(&mut app, &ctx, input_with, row);
+        assert_eq!(app.active_tab, ActiveTab::ContextMenu);
 
-        app.active_tab = ActiveTab::Home;
-        let out = frame(&mut app, &ctx, RawInput::default());
-        let disabled = text_center(&out, "Context menu").expect("Context menu row");
-        click_at_with(&mut app, &ctx, input_with, disabled);
-        assert_eq!(app.active_tab, ActiveTab::Home);
+        let texts = drawn_texts(&frame(&mut app, &ctx, RawInput::default()));
+        let subtitle = app.tr.t_args("menu.subtitle", &[&"TEST\\user"]);
+        assert!(texts.contains(&subtitle), "{texts:?}");
     }
 
     #[test]
-    fn open_page_never_opens_the_context_menu() {
+    fn opening_the_context_menu_page_reads_the_store_unless_a_job_runs() {
         let fx = TempIcons::new(&[]);
         let ctx = egui::Context::default();
         let mut app = fx.app(&ctx);
-        app.open_page(ActiveTab::History);
+        app.menu_store_error = Some(corrupt("context-menu-backups.json", "sentinel"));
         app.open_page(ActiveTab::ContextMenu);
-        assert_eq!(app.active_tab, ActiveTab::History);
+        assert_eq!(app.active_tab, ActiveTab::ContextMenu);
+        assert_eq!(app.menu_store_error, None);
+
+        app.open_page(ActiveTab::Home);
+        let release = hold_job(&mut app);
+        app.menu_store_error = Some(corrupt("context-menu-backups.json", "sentinel"));
+        app.open_page(ActiveTab::ContextMenu);
+        assert!(app.menu_store_error.is_some(), "reloaded under a job");
+        drop(release);
+        run_until_idle(&mut app, &ctx);
     }
 
     #[test]
@@ -844,6 +851,72 @@ mod tests {
             );
         }
 
+        // The Context menu page: one applied entry (so History gets a saved
+        // original), one entry with a problem, the Windows 11 banner and each
+        // selected entry's detail.
+        {
+            use crate::context_menu::{EntryProblem, MenuEntry, Place, ProgramChoice};
+            let menu_entry = |id: &str, label: &str, program, place| MenuEntry {
+                id: id.into(),
+                label: label.into(),
+                program,
+                places: std::collections::BTreeSet::from([place]),
+                icon: None,
+            };
+            *app.menu_entries_mut() = vec![menu_entry(
+                "e1",
+                "Open one",
+                ProgramChoice::VsCode,
+                Place::Folder,
+            )];
+            app.start_menu_apply(&ctx);
+            run_until_idle(&mut app, &ctx);
+            assert!(
+                app.menu_store.backups_of("TEST\\user").is_some(),
+                "no context menu snapshot: {}",
+                app.last_notice()
+            );
+            app.menu_entries_mut().push(menu_entry(
+                "e2",
+                "Shell on files",
+                ProgramChoice::Terminal,
+                Place::Files,
+            ));
+            app.refresh_menu_statuses();
+            app.env.is_windows_11 = true;
+            app.active_tab = ActiveTab::ContextMenu;
+            let mut texts = Vec::new();
+            for selected in ["e1", "e2"] {
+                app.selected_menu_entry = Some(selected.into());
+                for _ in 0..3 {
+                    texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
+                }
+            }
+            app.selected_menu_entry = None;
+            for _ in 0..3 {
+                texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
+            }
+            for drawn in [
+                app.tr.t("menu.win11_banner"),
+                app.tr.t("menu.use_classic"),
+                app.tr.t("menu.status.applied"),
+                crate::i18n::messages::entry_problem(app.tr, &EntryProblem::ShellOnFiles),
+                "Open one".to_string(),
+                "Shell on files".to_string(),
+            ] {
+                assert!(
+                    texts.contains(&drawn),
+                    "{drawn:?} not drawn on Context menu: {texts:?}"
+                );
+            }
+            for (key, value) in &english_only {
+                assert!(
+                    !texts.iter().any(|t| t == *value),
+                    "the Context menu page draws English-only text {value:?} (key {key})"
+                );
+            }
+        }
+
         // The History page: saved originals in every group, one opened
         // operation with an error and a `.reg` path, then a broken store.
         app.config.extensions = vec![rule(".a"), rule(".b")];
@@ -862,7 +935,16 @@ mod tests {
         );
         entry.reg_backup = Some("C:\\backups\\x.reg".into());
         let entry_time = entry.time.clone();
-        app.history = vec![entry];
+        let mut menu_entry = crate::history::HistoryEntry::from_report(
+            "Context menu",
+            "Apply",
+            &crate::associations::OperationReport {
+                succeeded: vec!["Open one".into()],
+                ..Default::default()
+            },
+        );
+        menu_entry.time = "2000-01-01 00:00:00".into();
+        app.history = vec![entry, menu_entry];
         app.open_page(ActiveTab::History);
         // `open_page` reloaded the stores from disk, so put the unknown
         // tweak back in memory.
@@ -933,6 +1015,7 @@ mod tests {
             ".a".to_string(),
             "gone_tweak".to_string(),
             app.tr.t("originals.other"),
+            "Open one".to_string(),
         ];
         rows.extend(
             applied_tweaks

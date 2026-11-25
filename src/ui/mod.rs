@@ -8,6 +8,7 @@
 mod associations_tab;
 mod autosave;
 mod confirm;
+mod context_menu_tab;
 mod gallery_tab;
 mod history_panel;
 mod home;
@@ -31,6 +32,10 @@ mod tweaks_tab;
 use crate::associations::{
     default_backup_store_path, default_reg_backup_dir, load_backup_store,
     notify_shell_associations, AssocTarget, OperationReport,
+};
+use crate::context_menu::{
+    default_menu_store_path, entry_status, load_menu_store, orphan_keys, EntryStatus,
+    MenuBackupStore, MenuEntry, MenuTarget, Programs,
 };
 use crate::detector::{
     has_wsl_distribution, is_windows_11_build, resolve_vscode_executable, windows_build,
@@ -76,6 +81,11 @@ pub(crate) struct AppEnv {
     pub data_dir: PathBuf,
     /// Opens a folder in Explorer.
     pub open_folder: Arc<dyn Fn(&Path) + Send + Sync>,
+    /// Where the context menu entries are written (HKCU).
+    pub menu_target: Arc<dyn Fn() -> MenuTarget + Send + Sync>,
+    pub menu_store_path: PathBuf,
+    /// Where each preset program of the context menu lives.
+    pub programs: Programs,
 }
 
 impl AppEnv {
@@ -97,6 +107,9 @@ impl AppEnv {
                 // Nothing to report to from here: a failed spawn is ignored.
                 let _ = std::process::Command::new("explorer.exe").arg(path).spawn();
             }),
+            menu_target: Arc::new(MenuTarget::current_user),
+            menu_store_path: default_menu_store_path(),
+            programs: Programs::detect(),
         }
     }
 }
@@ -110,18 +123,18 @@ pub(crate) enum ActiveTab {
     Gallery,
     History,
     Settings,
-    /// Not built yet: shown in the navigation, disabled.
     ContextMenu,
 }
 
 impl ActiveTab {
     /// Every page that can be opened, in navigation order (the tests walk it).
     #[cfg(test)]
-    pub(crate) const ALL: [ActiveTab; 7] = [
+    pub(crate) const ALL: [ActiveTab; 8] = [
         ActiveTab::Home,
         ActiveTab::Associations,
         ActiveTab::Tweaks,
         ActiveTab::StartPrivacy,
+        ActiveTab::ContextMenu,
         ActiveTab::Gallery,
         ActiveTab::History,
         ActiveTab::Settings,
@@ -134,11 +147,8 @@ impl ActiveTab {
             ActiveTab::Associations => Some("File associations"),
             ActiveTab::Tweaks => Some("Explorer & Taskbar"),
             ActiveTab::StartPrivacy => Some("Start & Privacy"),
-            ActiveTab::Home
-            | ActiveTab::Gallery
-            | ActiveTab::History
-            | ActiveTab::Settings
-            | ActiveTab::ContextMenu => None,
+            ActiveTab::ContextMenu => Some("Context menu"),
+            ActiveTab::Home | ActiveTab::Gallery | ActiveTab::History | ActiveTab::Settings => None,
         }
     }
 
@@ -147,7 +157,10 @@ impl ActiveTab {
     pub(super) fn owns_action_bar(self) -> bool {
         matches!(
             self,
-            ActiveTab::Associations | ActiveTab::Tweaks | ActiveTab::StartPrivacy
+            ActiveTab::Associations
+                | ActiveTab::Tweaks
+                | ActiveTab::StartPrivacy
+                | ActiveTab::ContextMenu
         )
     }
 }
@@ -159,6 +172,8 @@ pub(super) enum ReportKind {
     RestoredRules,
     AppliedTweaks,
     RestoredTweaks,
+    AppliedMenu,
+    RestoredMenu,
 }
 
 pub struct WinTuneApp {
@@ -200,6 +215,16 @@ pub struct WinTuneApp {
     tweak_desired: HashMap<&'static str, bool>,
     /// Filter typed in the tweaks tab (title / description).
     tweak_search: String,
+    /// Original states of the context menu keys (context-menu-backups.json).
+    menu_store: MenuBackupStore,
+    /// Set when context-menu-backups.json cannot be read: menu changes are blocked.
+    menu_store_error: Option<LoadError>,
+    /// Live registry state of each entry of the current list, by entry id.
+    menu_statuses: HashMap<String, EntryStatus>,
+    /// `WinTune.*` keys in the registry that no entry of the list owns.
+    menu_orphans: Vec<String>,
+    /// Entry open in the editor, by id.
+    selected_menu_entry: Option<String>,
     tr: Tr,
     /// The theme actually shown this frame (Light or Dark, never System):
     /// what the old palette helpers receive.
@@ -241,6 +266,8 @@ impl WinTuneApp {
         app.reload_backup_store();
         app.reload_tweak_store();
         app.refresh_tweak_statuses();
+        app.reload_menu_store();
+        app.refresh_menu_statuses();
         app.reload_history();
         app.request_status_refresh();
         app
@@ -289,6 +316,11 @@ impl WinTuneApp {
             tweak_statuses: HashMap::new(),
             tweak_desired: HashMap::new(),
             tweak_search: String::new(),
+            menu_store: MenuBackupStore::default(),
+            menu_store_error: None,
+            menu_statuses: HashMap::new(),
+            menu_orphans: Vec::new(),
+            selected_menu_entry: None,
             tr,
             ui_theme,
             focus_search: false,
@@ -324,12 +356,13 @@ impl WinTuneApp {
         self.show_autosave_banner(ctx);
 
         match self.active_tab {
-            ActiveTab::Home | ActiveTab::ContextMenu => self.show_home(ctx),
+            ActiveTab::Home => self.show_home(ctx),
             ActiveTab::History => self.show_history_page(ctx),
             ActiveTab::Settings => self.show_settings(ctx),
             ActiveTab::Associations => self.show_associations_tab(ctx),
             ActiveTab::Tweaks | ActiveTab::StartPrivacy => self.show_tweaks_tab(ctx),
             ActiveTab::Gallery => self.show_gallery_tab(ctx),
+            ActiveTab::ContextMenu => self.show_context_menu_tab(ctx),
         }
 
         self.toasts.show(ctx, &self.tr.t("toast.clear_all"));
@@ -393,6 +426,53 @@ impl WinTuneApp {
         }
     }
 
+    pub(super) fn reload_menu_store(&mut self) {
+        match load_menu_store(&self.env.menu_store_path) {
+            Ok(store) => {
+                self.menu_store = store;
+                self.menu_store_error = None;
+            }
+            Err(e) => {
+                self.menu_store = MenuBackupStore::default();
+                let text = messages::load_error(self.tr, &e);
+                self.notify(kit::ToastKind::Error, text);
+                self.menu_store_error = Some(e);
+            }
+        }
+    }
+
+    /// Re-reads the registry state of every entry (a few values each, never
+    /// done per frame) and the keys of entries no longer in the list.
+    pub(super) fn refresh_menu_statuses(&mut self) {
+        let target = (self.env.menu_target)();
+        let entries = self.menu_entries();
+        let statuses = entries
+            .iter()
+            .map(|e| (e.id.clone(), entry_status(&target, e, &self.env.programs)))
+            .collect();
+        let orphans = orphan_keys(&target, entries);
+        self.menu_statuses = statuses;
+        self.menu_orphans = orphans;
+    }
+
+    /// Like `refresh_menu_statuses`, but not while a job runs: the registry is
+    /// changing under it, and the job's end re-reads the statuses anyway.
+    pub(super) fn refresh_menu_statuses_if_idle(&mut self) {
+        if !self.is_busy() {
+            self.refresh_menu_statuses();
+        }
+    }
+
+    /// The entries of the signed-in account: another account's are never shown.
+    pub(super) fn menu_entries(&self) -> &[MenuEntry] {
+        self.config.context_menu.entries_of(&self.env.user_label)
+    }
+
+    /// Editing the list changes `config`, which the autosave notices.
+    pub(super) fn menu_entries_mut(&mut self) -> &mut Vec<MenuEntry> {
+        self.config.context_menu.entries_mut(&self.env.user_label)
+    }
+
     /// Toast for a finished registry job: an error toast when something
     /// failed, with the full error / warning list on hover.
     fn show_report(&mut self, kind: ReportKind, report: &OperationReport) {
@@ -403,6 +483,20 @@ impl WinTuneApp {
             ReportKind::RestoredRules => tr.t_args("report.restored_rules", &[&count]),
             ReportKind::AppliedTweaks => tr.t_args("report.applied_tweaks", &[&count]),
             ReportKind::RestoredTweaks => tr.t_args("report.restored_tweaks", &[&count]),
+            ReportKind::AppliedMenu => {
+                // Entries written; keys taken away are counted apart.
+                let removed = report.removed.len();
+                let applied = tr.t_args("report.applied_menu", &[&count]);
+                match (count, removed) {
+                    (_, 0) => applied,
+                    (0, n) => tr.t_args("report.removed_menu", &[&n]),
+                    (_, n) => format!(
+                        "{applied}, {}",
+                        tr.t_args("report.removed_menu_also", &[&n])
+                    ),
+                }
+            }
+            ReportKind::RestoredMenu => tr.t_args("report.restored_menu", &[&count]),
         };
         if let Some(first) = report.errors.first() {
             msg.push_str(&tr.t_args("report.errors", &[&report.errors.len(), first]));
@@ -625,6 +719,34 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         assert!(closed, "window was never closed after the job ended");
+    }
+
+    #[test]
+    fn another_user_sees_an_empty_list() {
+        use crate::context_menu::{MenuEntry, Place, ProgramChoice};
+        let icons = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut config = icons.config();
+        config
+            .context_menu
+            .entries_mut("TEST\\user")
+            .push(MenuEntry {
+                id: "e1".into(),
+                label: "Open".into(),
+                program: ProgramChoice::Cmd,
+                places: [Place::Folder].into_iter().collect(),
+                icon: None,
+            });
+        let mut app = icons.app_with(&ctx, config.clone());
+        assert_eq!(app.menu_entries().len(), 1);
+
+        let mut env = icons.env();
+        env.user_label = "OTHER\\user".into();
+        let mut other = WinTuneApp::with_config(&ctx, config, false, env);
+        assert!(other.menu_entries().is_empty());
+        // Editing the other account's list leaves the first one alone.
+        other.menu_entries_mut().clear();
+        assert_eq!(app.menu_entries_mut().len(), 1);
     }
 
     #[test]

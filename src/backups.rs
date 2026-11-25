@@ -124,6 +124,18 @@ impl UserBackups {
         self.backups_of(user).is_some_and(|b| b.contains_key(id))
     }
 
+    /// The stored spelling of `id` for `user`, matched exactly first, then
+    /// ignoring ASCII case like the registry paths ids are made of; `None`
+    /// when nothing is recorded.
+    pub fn find_id(&self, user: &str, id: &str) -> Option<&str> {
+        let backups = self.backups_of(user)?;
+        match backups.get_key_value(id) {
+            Some((key, _)) => Some(key),
+            None => backups.keys().find(|k| k.eq_ignore_ascii_case(id)),
+        }
+        .map(String::as_str)
+    }
+
     /// Records `snapshot` unless `id` already has one: the first is the
     /// original.
     pub fn record_first(&mut self, user: &str, id: &str, timestamp: &str, snapshot: Snapshot) {
@@ -209,11 +221,13 @@ pub fn save_then_export(
     Ok(reg_file)
 }
 
-/// Puts each id back exactly as it was first recorded for `user`, then
-/// forgets its snapshot. A failed restore keeps the snapshot.
+/// Puts each id back as it was first recorded for `user` (through
+/// `restore`, usually [`restore_snapshot`]), then forgets its snapshot. An id
+/// is looked up as [`UserBackups::find_id`] does. A failed restore keeps the
+/// snapshot.
 #[allow(clippy::too_many_arguments)]
 pub fn restore_ids(
-    t: &RegTarget,
+    restore: &dyn Fn(&Slot, &Snapshot) -> Result<(), String>,
     store: &mut UserBackups,
     user: &str,
     ids: &[String],
@@ -234,15 +248,19 @@ pub fn restore_ids(
                 continue;
             }
         };
-        let Some(backup) = store.backups_of(user).and_then(|b| b.get(id)).cloned() else {
+        let found = store.find_id(user, id).and_then(|stored| {
+            let backup = store.backups_of(user)?.get(stored)?.clone();
+            Some((stored.to_string(), backup))
+        });
+        let Some((stored, backup)) = found else {
             report
                 .errors
                 .push(format!("{}: no original state recorded for {}", id, user));
             continue;
         };
-        match restore_snapshot(t, &slot, &backup.snapshot) {
+        match restore(&slot, &backup.snapshot) {
             Ok(()) => {
-                store.forget(user, id);
+                store.forget(user, &stored);
                 report.succeeded.push(name_of(id));
             }
             Err(e) => report.errors.push(format!(
@@ -353,7 +371,7 @@ mod tests {
             base: sb.path.clone(),
         };
         let report = restore_ids(
-            &target,
+            &|slot, s| restore_snapshot(&target, slot, s),
             &mut store,
             "U",
             &[FOLDER.to_string()],
@@ -393,6 +411,24 @@ mod tests {
         assert_eq!(kept.snapshot, first);
         assert!(store.has_backup("U", "t"));
         assert!(!store.has_backup("V", "t"));
+    }
+
+    #[test]
+    fn find_id_ignores_case_and_prefers_the_exact_spelling() {
+        let mut store = UserBackups::default();
+        let s = Snapshot::Key(RegistryKeySnapshot::default());
+        store.record_first("U", r"Software\Classes\Verb", "x", s.clone());
+        assert_eq!(
+            store.find_id("U", r"software\classes\verb"),
+            Some(r"Software\Classes\Verb")
+        );
+        store.record_first("U", r"software\classes\verb", "x", s);
+        assert_eq!(
+            store.find_id("U", r"software\classes\verb"),
+            Some(r"software\classes\verb")
+        );
+        assert_eq!(store.find_id("U", "B"), None);
+        assert_eq!(store.find_id("V", r"Software\Classes\Verb"), None);
     }
 
     #[test]

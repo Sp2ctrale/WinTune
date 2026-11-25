@@ -622,7 +622,7 @@ pub fn restore_tweaks(
     opts: &TweakOptions,
 ) -> OperationReport {
     backups::restore_ids(
-        target,
+        &|slot, s| backups::restore_snapshot(target, slot, s),
         store,
         &opts.user,
         ids,

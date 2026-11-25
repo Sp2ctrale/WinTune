@@ -20,7 +20,7 @@ use crate::associations::OperationReport;
 use crate::backups::{self, RegTarget, Slot};
 use crate::clock;
 use crate::models::app_data_dir;
-use crate::regsnap::{self, ValueSnapshot};
+use crate::regsnap::{self, RegistryKeySnapshot, ValueSnapshot};
 
 /// Where the menu lives. Production: HKCU and HKLM themselves; tests:
 /// sandbox keys. Writes only ever go to `user`.
@@ -354,31 +354,139 @@ fn write_verb_copy(
             regsnap::restore_value(&t.root, &full, "MUIVerb", &verb)?;
         }
     }
+    drop(key);
     if original_key.is_some_and(|k| !k.exists) {
-        let info = key
-            .query_info()
-            .map_err(|e| format!("Cannot read {rel}: {e}"))?;
-        drop(key);
-        if info.values == 0 && info.sub_keys == 0 {
-            // Not delete_tree: only an empty key can ever go.
-            match t.root.delete_subkey(&full) {
-                Ok(()) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(format!("Cannot delete {rel}: {e}")),
-            }
-        }
+        delete_if_empty(t, rel)?;
     }
     Ok(())
 }
 
-/// The store's spelling of slot `id` for `user`, matched ignoring ASCII case
-/// like the registry paths it names; `None` when nothing is recorded.
-fn stored_id<'a>(store: &'a MenuBackupStore, user: &str, id: &str) -> Option<&'a String> {
-    let backups = store.backups_of(user)?;
-    match backups.get_key_value(id) {
-        Some((key, _)) => Some(key),
-        None => backups.keys().find(|k| k.eq_ignore_ascii_case(id)),
+/// The two values WinTune ever changes on a verb's HKCU copy.
+const COPY_VALUES: [&str; 2] = [PROGRAMMATIC_ACCESS_ONLY, "MUIVerb"];
+
+/// Deletes the key `rel` when it holds no value and no subkey. Never
+/// `delete_tree`: only an empty key can ever go. A missing key is fine.
+fn delete_if_empty(t: &RegTarget, rel: &str) -> Result<(), String> {
+    let full = t.path(rel);
+    let info = match t.root.open_subkey_with_flags(&full, KEY_READ) {
+        Ok(key) => key
+            .query_info()
+            .map_err(|e| format!("Cannot read {rel}: {e}"))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(format!("Cannot read {rel}: {e}")),
+    };
+    if info.values > 0 || info.sub_keys > 0 {
+        return Ok(());
     }
+    match t.root.delete_subkey(&full) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("Cannot delete {rel}: {e}")),
+    }
+}
+
+/// Value `name` of a key snapshot, matched ignoring case like the registry
+/// does: its recorded spelling (else `name`) and state (absent when the key
+/// or the value was).
+fn recorded_value(original: &RegistryKeySnapshot, name: &str) -> (String, ValueSnapshot) {
+    original
+        .values
+        .iter()
+        .find(|(n, _)| n.eq_ignore_ascii_case(name))
+        .map(|(n, (kind, data))| {
+            let value = ValueSnapshot {
+                exists: true,
+                kind: *kind,
+                data: data.clone(),
+            };
+            (n.clone(), value)
+        })
+        .unwrap_or_else(|| (name.to_string(), ValueSnapshot::default()))
+}
+
+/// Whether slot `rel`'s key is a `WinTune.*` key (an added entry), as
+/// opposed to the HKCU copy of a verb another program registered.
+fn own_key(rel: &str) -> bool {
+    rel.rsplit('\\')
+        .next()
+        .is_some_and(|name| name.to_lowercase().starts_with(&KEY_PREFIX.to_lowercase()))
+}
+
+/// Puts one slot back for Restore original. A `WinTune.*` key and a value
+/// come back exactly as recorded; a verb's HKCU copy only gets its two
+/// values back ([`restore_verb_copy`]): the rest of it is the program's.
+fn restore_menu_slot(
+    t: &RegTarget,
+    slot: &Slot,
+    snapshot: &backups::Snapshot,
+) -> Result<(), String> {
+    match (slot, snapshot) {
+        (Slot::Key(rel), backups::Snapshot::Key(original)) if !own_key(rel) => {
+            restore_verb_copy(t, rel, original)
+        }
+        _ => backups::restore_snapshot(t, slot, snapshot),
+    }
+}
+
+/// `ProgrammaticAccessOnly` and `MUIVerb` of the copy `rel` back to
+/// `original` (deleted when it had none), then the copy itself deleted when
+/// WinTune created it and nothing is left in it. Whatever else the program
+/// wrote there since, command and icon included, stays. A copy that is gone
+/// holds nothing of WinTune's: it is not recreated.
+fn restore_verb_copy(
+    t: &RegTarget,
+    rel: &str,
+    original: &RegistryKeySnapshot,
+) -> Result<(), String> {
+    let full = t.path(rel);
+    match t.root.open_subkey_with_flags(&full, KEY_READ) {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(format!("Cannot read {rel}: {e}")),
+    }
+    for name in COPY_VALUES {
+        let (spelling, value) = recorded_value(original, name);
+        regsnap::restore_value(&t.root, &full, &spelling, &value)?;
+    }
+    if !original.exists {
+        delete_if_empty(t, rel)?;
+    }
+    Ok(())
+}
+
+/// The slots of `change` that Apply brought back to their recorded original,
+/// by stored id: a verb copy whose two values equal the snapshot's (a copy
+/// WinTune created and deleted again counts), a `Blocked` value present or
+/// absent as before. A slot that cannot be read stays recorded.
+fn slots_at_original(
+    t: &RegTarget,
+    change: &ExistingChange,
+    store: &MenuBackupStore,
+    user: &str,
+) -> Vec<String> {
+    change
+        .mechanism
+        .slots()
+        .into_iter()
+        .filter_map(|slot| {
+            let id = store.find_id(user, &slot.id())?;
+            let backup = store.backups_of(user)?.get(id)?;
+            let back = match (&slot, &backup.snapshot) {
+                (Slot::Key(rel), backups::Snapshot::Key(original)) => {
+                    COPY_VALUES.iter().all(|name| {
+                        let now = regsnap::snapshot_value(&t.root, &t.path(rel), name);
+                        now.is_ok_and(|now| now == recorded_value(original, name).1)
+                    })
+                }
+                (Slot::Value { path, name }, backups::Snapshot::Value(original)) => {
+                    regsnap::snapshot_value(&t.root, &t.path(path), name)
+                        .is_ok_and(|now| now.exists == original.exists)
+                }
+                _ => false,
+            };
+            back.then(|| id.to_string())
+        })
+        .collect()
 }
 
 /// What Apply touches, and on whose behalf.
@@ -469,7 +577,10 @@ pub fn apply_menu(
         match backups::take_snapshot(target, &slot) {
             Ok(current) => {
                 // A slot recorded under another spelling keeps that original.
-                let id = stored_id(store, &opts.user, &id).cloned().unwrap_or(id);
+                let id = store
+                    .find_id(&opts.user, &id)
+                    .map(str::to_string)
+                    .unwrap_or(id);
                 store.record_first(&opts.user, &id, &now, current.clone());
                 taken.insert(id.to_lowercase());
                 snapshots.push((slot, current));
@@ -536,40 +647,57 @@ pub fn apply_menu(
     }
     // Every change compares against the original, never the state the last
     // Apply left: that is what Reset name and a WinTune-made copy go back to.
-    let store = &*store;
+    let held = &*store;
     let recorded = |slot: &Slot| {
-        let id = stored_id(store, &opts.user, &slot.id())?;
-        store
-            .backups_of(&opts.user)?
+        let id = held.find_id(&opts.user, &slot.id())?;
+        held.backups_of(&opts.user)?
             .get(id)
             .map(|b| b.snapshot.clone())
     };
+    // Slots a change brought back to their original: nothing is left to
+    // restore, so their snapshots go.
+    let mut at_original: Vec<String> = Vec::new();
     for (index, change) in changes.iter().enumerate() {
         let name = change.report_name();
         if failed_changes.contains(&index) {
             continue;
         }
         match write_change(target, change, &recorded) {
-            Ok(()) => report.succeeded.push(name.clone()),
+            Ok(()) => {
+                report.succeeded.push(name.clone());
+                at_original.extend(slots_at_original(target, change, held, &opts.user));
+            }
             Err(e) => report.errors.push(format!("{}: {}", name, e)),
         }
         done += 1;
         (opts.progress)(done, total, &format!("Changing {}", name));
     }
+    if !at_original.is_empty() {
+        for id in &at_original {
+            store.forget(&opts.user, id);
+        }
+        if let Err(e) = save_menu_store(store, &opts.store_path) {
+            report.errors.push(format!("Cannot save snapshots: {e}"));
+        }
+    }
     report
 }
 
 /// Puts each slot (by id, see [`Slot::from_id`]; a key path is its own id)
-/// back exactly as it was before WinTune first changed it, then forgets its
-/// snapshot.
+/// back as it was before WinTune first changed it, then forgets its
+/// snapshot. A `WinTune.*` key or a `Blocked` value comes back exactly; a
+/// verb's HKCU copy only gets back the two values WinTune changes
+/// (`ProgrammaticAccessOnly`, `MUIVerb`), and goes once empty if WinTune
+/// created it.
 pub fn restore_keys(
     target: &MenuTarget,
     store: &mut MenuBackupStore,
     ids: &[String],
     opts: &MenuOptions,
 ) -> OperationReport {
+    let user = &target.user;
     backups::restore_ids(
-        &target.user,
+        &|slot, snapshot| restore_menu_slot(user, slot, snapshot),
         store,
         &opts.user,
         ids,
@@ -864,9 +992,123 @@ mod tests {
             &[wanted_state(lower, false, Rename::Keep)],
         );
         assert!(report.errors.is_empty(), "{:?}", report.errors);
-        // Still the snapshot from before the hide: the copy did not exist.
+        // Still the snapshot from before the hide (the copy did not exist):
+        // the copy goes, and with it the snapshot, under its first spelling.
         assert!(!env.exists(APP_VERB));
-        assert_eq!(store.backups_of("A").unwrap().len(), 1);
+        assert!(store.backups_of("A").is_none());
+    }
+
+    #[test]
+    fn restore_keeps_a_vendor_key_written_after_show() {
+        let env = Env::new();
+        let mut store = MenuBackupStore::default();
+        env.machine_verb();
+        let hide = wanted_state(app_verb(), true, Rename::Keep);
+        change(&env, "A", &mut store, &[hide]);
+        assert!(store.find_id("A", APP_VERB).is_some());
+        let show = wanted_state(app_verb(), false, Rename::Keep);
+        let report = change(&env, "A", &mut store, &[show]);
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        // Back to the original: copy gone, snapshot forgotten, on disk too.
+        assert!(!env.exists(APP_VERB));
+        assert!(store.find_id("A", APP_VERB).is_none());
+        let on_disk = load_menu_store(&env.opts("A").store_path).unwrap();
+        assert!(on_disk.users.is_empty(), "{on_disk:?}");
+        // The vendor now writes its own per-user key: nothing offers to
+        // restore it.
+        env.set_text(APP_VERB, "MUIVerb", "Vendor");
+        env.set_text(&format!(r"{APP_VERB}\command"), "", "app.exe");
+        assert!(store.find_id("A", APP_VERB).is_none());
+
+        // Hidden and renamed, then the vendor writes into the copy: Restore
+        // original takes back only the two values WinTune wrote.
+        let env = Env::new();
+        let mut store = MenuBackupStore::default();
+        env.machine_verb();
+        let both = wanted_state(app_verb(), true, to("Renamed"));
+        change(&env, "A", &mut store, &[both]);
+        env.set_text(APP_VERB, "Icon", "vendor.ico");
+        env.set_text(&format!(r"{APP_VERB}\command"), "", "vendor.exe");
+
+        let ids = vec![APP_VERB.to_string()];
+        let report = restore_keys(&env.target(), &mut store, &ids, &env.opts("A"));
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(env.value_names(APP_VERB), ["Icon"]);
+        assert_eq!(env.text(APP_VERB, "Icon").unwrap(), "vendor.ico");
+        let command = format!(r"{APP_VERB}\command");
+        assert_eq!(env.text(&command, "").unwrap(), "vendor.exe");
+        assert!(store.backups_of("A").is_none());
+    }
+
+    #[test]
+    fn restore_of_a_per_user_verb_only_touches_the_two_values() {
+        let env = Env::new();
+        let mut store = MenuBackupStore::default();
+        let command = format!(r"{APP_VERB}\command");
+        env.set_text(APP_VERB, "MUIVerb", "Vendor");
+        env.set_text(APP_VERB, "Icon", "old.ico");
+        env.set_text(&command, "", "app.exe");
+        let both = wanted_state(app_verb(), true, to("Mine"));
+        let report = change(&env, "A", &mut store, &[both]);
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(env.text(APP_VERB, "MUIVerb").unwrap(), "Mine");
+        // An update of the program since.
+        env.set_text(APP_VERB, "Icon", "new.ico");
+        env.set_text(&command, "", "app2.exe");
+
+        let ids = vec![APP_VERB.to_string()];
+        let report = restore_keys(&env.target(), &mut store, &ids, &env.opts("A"));
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(env.value_names(APP_VERB), ["Icon", "MUIVerb"]);
+        assert_eq!(env.text(APP_VERB, "MUIVerb").unwrap(), "Vendor");
+        assert_eq!(env.text(APP_VERB, "Icon").unwrap(), "new.ico");
+        assert_eq!(env.text(&command, "").unwrap(), "app2.exe");
+        assert!(store.backups_of("A").is_none());
+    }
+
+    #[test]
+    fn show_again_on_two_places_forgets_both_snapshots() {
+        let env = Env::new();
+        let mut store = MenuBackupStore::default();
+        let background = r"Software\Classes\Directory\Background\shell\AppVerb";
+        env.machine_verb();
+        env.set_machine(background, "MUIVerb", "App verb");
+        let both_places = || {
+            Mechanism::Verbs(vec![
+                VerbRef {
+                    class: "Directory".into(),
+                    verb: "AppVerb".into(),
+                },
+                VerbRef {
+                    class: r"Directory\Background".into(),
+                    verb: "AppVerb".into(),
+                },
+            ])
+        };
+        let hide = wanted_state(both_places(), true, Rename::Keep);
+        change(&env, "A", &mut store, &[hide]);
+        assert!(env.exists(APP_VERB) && env.exists(background));
+        assert_eq!(store.backups_of("A").unwrap().len(), 2);
+
+        let show = wanted_state(both_places(), false, Rename::Keep);
+        let report = change(&env, "A", &mut store, &[show]);
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert!(!env.exists(APP_VERB) && !env.exists(background));
+        assert!(store.backups_of("A").is_none());
+    }
+
+    #[test]
+    fn showing_a_clsid_again_forgets_its_snapshot() {
+        let env = Env::new();
+        let mut store = MenuBackupStore::default();
+        let hide = wanted_state(Mechanism::Clsid(CLSID.into()), true, Rename::Keep);
+        change(&env, "A", &mut store, &[hide]);
+        assert!(store.backups_of("A").is_some());
+        let show = wanted_state(Mechanism::Clsid(CLSID.into()), false, Rename::Keep);
+        let report = change(&env, "A", &mut store, &[show]);
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert!(env.text(BLOCKED_KEY, CLSID).is_none());
+        assert!(store.backups_of("A").is_none());
     }
 
     #[test]

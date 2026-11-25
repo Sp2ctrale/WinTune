@@ -1256,4 +1256,49 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="menu.locked.unreadable" xml:space="preserve">
     <value>Cannot read this entry: {0}</value>
   </data>
+  <data name="menu.windows" xml:space="preserve">
+    <value>Windows</value>
+  </data>
+  <data name="menu.others" xml:space="preserve">
+    <value>Other programs</value>
+  </data>
+  <data name="menu.scanning" xml:space="preserve">
+    <value>Reading the right-click menu…</value>
+  </data>
+  <data name="menu.others_empty" xml:space="preserve">
+    <value>No other program adds entries here.</value>
+  </data>
+  <data name="menu.restart_hint" xml:space="preserve">
+    <value>May need an Explorer restart to show.</value>
+  </data>
+  <data name="menu.pill.will_hide" xml:space="preserve">
+    <value>Will be hidden</value>
+  </data>
+  <data name="menu.pill.will_show" xml:space="preserve">
+    <value>Will be shown</value>
+  </data>
+  <data name="menu.pill.will_rename" xml:space="preserve">
+    <value>Will be renamed</value>
+  </data>
+  <data name="menu.search" xml:space="preserve">
+    <value>Search by name or program</value>
+  </data>
+  <data name="menu.no_match" xml:space="preserve">
+    <value>No entry matches "{0}".</value>
+  </data>
+  <data name="menu.added_by" xml:space="preserve">
+    <value>Added by {0}</value>
+  </data>
+  <data name="menu.rename" xml:space="preserve">
+    <value>Rename…</value>
+  </data>
+  <data name="menu.reset_name" xml:space="preserve">
+    <value>Reset name</value>
+  </data>
+  <data name="menu.rename_title" xml:space="preserve">
+    <value>Rename entry</value>
+  </data>
+  <data name="menu.rename_ok" xml:space="preserve">
+    <value>Rename</value>
+  </data>
 </root>

@@ -27,7 +27,10 @@ pub(super) struct PendingExisting {
 /// current state or the row is locked (the engine would refuse the whole
 /// Apply for it). A row that cannot be renamed keeps its name; typing the
 /// original name back is a Reset name.
-fn existing_change(entry: &ExistingEntry, pending: &PendingExisting) -> Option<ExistingChange> {
+pub(super) fn existing_change(
+    entry: &ExistingEntry,
+    pending: &PendingExisting,
+) -> Option<ExistingChange> {
     if entry.locked.is_some() {
         return None;
     }
@@ -130,10 +133,6 @@ impl WinTuneApp {
 
     /// "Discard": forgets the pending hides and renames (the list of added
     /// entries and config.json are left alone).
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the page's Discard button calls it (next task)")
-    )]
     pub(super) fn discard_menu_changes(&mut self) {
         self.menu_pending.clear();
     }

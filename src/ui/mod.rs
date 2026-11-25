@@ -8,6 +8,7 @@
 mod associations_tab;
 mod autosave;
 mod confirm;
+mod context_menu_existing;
 mod context_menu_tab;
 mod gallery_tab;
 mod history_panel;
@@ -246,6 +247,10 @@ pub struct WinTuneApp {
     menu_scan_needed: bool,
     /// Hide / rename changes not applied yet, by `ExistingEntry::id`.
     menu_pending: BTreeMap<String, menu_existing_state::PendingExisting>,
+    /// The rename dialog, while open: entry id and the text being edited.
+    menu_rename: Option<(String, String)>,
+    /// Filter typed in the Other programs section (label / origin).
+    menu_search: String,
     tr: Tr,
     /// The theme actually shown this frame (Light or Dark, never System):
     /// what the old palette helpers receive.
@@ -347,6 +352,8 @@ impl WinTuneApp {
             menu_scan_job: None,
             menu_scan_needed: false,
             menu_pending: BTreeMap::new(),
+            menu_rename: None,
+            menu_search: String::new(),
             tr,
             ui_theme,
             focus_search: false,
@@ -375,6 +382,7 @@ impl WinTuneApp {
         // so the panel layout does not depend on the order).
         self.show_confirm_dialog(ctx);
         self.show_icon_picker(ctx);
+        self.show_menu_rename_dialog(ctx);
         self.show_caption(ctx);
         self.show_nav(ctx);
         if !self.active_tab.owns_action_bar() {

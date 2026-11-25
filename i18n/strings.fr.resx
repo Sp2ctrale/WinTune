@@ -1255,4 +1255,49 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="menu.locked.unreadable" xml:space="preserve">
     <value>Impossible de lire cette entrée : {0}</value>
   </data>
+  <data name="menu.windows" xml:space="preserve">
+    <value>Windows</value>
+  </data>
+  <data name="menu.others" xml:space="preserve">
+    <value>Autres programmes</value>
+  </data>
+  <data name="menu.scanning" xml:space="preserve">
+    <value>Lecture du menu contextuel…</value>
+  </data>
+  <data name="menu.others_empty" xml:space="preserve">
+    <value>Aucun autre programme n'ajoute d'entrée ici.</value>
+  </data>
+  <data name="menu.restart_hint" xml:space="preserve">
+    <value>Peut demander un redémarrage de l'Explorateur.</value>
+  </data>
+  <data name="menu.pill.will_hide" xml:space="preserve">
+    <value>Sera masquée</value>
+  </data>
+  <data name="menu.pill.will_show" xml:space="preserve">
+    <value>Sera affichée</value>
+  </data>
+  <data name="menu.pill.will_rename" xml:space="preserve">
+    <value>Sera renommée</value>
+  </data>
+  <data name="menu.search" xml:space="preserve">
+    <value>Rechercher par nom ou programme</value>
+  </data>
+  <data name="menu.no_match" xml:space="preserve">
+    <value>Aucune entrée ne correspond à « {0} ».</value>
+  </data>
+  <data name="menu.added_by" xml:space="preserve">
+    <value>Ajoutée par {0}</value>
+  </data>
+  <data name="menu.rename" xml:space="preserve">
+    <value>Renommer…</value>
+  </data>
+  <data name="menu.reset_name" xml:space="preserve">
+    <value>Rétablir le nom d'origine</value>
+  </data>
+  <data name="menu.rename_title" xml:space="preserve">
+    <value>Renommer l'entrée</value>
+  </data>
+  <data name="menu.rename_ok" xml:space="preserve">
+    <value>Renommer</value>
+  </data>
 </root>

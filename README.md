@@ -128,10 +128,15 @@ cannot be used on files.
 - **Windows 11.** The entries appear under **Show more options** (the classic
   menu). The page links to the **Classic right-click menu** tweak of
   Explorer & Taskbar, which makes that menu the default.
-- **Folders with unusual names.** A drive root is passed to the program as
-  `C:\.` so the closing quote survives. PowerShell is started through
-  `cmd.exe` so apostrophes in folder names work; its one known limit is that
-  `cmd` expands `%VAR%` text inside a folder name.
+- **Folders with unusual names.** A drive root ends in a backslash, which
+  would swallow the closing quote, so VS Code, Windows Terminal and custom
+  programs get it as `C:\.` on **Drives** and on the **folder background**
+  (Explorer also shows the background menu on a drive root); folders and files
+  are passed as they are. PowerShell and Command Prompt are started through
+  `cmd.exe` so apostrophes in folder names and network folders work; their
+  known limit is that `cmd` expands `%VAR%` text inside a folder name. A
+  semicolon in a folder name can break Windows Terminal. Labels cannot start
+  with `@`, and a custom program must be an `.exe`.
 - **Undo.** In **History**, **Saved originals** has a **Context menu** group
   that puts the registry keys back as they were before WinTune first changed
   them. Every apply and restore is logged under "Context menu".

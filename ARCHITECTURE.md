@@ -68,9 +68,13 @@ keyed by account, so an account only ever sees and edits its own entries.
   `entry_problems` validates the whole list and returns codes
   (`EntryProblem`), which `i18n/messages.rs` turns into text.
 - **Programs** (`programs.rs`): `Programs` holds the detected executables and
-  `command_line` builds the `command` value. Every placeholder is quoted, a
-  drive root is passed as `"%1."` (`%V.`) so the closing quote survives, and
-  PowerShell goes through `cmd.exe` so apostrophes in folder names work.
+  `command_line` builds the `command` value. Every placeholder is quoted. A
+  drive root ends in a backslash, so Drive passes `"%1."` (`-d "%V."` for
+  Terminal) and the folder background, which Explorer also shows on a drive
+  root, passes `"%V\."` (`-d "%V\."`), so the closing quote survives. The
+  PowerShell and Command Prompt presets go through `cmd.exe` (`pushd`) so
+  apostrophes in folder names and network folders work. Presets are checked
+  against the disk every time they are resolved, not only at startup.
 - **Registry** (`engine.rs`): one verb key per entry and place,
   `HKCU\Software\Classes\<Directory|Directory\Background|Drive|*>\shell\WinTune.<id>`,
   with `MUIVerb`, `Icon` and a `command` subkey. `apply_entries` makes the

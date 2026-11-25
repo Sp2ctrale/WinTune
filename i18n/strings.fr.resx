@@ -1234,10 +1234,10 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
     <value>Appliquer</value>
   </data>
   <data name="menu.apply_title" xml:space="preserve">
-    <value>Masquer ces entrées ?</value>
+    <value>Appliquer ces modifications ?</value>
   </data>
   <data name="menu.apply_message" xml:space="preserve">
-    <value>Masquer ces entrées a d'autres effets :
+    <value>Masquer ces entrées a aussi d'autres effets :
 {0}</value>
   </data>
   <data name="menu.state.shown" xml:space="preserve">

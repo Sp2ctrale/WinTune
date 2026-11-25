@@ -1235,7 +1235,7 @@ Restoring the original puts the choice back, but Windows protects it with a hash
     <value>Apply</value>
   </data>
   <data name="menu.apply_title" xml:space="preserve">
-    <value>Hide these entries?</value>
+    <value>Apply these changes?</value>
   </data>
   <data name="menu.apply_message" xml:space="preserve">
     <value>Hiding these entries has side effects:

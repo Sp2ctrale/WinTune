@@ -80,6 +80,47 @@ the menu). `MUIVerb`, `Icon` and `ProgrammaticAccessOnly` are described in
 Microsoft Learn, *Creating Shortcut Menu Handlers* / *Customizing a Shortcut
 Menu*. `Blocked` is undocumented.
 
+### What WinTune writes
+
+For each entry and each place it is ticked for, WinTune creates one verb key
+`HKCU\Software\Classes\<class>\shell\WinTune.<id>` (`<id>` is `e1`, `e2`, ...)
+with these values. Nothing is written under `HKLM`, and only keys named
+`WinTune.*` are ever created or deleted.
+
+| Place | `<class>` | Placeholder |
+| --- | --- | --- |
+| Folders | `Directory` | `%1` |
+| Folder background | `Directory\Background` | `%V` |
+| Drives | `Drive` | `%1` |
+| Files | `*` | `%1` |
+
+| Value | Type | Content |
+| --- | --- | --- |
+| `MUIVerb` (on the verb key) | REG_SZ | The entry's label |
+| `Icon` (on the verb key) | REG_SZ | The icon file chosen for the entry, else the program's `.exe`, in quotes |
+| `command\(Default)` | REG_SZ | See below |
+
+Command line by program (`<exe>` is the program's full path, `<p>` the
+placeholder of the place; a drive root ends in a backslash, so the Drives
+place passes `<p>.`, which gives `C:\.`):
+
+| Program | `command` |
+| --- | --- |
+| VS Code, any `.exe` | `"<exe>" "<p>"` |
+| Windows Terminal | `"<exe>" -d "%V"` |
+| PowerShell | `"<cmd.exe>" /s /c "cd /d "%V" && "<exe>" -NoExit"` |
+| Command Prompt | `"<exe>" /s /k pushd "%V"` |
+
+Terminal, PowerShell and Command Prompt start in a folder, so they are refused
+on Files. PowerShell goes through `cmd.exe` because cmd's quoting copes with
+apostrophes in folder names; known limit: `cmd` expands `%VAR%` text inside a
+folder name. Apply makes the keys match the list: the verb key of a removed
+entry, or of a place that was unticked, is deleted. Before the first change to
+a key, its original state is saved in
+`%ProgramData%\Wintune\context-menu-backups.json` (per user, by key path) and
+a `.reg` export is written; History, Saved originals, Context menu puts it
+back. On Windows 11 these entries appear under "Show more options".
+
 ### Real-machine probe
 
 Script: `scripts/context-menu-probe.ps1` (Windows PowerShell 5.1, unelevated).

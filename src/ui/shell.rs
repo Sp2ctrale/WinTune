@@ -851,6 +851,72 @@ mod tests {
             );
         }
 
+        // The Context menu page: one applied entry (so History gets a saved
+        // original), one entry with a problem, the Windows 11 banner and each
+        // selected entry's detail.
+        {
+            use crate::context_menu::{EntryProblem, MenuEntry, Place, ProgramChoice};
+            let menu_entry = |id: &str, label: &str, program, place| MenuEntry {
+                id: id.into(),
+                label: label.into(),
+                program,
+                places: std::collections::BTreeSet::from([place]),
+                icon: None,
+            };
+            *app.menu_entries_mut() = vec![menu_entry(
+                "e1",
+                "Open one",
+                ProgramChoice::VsCode,
+                Place::Folder,
+            )];
+            app.start_menu_apply(&ctx);
+            run_until_idle(&mut app, &ctx);
+            assert!(
+                app.menu_store.backups_of("TEST\\user").is_some(),
+                "no context menu snapshot: {}",
+                app.last_notice()
+            );
+            app.menu_entries_mut().push(menu_entry(
+                "e2",
+                "Shell on files",
+                ProgramChoice::Terminal,
+                Place::Files,
+            ));
+            app.refresh_menu_statuses();
+            app.env.is_windows_11 = true;
+            app.active_tab = ActiveTab::ContextMenu;
+            let mut texts = Vec::new();
+            for selected in ["e1", "e2"] {
+                app.selected_menu_entry = Some(selected.into());
+                for _ in 0..3 {
+                    texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
+                }
+            }
+            app.selected_menu_entry = None;
+            for _ in 0..3 {
+                texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
+            }
+            for drawn in [
+                app.tr.t("menu.win11_banner"),
+                app.tr.t("menu.use_classic"),
+                app.tr.t("menu.status.applied"),
+                crate::i18n::messages::entry_problem(app.tr, &EntryProblem::ShellOnFiles),
+                "Open one".to_string(),
+                "Shell on files".to_string(),
+            ] {
+                assert!(
+                    texts.contains(&drawn),
+                    "{drawn:?} not drawn on Context menu: {texts:?}"
+                );
+            }
+            for (key, value) in &english_only {
+                assert!(
+                    !texts.iter().any(|t| t == *value),
+                    "the Context menu page draws English-only text {value:?} (key {key})"
+                );
+            }
+        }
+
         // The History page: saved originals in every group, one opened
         // operation with an error and a `.reg` path, then a broken store.
         app.config.extensions = vec![rule(".a"), rule(".b")];
@@ -869,7 +935,16 @@ mod tests {
         );
         entry.reg_backup = Some("C:\\backups\\x.reg".into());
         let entry_time = entry.time.clone();
-        app.history = vec![entry];
+        let mut menu_entry = crate::history::HistoryEntry::from_report(
+            "Context menu",
+            "Apply",
+            &crate::associations::OperationReport {
+                succeeded: vec!["Open one".into()],
+                ..Default::default()
+            },
+        );
+        menu_entry.time = "2000-01-01 00:00:00".into();
+        app.history = vec![entry, menu_entry];
         app.open_page(ActiveTab::History);
         // `open_page` reloaded the stores from disk, so put the unknown
         // tweak back in memory.
@@ -940,6 +1015,7 @@ mod tests {
             ".a".to_string(),
             "gone_tweak".to_string(),
             app.tr.t("originals.other"),
+            "Open one".to_string(),
         ];
         rows.extend(
             applied_tweaks

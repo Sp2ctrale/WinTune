@@ -311,6 +311,45 @@ fn collect_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
 }
 
 #[test]
+fn every_context_menu_message_translates_in_every_shipped_language() {
+    use super::messages::{entry_problem, entry_status, history_module, place_name};
+    use crate::context_menu::{EntryProblem, EntryStatus, Place};
+
+    let problems = [
+        EntryProblem::EmptyLabel,
+        EntryProblem::LabelTooLong,
+        EntryProblem::NoPlace,
+        EntryProblem::ProgramNotFound,
+        EntryProblem::IconNotFound,
+        EntryProblem::DuplicateLabel(Place::Background),
+        EntryProblem::ShellOnFiles,
+    ];
+    let statuses = [
+        EntryStatus::Applied,
+        EntryStatus::NotApplied,
+        EntryStatus::Changed(vec![Place::Drive]),
+    ];
+    for (code, _) in Tr::languages() {
+        let tr = Tr::new(code);
+        let mut texts: Vec<String> = problems.iter().map(|p| entry_problem(tr, p)).collect();
+        texts.extend(statuses.iter().map(|s| entry_status(tr, s)));
+        texts.extend(Place::ALL.iter().map(|p| place_name(tr, *p)));
+        texts.push(history_module(tr, "Context menu"));
+        let unique: BTreeSet<&String> = texts.iter().collect();
+        for text in &texts {
+            assert!(!text.is_empty() && !text.contains('{'), "{code}: {text:?}");
+            assert!(
+                !text.contains('.') || text.contains(' '),
+                "{code}: looks like a bare key: {text:?}"
+            );
+        }
+        assert!(unique.len() >= texts.len() - 1, "{code}: {texts:?}");
+        let duplicate = entry_problem(tr, &EntryProblem::DuplicateLabel(Place::Background));
+        assert!(duplicate.contains(&place_name(tr, Place::Background)));
+    }
+}
+
+#[test]
 fn every_key_used_in_the_code_exists_in_english() {
     let en = keys_of("en").expect("English catalog");
     let re = regex::Regex::new(r#"\.t(?:_args)?\(\s*"([A-Za-z0-9_.]+)""#).unwrap();

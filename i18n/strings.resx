@@ -385,9 +385,6 @@
   <data name="nav.group.tools" xml:space="preserve">
     <value>Tools</value>
   </data>
-  <data name="nav.coming_soon" xml:space="preserve">
-    <value>Coming soon</value>
-  </data>
   <data name="history.ok" xml:space="preserve">
     <value>{0} ok</value>
   </data>
@@ -965,5 +962,84 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   </data>
   <data name="icons.imported" xml:space="preserve">
     <value>Imported {0} of {1} .ico files.</value>
+  </data>
+  <data name="menu.subtitle" xml:space="preserve">
+    <value>For {0}. Right-click entries you add, per account.</value>
+  </data>
+  <data name="home.menu_status" xml:space="preserve">
+    <value>{0} entries, {1} changed</value>
+  </data>
+  <data name="job.apply_menu" xml:space="preserve">
+    <value>Applying context menu entries…</value>
+  </data>
+  <data name="job.restore_menu" xml:space="preserve">
+    <value>Restoring context menu entries…</value>
+  </data>
+  <data name="job.name.apply_menu" xml:space="preserve">
+    <value>Applying context menu entries</value>
+  </data>
+  <data name="job.name.restore_menu" xml:space="preserve">
+    <value>Restoring context menu entries</value>
+  </data>
+  <data name="report.applied_menu" xml:space="preserve">
+    <value>Applied {0} context menu entry(ies)</value>
+  </data>
+  <data name="report.restored_menu" xml:space="preserve">
+    <value>Restored {0} context menu entry(ies)</value>
+  </data>
+  <data name="history.module.context_menu" xml:space="preserve">
+    <value>Context menu</value>
+  </data>
+  <data name="menu.status.applied" xml:space="preserve">
+    <value>Applied</value>
+  </data>
+  <data name="menu.status.not_applied" xml:space="preserve">
+    <value>Not applied</value>
+  </data>
+  <data name="menu.status.changed" xml:space="preserve">
+    <value>Out of date</value>
+  </data>
+  <data name="menu.changed_hint" xml:space="preserve">
+    <value>The registry differs from this entry (edited here or by another program). Apply to update it.</value>
+  </data>
+  <data name="menu.place.folder" xml:space="preserve">
+    <value>Folders</value>
+  </data>
+  <data name="menu.place.background" xml:space="preserve">
+    <value>Folder background</value>
+  </data>
+  <data name="menu.place.drive" xml:space="preserve">
+    <value>Drives</value>
+  </data>
+  <data name="menu.place.files" xml:space="preserve">
+    <value>Files</value>
+  </data>
+  <data name="menu.problem.empty_label" xml:space="preserve">
+    <value>The label is empty.</value>
+  </data>
+  <data name="menu.problem.label_too_long" xml:space="preserve">
+    <value>The label is longer than 80 characters.</value>
+  </data>
+  <data name="menu.problem.no_place" xml:space="preserve">
+    <value>Pick at least one place where the entry appears.</value>
+  </data>
+  <data name="menu.problem.program_not_found" xml:space="preserve">
+    <value>The program was not found on this PC.</value>
+  </data>
+  <data name="menu.problem.icon_not_found" xml:space="preserve">
+    <value>The icon file was not found.</value>
+  </data>
+  <data name="menu.problem.duplicate_label" xml:space="preserve">
+    <value>Another entry has the same label in {0}.</value>
+  </data>
+  <data name="menu.problem.shell_on_files" xml:space="preserve">
+    <value>A terminal needs a folder: untick Files.</value>
+  </data>
+  <data name="menu.problem_line" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="menu.blocked.problems" xml:space="preserve">
+    <value>Fix these first:
+{0}</value>
   </data>
 </root>

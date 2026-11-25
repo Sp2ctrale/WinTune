@@ -3,6 +3,7 @@
 
 use super::{kit, ActiveTab, WinTuneApp};
 use crate::associations::RuleStatus;
+use crate::context_menu::EntryStatus;
 use crate::i18n::messages;
 use crate::tweaks::TweakStatus;
 use eframe::egui;
@@ -54,6 +55,12 @@ impl WinTuneApp {
             .values()
             .filter(|s| matches!(s, RuleStatus::Drifted(_)))
             .count();
+        let menu_count = self.menu_entries().len();
+        let menu_changed = self
+            .menu_entries()
+            .iter()
+            .filter(|e| matches!(self.menu_statuses.get(&e.id), Some(EntryStatus::Changed(_))))
+            .count();
         vec![
             ModuleSummary {
                 page: ActiveTab::Associations,
@@ -66,8 +73,8 @@ impl WinTuneApp {
             ModuleSummary {
                 page: ActiveTab::ContextMenu,
                 icon: kit::Icon::ContextMenu,
-                status: tr.t("nav.coming_soon"),
-                drift: 0,
+                status: tr.t_args("home.menu_status", &[&menu_count, &menu_changed]),
+                drift: menu_changed,
             },
         ]
     }
@@ -93,7 +100,6 @@ impl WinTuneApp {
         let recent_title = tr.t("home.recent");
         let no_recent = tr.t("home.no_recent");
         let view_all = tr.t("home.view_all");
-        let coming_soon = tr.t("nav.coming_soon");
         let tile_title = |page: ActiveTab| match page {
             ActiveTab::Associations => tr.t("nav.associations"),
             ActiveTab::Tweaks => tr.t("nav.explorer"),
@@ -114,17 +120,9 @@ impl WinTuneApp {
                 for row in summaries.chunks(2) {
                     ui.columns(2, |cols| {
                         for (col, s) in cols.iter_mut().zip(row) {
-                            let enabled = s.page != ActiveTab::ContextMenu;
-                            let hint = (!enabled).then_some(coming_soon.as_str());
-                            let r = kit::tile(
-                                col,
-                                s.icon,
-                                &tile_title(s.page),
-                                &s.status,
-                                enabled,
-                                hint,
-                            );
-                            if enabled && r.clicked() {
+                            let r =
+                                kit::tile(col, s.icon, &tile_title(s.page), &s.status, true, None);
+                            if r.clicked() {
                                 open = Some(s.page);
                             }
                         }
@@ -324,6 +322,50 @@ mod tests {
     }
 
     #[test]
+    fn the_context_menu_tile_counts_entries_and_changes() {
+        use crate::context_menu::{MenuEntry, Place, ProgramChoice};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut config = fx.config();
+        for (id, label) in [("e1", "One"), ("e2", "Two")] {
+            config
+                .context_menu
+                .entries_mut("TEST\\user")
+                .push(MenuEntry {
+                    id: id.into(),
+                    label: label.into(),
+                    program: ProgramChoice::Cmd,
+                    places: [Place::Folder].into_iter().collect(),
+                    icon: None,
+                });
+        }
+        let mut app = fx.app_with(&ctx, config);
+        app.rule_statuses.clear();
+        app.tweak_statuses.clear();
+        app.start_menu_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(status_of(&app, ActiveTab::ContextMenu).1, 0);
+        assert_eq!(app.drift_target(), None);
+
+        // Edited outside WinTune: the command of one key changes.
+        let key = crate::context_menu::entry_key(Place::Folder, "e2");
+        let path = fx.hkcu(&format!("{key}\\command"));
+        let (command, _) = fx.sandbox.root.create_subkey(&path).unwrap();
+        command.set_value("", &"other.exe").unwrap();
+        app.refresh_menu_statuses();
+
+        let expected = app.tr.t_args("home.menu_status", &[&2, &1]);
+        assert_eq!(
+            status_of(&app, ActiveTab::ContextMenu),
+            (expected.clone(), 1)
+        );
+        assert_eq!(app.drift_target(), Some(ActiveTab::ContextMenu));
+        app.active_tab = ActiveTab::Home;
+        let texts = drawn_texts(&frame(&mut app, &ctx, RawInput::default()));
+        assert!(texts.contains(&expected), "{texts:?}");
+    }
+
+    #[test]
     fn home_renders_with_no_rules_no_history() {
         let fx = TempIcons::new(&[]);
         let ctx = egui::Context::default();
@@ -335,5 +377,6 @@ mod tests {
         let texts = drawn_texts(&out);
         assert!(texts.iter().any(|t| t == "No operation yet."));
         assert!(texts.iter().any(|t| t == "0 active · 0 changed"));
+        assert!(texts.iter().any(|t| t == "0 entries, 0 changed"));
     }
 }

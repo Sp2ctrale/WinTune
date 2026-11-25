@@ -384,9 +384,6 @@
   <data name="nav.group.tools" xml:space="preserve">
     <value>Outils</value>
   </data>
-  <data name="nav.coming_soon" xml:space="preserve">
-    <value>Bientôt disponible</value>
-  </data>
   <data name="history.ok" xml:space="preserve">
     <value>{0} réussie(s)</value>
   </data>
@@ -964,5 +961,84 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   </data>
   <data name="icons.imported" xml:space="preserve">
     <value>{0} fichier(s) .ico importé(s) sur {1}.</value>
+  </data>
+  <data name="menu.subtitle" xml:space="preserve">
+    <value>Pour {0}. Les entrées de clic droit que vous ajoutez, par compte.</value>
+  </data>
+  <data name="home.menu_status" xml:space="preserve">
+    <value>{0} entrée(s), {1} modifiée(s)</value>
+  </data>
+  <data name="job.apply_menu" xml:space="preserve">
+    <value>Application des entrées du menu contextuel…</value>
+  </data>
+  <data name="job.restore_menu" xml:space="preserve">
+    <value>Restauration des entrées du menu contextuel…</value>
+  </data>
+  <data name="job.name.apply_menu" xml:space="preserve">
+    <value>L'application des entrées du menu contextuel</value>
+  </data>
+  <data name="job.name.restore_menu" xml:space="preserve">
+    <value>La restauration des entrées du menu contextuel</value>
+  </data>
+  <data name="report.applied_menu" xml:space="preserve">
+    <value>{0} entrée(s) du menu contextuel appliquée(s)</value>
+  </data>
+  <data name="report.restored_menu" xml:space="preserve">
+    <value>{0} entrée(s) du menu contextuel restaurée(s)</value>
+  </data>
+  <data name="history.module.context_menu" xml:space="preserve">
+    <value>Menu contextuel</value>
+  </data>
+  <data name="menu.status.applied" xml:space="preserve">
+    <value>Appliquée</value>
+  </data>
+  <data name="menu.status.not_applied" xml:space="preserve">
+    <value>Non appliquée</value>
+  </data>
+  <data name="menu.status.changed" xml:space="preserve">
+    <value>Pas à jour</value>
+  </data>
+  <data name="menu.changed_hint" xml:space="preserve">
+    <value>Le registre diffère de cette entrée (modifié ici ou par un autre programme). Appliquez pour la mettre à jour.</value>
+  </data>
+  <data name="menu.place.folder" xml:space="preserve">
+    <value>Dossiers</value>
+  </data>
+  <data name="menu.place.background" xml:space="preserve">
+    <value>Arrière-plan des dossiers</value>
+  </data>
+  <data name="menu.place.drive" xml:space="preserve">
+    <value>Lecteurs</value>
+  </data>
+  <data name="menu.place.files" xml:space="preserve">
+    <value>Fichiers</value>
+  </data>
+  <data name="menu.problem.empty_label" xml:space="preserve">
+    <value>Le libellé est vide.</value>
+  </data>
+  <data name="menu.problem.label_too_long" xml:space="preserve">
+    <value>Le libellé dépasse 80 caractères.</value>
+  </data>
+  <data name="menu.problem.no_place" xml:space="preserve">
+    <value>Choisissez au moins un endroit où l'entrée apparaît.</value>
+  </data>
+  <data name="menu.problem.program_not_found" xml:space="preserve">
+    <value>Le programme est introuvable sur ce PC.</value>
+  </data>
+  <data name="menu.problem.icon_not_found" xml:space="preserve">
+    <value>Le fichier d'icône est introuvable.</value>
+  </data>
+  <data name="menu.problem.duplicate_label" xml:space="preserve">
+    <value>Une autre entrée porte le même libellé dans : {0}.</value>
+  </data>
+  <data name="menu.problem.shell_on_files" xml:space="preserve">
+    <value>Un terminal a besoin d'un dossier : décochez Fichiers.</value>
+  </data>
+  <data name="menu.problem_line" xml:space="preserve">
+    <value>{0} : {1}</value>
+  </data>
+  <data name="menu.blocked.problems" xml:space="preserve">
+    <value>Corrigez d'abord :
+{0}</value>
   </data>
 </root>

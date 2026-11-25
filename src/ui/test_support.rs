@@ -57,6 +57,24 @@ impl TempIcons {
                 let opened = self.opened.clone();
                 Arc::new(move |path: &Path| opened.lock().unwrap().push(path.to_path_buf()))
             },
+            menu_target: {
+                let base = format!("{}\\HKCU", self.sandbox.path);
+                Arc::new(move || crate::context_menu::MenuTarget {
+                    root: RegKey::predef(HKEY_CURRENT_USER),
+                    root_name: "HKEY_CURRENT_USER".into(),
+                    base: base.clone(),
+                })
+            },
+            menu_store_path: self.dir.join("context-menu-backups.json"),
+            programs: {
+                let exe = |name: &str| Some(self.dir.join("programs").join(name));
+                crate::context_menu::Programs {
+                    vscode: exe("code.exe"),
+                    terminal: exe("wt.exe"),
+                    powershell: exe("powershell.exe"),
+                    cmd: exe("cmd.exe"),
+                }
+            },
         }
     }
 
@@ -80,6 +98,10 @@ impl TempIcons {
             .as_nanos();
         let dir = std::env::temp_dir().join(format!("wintune-ui-{}-{}", std::process::id(), nanos));
         fs::create_dir_all(dir.join("icons")).unwrap();
+        fs::create_dir_all(dir.join("programs")).unwrap();
+        for exe in ["code.exe", "wt.exe", "powershell.exe", "cmd.exe"] {
+            fs::write(dir.join("programs").join(exe), b"x").unwrap();
+        }
         for name in names {
             let mut icon = ico::IconDir::new(ico::ResourceType::Icon);
             let img = ico::IconImage::from_rgba_data(32, 32, vec![200; 32 * 32 * 4]);

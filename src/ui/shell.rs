@@ -76,13 +76,10 @@ impl WinTuneApp {
 
     /// Switches page. Stores are never reloaded under a running job.
     pub(super) fn open_page(&mut self, page: ActiveTab) {
-        if page == ActiveTab::ContextMenu {
-            // Shown in the navigation but not built yet: never openable.
-            return;
-        }
         if page == ActiveTab::History && !self.is_busy() {
             self.reload_backup_store();
             self.reload_tweak_store();
+            self.reload_menu_store();
         }
         if page == ActiveTab::Associations && self.active_tab != page {
             self.request_status_refresh();
@@ -90,6 +87,10 @@ impl WinTuneApp {
         if matches!(page, ActiveTab::Tweaks | ActiveTab::StartPrivacy) && !self.is_busy() {
             self.reload_tweak_store();
             self.refresh_tweak_statuses();
+        }
+        if page == ActiveTab::ContextMenu && !self.is_busy() {
+            self.reload_menu_store();
+            self.refresh_menu_statuses();
         }
         if self.active_tab != page {
             self.focus_search = false;
@@ -120,7 +121,6 @@ impl WinTuneApp {
         let settings = tr.t("nav.settings");
         let customize = tr.t("nav.group.customize");
         let tools = tr.t("nav.group.tools");
-        let coming_soon = tr.t("nav.coming_soon");
 
         let this = &*self;
         let item = |key: ActiveTab, icon: kit::Icon, label| kit::NavItem {
@@ -146,15 +146,11 @@ impl WinTuneApp {
                     ),
                     item(ActiveTab::Tweaks, kit::Icon::Explorer, &explorer),
                     item(ActiveTab::StartPrivacy, kit::Icon::Start, &start),
-                    kit::NavItem {
-                        enabled: false,
-                        disabled_hint: Some(&coming_soon),
-                        ..item(
-                            ActiveTab::ContextMenu,
-                            kit::Icon::ContextMenu,
-                            &context_menu,
-                        )
-                    },
+                    item(
+                        ActiveTab::ContextMenu,
+                        kit::Icon::ContextMenu,
+                        &context_menu,
+                    ),
                 ],
             },
             kit::NavGroup {
@@ -297,32 +293,43 @@ mod tests {
     }
 
     #[test]
-    fn context_menu_cannot_be_opened() {
+    fn the_context_menu_page_opens_from_the_nav() {
         let fx = TempIcons::new(&[]);
         let ctx = egui::Context::default();
         let mut app = fx.app(&ctx);
         let out = frame(&mut app, &ctx, RawInput::default());
 
-        // Control: a live row does open.
-        let history = text_center(&out, "History").expect("History row");
-        click_at_with(&mut app, &ctx, input_with, history);
-        assert_eq!(app.active_tab, ActiveTab::History);
+        // Home's own tile repeats the label; the sidebar is leftmost.
+        let label = app.tr.t("nav.context_menu");
+        let row = text_centers(&out, &label)
+            .into_iter()
+            .min_by(|a, b| a.x.total_cmp(&b.x))
+            .expect("Context menu row");
+        click_at_with(&mut app, &ctx, input_with, row);
+        assert_eq!(app.active_tab, ActiveTab::ContextMenu);
 
-        app.active_tab = ActiveTab::Home;
-        let out = frame(&mut app, &ctx, RawInput::default());
-        let disabled = text_center(&out, "Context menu").expect("Context menu row");
-        click_at_with(&mut app, &ctx, input_with, disabled);
-        assert_eq!(app.active_tab, ActiveTab::Home);
+        let texts = drawn_texts(&frame(&mut app, &ctx, RawInput::default()));
+        let subtitle = app.tr.t_args("menu.subtitle", &[&"TEST\\user"]);
+        assert!(texts.contains(&subtitle), "{texts:?}");
     }
 
     #[test]
-    fn open_page_never_opens_the_context_menu() {
+    fn opening_the_context_menu_page_reads_the_store_unless_a_job_runs() {
         let fx = TempIcons::new(&[]);
         let ctx = egui::Context::default();
         let mut app = fx.app(&ctx);
-        app.open_page(ActiveTab::History);
+        app.menu_store_error = Some(corrupt("context-menu-backups.json", "sentinel"));
         app.open_page(ActiveTab::ContextMenu);
-        assert_eq!(app.active_tab, ActiveTab::History);
+        assert_eq!(app.active_tab, ActiveTab::ContextMenu);
+        assert_eq!(app.menu_store_error, None);
+
+        app.open_page(ActiveTab::Home);
+        let release = hold_job(&mut app);
+        app.menu_store_error = Some(corrupt("context-menu-backups.json", "sentinel"));
+        app.open_page(ActiveTab::ContextMenu);
+        assert!(app.menu_store_error.is_some(), "reloaded under a job");
+        drop(release);
+        run_until_idle(&mut app, &ctx);
     }
 
     #[test]

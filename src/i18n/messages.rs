@@ -5,6 +5,7 @@
 
 use super::Tr;
 use crate::associations::{DriftField, DriftReason, RuleProblem};
+use crate::context_menu::{EntryProblem, EntryStatus, Place};
 use crate::persist::LoadError;
 use crate::tweaks::{CustomReason, TweakGroup};
 
@@ -19,6 +20,39 @@ pub fn rule_problem(tr: Tr, p: &RuleProblem) -> String {
         } => tr.t_args("problem.reserved_prog_id", &[prog_id, suggestion]),
         RuleProblem::DuplicateExtension { ext } => tr.t_args("problem.duplicate_extension", &[ext]),
         RuleProblem::SharedProgId { prog_id } => tr.t_args("problem.shared_prog_id", &[prog_id]),
+    }
+}
+
+/// Name of a place where an entry can appear.
+pub fn place_name(tr: Tr, place: Place) -> String {
+    match place {
+        Place::Folder => tr.t("menu.place.folder"),
+        Place::Background => tr.t("menu.place.background"),
+        Place::Drive => tr.t("menu.place.drive"),
+        Place::Files => tr.t("menu.place.files"),
+    }
+}
+
+pub fn entry_problem(tr: Tr, p: &EntryProblem) -> String {
+    match p {
+        EntryProblem::EmptyLabel => tr.t("menu.problem.empty_label"),
+        EntryProblem::LabelTooLong => tr.t("menu.problem.label_too_long"),
+        EntryProblem::NoPlace => tr.t("menu.problem.no_place"),
+        EntryProblem::ProgramNotFound => tr.t("menu.problem.program_not_found"),
+        EntryProblem::IconNotFound => tr.t("menu.problem.icon_not_found"),
+        EntryProblem::DuplicateLabel(place) => {
+            tr.t_args("menu.problem.duplicate_label", &[&place_name(tr, *place)])
+        }
+        EntryProblem::ShellOnFiles => tr.t("menu.problem.shell_on_files"),
+    }
+}
+
+/// The pill of an entry: its state in the registry.
+pub fn entry_status(tr: Tr, s: &EntryStatus) -> String {
+    match s {
+        EntryStatus::Applied => tr.t("menu.status.applied"),
+        EntryStatus::NotApplied => tr.t("menu.status.not_applied"),
+        EntryStatus::Changed(_) => tr.t("menu.status.changed"),
     }
 }
 
@@ -99,6 +133,7 @@ pub fn history_module(tr: Tr, stored: &str) -> String {
         "File associations" => tr.t("history.module.associations"),
         "Explorer & Taskbar" => tr.t("history.module.explorer"),
         "Start & Privacy" => tr.t("history.module.start"),
+        "Context menu" => tr.t("history.module.context_menu"),
         other => other.to_string(),
     }
 }

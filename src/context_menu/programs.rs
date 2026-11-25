@@ -44,7 +44,8 @@ impl Programs {
         match choice {
             ProgramChoice::VsCode => self.vscode.clone(),
             ProgramChoice::Terminal => self.terminal.clone(),
-            ProgramChoice::PowerShell => self.powershell.clone(),
+            // The preset starts through cmd.exe, so both must exist.
+            ProgramChoice::PowerShell => self.cmd.as_ref().and(self.powershell.clone()),
             ProgramChoice::Cmd => self.cmd.clone(),
             ProgramChoice::Custom(path) => {
                 if path.trim().is_empty() {
@@ -57,22 +58,27 @@ impl Programs {
     }
 }
 
-/// The `command` value of the verb. Every placeholder is quoted so a path with
-/// spaces, apostrophes or accents reaches the program as one argument. A drive
-/// root ends in a backslash, so drives use `"%1."` to keep the closing quote.
-pub fn command_line(choice: &ProgramChoice, exe: &Path, place: Place) -> String {
+/// The `command` value of the verb, or `None` when a program it needs is missing.
+/// Every placeholder is quoted so a path with spaces, apostrophes or accents
+/// reaches the program as one argument. A drive root ends in a backslash, so
+/// drives use `"%1."` / `"%V."` to keep the closing quote. The PowerShell preset
+/// goes through `cmd.exe` because cmd quoting ignores apostrophes; its one known
+/// limit is that cmd expands `%VAR%` text inside folder names.
+pub fn command_line(choice: &ProgramChoice, programs: &Programs, place: Place) -> Option<String> {
+    let exe = programs.resolve(choice)?;
     let exe = exe.display();
-    match choice {
+    let dot = if place == Place::Drive { "." } else { "" };
+    Some(match choice {
         ProgramChoice::VsCode | ProgramChoice::Custom(_) => {
-            let dot = if place == Place::Drive { "." } else { "" };
             format!(r#""{exe}" "{}{dot}""#, place.placeholder())
         }
-        ProgramChoice::Terminal => format!(r#""{exe}" -d "%V""#),
+        ProgramChoice::Terminal => format!(r#""{exe}" -d "%V{dot}""#),
         ProgramChoice::PowerShell => {
-            format!(r#""{exe}" -noexit -command Set-Location -literalPath '%V'"#)
+            let cmd = programs.cmd.as_ref()?.display();
+            format!(r#""{cmd}" /s /c "cd /d "%V" && "{exe}" -NoExit""#)
         }
         ProgramChoice::Cmd => format!(r#""{exe}" /s /k pushd "%V""#),
-    }
+    })
 }
 
 /// The `Icon` value: the entry's own icon if set, else the program's exe.
@@ -98,41 +104,68 @@ mod tests {
         }
     }
 
+    fn presets() -> Programs {
+        Programs {
+            vscode: None,
+            terminal: Some(PathBuf::from(
+                r"C:\Users\u\AppData\Local\Microsoft\WindowsApps\wt.exe",
+            )),
+            powershell: Some(PathBuf::from(
+                r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+            )),
+            cmd: Some(PathBuf::from(r"C:\Windows\System32\cmd.exe")),
+        }
+    }
+
     #[test]
     fn command_lines_quote_the_placeholder_for_each_place() {
-        let exe = Path::new(r"C:\Apps\My App\app.exe");
+        let dir = std::env::temp_dir().join("wintune cm app");
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("app.exe");
+        std::fs::write(&exe, b"x").unwrap();
+        let programs = presets();
         let custom = ProgramChoice::Custom(exe.display().to_string());
+        let line = |c: &ProgramChoice, p| command_line(c, &programs, p).unwrap();
+        let q = exe.display();
+        assert_eq!(line(&custom, Place::Folder), format!(r#""{q}" "%1""#));
+        assert_eq!(line(&custom, Place::Background), format!(r#""{q}" "%V""#));
+        assert_eq!(line(&custom, Place::Drive), format!(r#""{q}" "%1.""#));
+        assert_eq!(line(&custom, Place::Files), format!(r#""{q}" "%1""#));
+        let _ = std::fs::remove_dir_all(&dir);
+
         assert_eq!(
-            command_line(&custom, exe, Place::Folder),
-            r#""C:\Apps\My App\app.exe" "%1""#
-        );
-        assert_eq!(
-            command_line(&custom, exe, Place::Background),
-            r#""C:\Apps\My App\app.exe" "%V""#
-        );
-        assert_eq!(
-            command_line(&custom, exe, Place::Drive),
-            r#""C:\Apps\My App\app.exe" "%1.""#
-        );
-        assert_eq!(
-            command_line(&custom, exe, Place::Files),
-            r#""C:\Apps\My App\app.exe" "%1""#
-        );
-        let wt = Path::new(r"C:\Users\u\AppData\Local\Microsoft\WindowsApps\wt.exe");
-        assert_eq!(
-            command_line(&ProgramChoice::Terminal, wt, Place::Background),
+            line(&ProgramChoice::Terminal, Place::Background),
             r#""C:\Users\u\AppData\Local\Microsoft\WindowsApps\wt.exe" -d "%V""#
         );
-        let ps = Path::new(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe");
+        assert!(line(&ProgramChoice::Terminal, Place::Drive).ends_with(r#"-d "%V.""#));
+        for place in Place::ALL {
+            assert_eq!(
+                line(&ProgramChoice::PowerShell, place),
+                r#""C:\Windows\System32\cmd.exe" /s /c "cd /d "%V" && "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -NoExit""#
+            );
+        }
         assert_eq!(
-            command_line(&ProgramChoice::PowerShell, ps, Place::Folder),
-            r#""C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -noexit -command Set-Location -literalPath '%V'"#
-        );
-        let cmd = Path::new(r"C:\Windows\System32\cmd.exe");
-        assert_eq!(
-            command_line(&ProgramChoice::Cmd, cmd, Place::Drive),
+            line(&ProgramChoice::Cmd, Place::Drive),
             r#""C:\Windows\System32\cmd.exe" /s /k pushd "%V""#
         );
+    }
+
+    #[test]
+    fn command_line_is_none_when_a_needed_program_is_missing() {
+        let only_ps = Programs {
+            powershell: presets().powershell,
+            ..Programs::default()
+        };
+        let ps = ProgramChoice::PowerShell;
+        assert_eq!(command_line(&ps, &only_ps, Place::Folder), None);
+        assert_eq!(only_ps.resolve(&ps), None);
+        let only_cmd = Programs {
+            cmd: presets().cmd,
+            ..Programs::default()
+        };
+        assert_eq!(command_line(&ps, &only_cmd, Place::Folder), None);
+        let terminal = ProgramChoice::Terminal;
+        assert_eq!(command_line(&terminal, &only_cmd, Place::Folder), None);
     }
 
     #[test]

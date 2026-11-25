@@ -99,6 +99,8 @@ pub enum EntryProblem {
     ProgramNotFound,
     IconNotFound,
     DuplicateLabel(Place),
+    /// Terminal, PowerShell and cmd start in a folder; a file has none.
+    ShellOnFiles,
 }
 
 /// Everything that would stop an entry from being applied, as (entry id, problem).
@@ -118,6 +120,13 @@ pub fn entry_problems(entries: &[MenuEntry], programs: &Programs) -> Vec<(String
         }
         if programs.resolve(&entry.program).is_none() {
             problems.push((id(), EntryProblem::ProgramNotFound));
+        }
+        let is_shell = matches!(
+            entry.program,
+            ProgramChoice::Terminal | ProgramChoice::PowerShell | ProgramChoice::Cmd
+        );
+        if is_shell && entry.places.contains(&Place::Files) {
+            problems.push((id(), EntryProblem::ShellOnFiles));
         }
         if let Some(icon) = &entry.icon {
             if !std::path::Path::new(icon).is_file() {
@@ -172,6 +181,7 @@ mod tests {
         let exe = temp_file("problems.exe");
         let programs = Programs {
             cmd: Some(exe.clone()),
+            vscode: Some(exe.clone()),
             ..Programs::default()
         };
         let ok = |label: &str, places: &[Place]| entry("e1", label, places, ProgramChoice::Cmd);
@@ -202,8 +212,8 @@ mod tests {
         bad_icon.icon = Some(r"C:\missing.ico".into());
         assert_eq!(check(bad_icon), [EntryProblem::IconNotFound]);
 
-        let first = entry("e1", "Open", &[Place::Folder], ProgramChoice::Cmd);
-        let mut second = entry("e2", " open ", &[Place::Folder], ProgramChoice::Cmd);
+        let first = entry("e1", "Open", &[Place::Folder], ProgramChoice::VsCode);
+        let mut second = entry("e2", " open ", &[Place::Folder], ProgramChoice::VsCode);
         assert_eq!(
             entry_problems(&[first.clone(), second.clone()], &programs),
             [(
@@ -214,6 +224,41 @@ mod tests {
         second.places = BTreeSet::from([Place::Files]);
         assert!(entry_problems(&[first, second], &programs).is_empty());
         let _ = std::fs::remove_file(exe);
+    }
+
+    #[test]
+    fn shell_presets_on_files_are_a_problem_but_editors_are_not() {
+        let exe = temp_file("shell-on-files.exe");
+        let programs = Programs {
+            vscode: Some(exe.clone()),
+            terminal: Some(exe.clone()),
+            ..Programs::default()
+        };
+        let places = [Place::Folder, Place::Files];
+        let terminal = entry("e1", "Term", &places, ProgramChoice::Terminal);
+        assert_eq!(
+            problems_of(&[terminal], &programs),
+            [EntryProblem::ShellOnFiles]
+        );
+        let code = entry("e1", "Code", &places, ProgramChoice::VsCode);
+        assert!(problems_of(&[code], &programs).is_empty());
+        let _ = std::fs::remove_file(exe);
+    }
+
+    #[test]
+    fn menu_entries_survive_a_config_round_trip() {
+        let mut config = crate::models::AppConfig::default();
+        let list = config.context_menu.entries_mut("PC\\me");
+        list.push(entry(
+            "e1",
+            "Mine",
+            &[Place::Folder, Place::Drive],
+            ProgramChoice::Custom(r"C:\Apps\My App\app.exe".into()),
+        ));
+        list.push(entry("e2", "Code", &[Place::Files], ProgramChoice::VsCode));
+        let json = serde_json::to_string(&config).unwrap();
+        let back: crate::models::AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, config);
     }
 
     #[test]

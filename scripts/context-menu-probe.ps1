@@ -61,8 +61,15 @@ $tmpFile = Join-Path $tmp ("probe file $e.txt")
 # Blocked key state before
 $blockedKeyExisted = Test-Path -LiteralPath $blockedPath
 $blockedValueExisted = $false
+$blockedOldData = $null
+$blockedOldKind = $null
 if ($blockedKeyExisted) {
-    $blockedValueExisted = $null -ne (Get-ItemProperty -LiteralPath $blockedPath -Name $prevVersions -ErrorAction SilentlyContinue)
+    $bk = Get-Item -LiteralPath $blockedPath
+    if ($bk.GetValueNames() -contains $prevVersions) {
+        $blockedValueExisted = $true
+        $blockedOldKind = $bk.GetValueKind($prevVersions)
+        $blockedOldData = $bk.GetValue($prevVersions, $null, 'DoNotExpandEnvironmentNames')
+    }
 }
 Write-Output ("Windows: {0}" -f [Environment]::OSVersion.VersionString)
 Write-Output ("Blocked key existed: {0}; value existed: {1}" -f $blockedKeyExisted, $blockedValueExisted)
@@ -131,27 +138,54 @@ try {
         Report 'Check 2' $false ("exception: " + $_.Exception.Message)
     }
 
-    # ---- Check 3: Blocked value hides a shellex handler
+    # ---- Check 3: Blocked value hides the Restore previous versions handler
+    # Target verb is matched by label (accelerators stripped); French or English.
     try {
-        $win = Get-ShellItem 'C:\Windows'
-        $before3 = Get-VerbNames $win
+        $targets = @(('Restaurer les versions pr' + $e + 'c' + $e + 'dentes'), 'Restore previous versions')
+        function Get-ChildVerbs {
+            # Read in a brand-new process so no in-process handler cache can explain the result.
+            $childCode = @'
+$p = 'C:\Windows'
+$s = New-Object -ComObject Shell.Application
+$it = $s.NameSpace((Split-Path -Parent $p)).ParseName((Split-Path -Leaf $p))
+foreach ($v in $it.Verbs()) {
+    $n = $v.Name.Replace('&', '')
+    Write-Output (-join ($n.ToCharArray() | ForEach-Object { if ([int]$_ -gt 126) { '[U+{0:X4}]' -f [int]$_ } else { $_ } }))
+}
+'@
+            $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($childCode))
+            $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand $enc 2>$null
+            return , @($out | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | ForEach-Object { [string]$_ } | Where-Object { $_ -notlike '#< CLIXML*' -and $_ -notlike '<Objs*' })
+        }
+        $escTargets = @($targets | ForEach-Object { -join ($_.ToCharArray() | ForEach-Object { if ([int]$_ -gt 126) { '[U+{0:X4}]' -f [int]$_ } else { $_ } }) })
+        # Control read in a new process BEFORE writing Blocked (new processes may list fewer verbs on their own).
+        $ctrl = Get-ChildVerbs
+        $presentBefore = @($ctrl | Where-Object { $escTargets -contains $_ })
+        Write-Output ("Check 3 control (new process, before write) ({0}): {1}" -f $ctrl.Count, ($ctrl -join ' | '))
+        Write-Output ("Check 3 precondition: target verb present before write: {0} ({1})" -f ($presentBefore.Count -gt 0), ($presentBefore -join ' | '))
         if (-not $blockedKeyExisted) { New-Item -Path $blockedPath -Force | Out-Null }
         New-ItemProperty -LiteralPath $blockedPath -Name $prevVersions -Value '' -PropertyType String -Force | Out-Null
-        $after3 = Get-VerbNames (Get-ShellItem 'C:\Windows')
-        $gone3 = @($before3 | Where-Object { $after3 -notcontains $_ })
-        Report 'Check 3 Blocked hides Restore previous versions' ($gone3.Count -gt 0) ("verbs removed from C:\Windows Verbs(): {0}; before {1} after {2}" -f ($gone3 -join ' | '), $before3.Count, $after3.Count)
+        $childNames = Get-ChildVerbs
+        $presentAfter = @($childNames | Where-Object { $escTargets -contains $_ })
+        Write-Output ("Check 3 after write (new process) ({0}): {1}" -f $childNames.Count, ($childNames -join ' | '))
+        if ($childNames.Count -eq 0 -or $ctrl.Count -eq 0) { throw 'child process returned no verbs' }
+        $removed = @($ctrl | Where-Object { $childNames -notcontains $_ })
+        $hidden = ($presentBefore.Count -gt 0) -and ($presentAfter.Count -eq 0)
+        Report 'Check 3 Blocked hides Restore previous versions (new-process read)' $hidden ("precondition (target present before): {0}; present after: {1}; removed by the write: {2}. Proves only Verbs() from a fresh non-Explorer process; Explorer itself is untested." -f ($presentBefore.Count -gt 0), ($presentAfter.Count -gt 0), ($removed -join ' | '))
     } catch {
         Report 'Check 3' $false ("exception: " + $_.Exception.Message)
     }
 }
 finally {
-    # restore Blocked exactly
+    # restore Blocked exactly (value data and kind, key only if we created it)
     try {
-        if (-not $blockedValueExisted -and (Test-Path -LiteralPath $blockedPath)) {
-            Remove-ItemProperty -LiteralPath $blockedPath -Name $prevVersions -ErrorAction SilentlyContinue
-        }
-        if (-not $blockedKeyExisted -and (Test-Path -LiteralPath $blockedPath)) {
-            Remove-Item -LiteralPath $blockedPath -Recurse -Force
+        if (Test-Path -LiteralPath $blockedPath) {
+            if ($blockedValueExisted) {
+                Set-ItemProperty -LiteralPath $blockedPath -Name $prevVersions -Value $blockedOldData -Type $blockedOldKind
+            } else {
+                Remove-ItemProperty -LiteralPath $blockedPath -Name $prevVersions -ErrorAction SilentlyContinue
+            }
+            if (-not $blockedKeyExisted) { Remove-Item -LiteralPath $blockedPath -Recurse -Force }
         }
     } catch { Write-Output ("cleanup Blocked error: " + $_.Exception.Message) }
     # delete HKCU keys we created (children first not needed with -Recurse)
@@ -161,3 +195,26 @@ finally {
     }
     if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
 }
+
+# ---- End-of-run cleanup verification
+$leftover = $false
+foreach ($k in $script:created) {
+    $st = if (Test-Path -LiteralPath $k) { $leftover = $true; 'LEFTOVER' } else { 'RESTORED' }
+    Write-Output ("{0} {1}" -f $st, $k)
+}
+if ($blockedKeyExisted) {
+    $bk = Get-Item -LiteralPath $blockedPath
+    if ($blockedValueExisted) {
+        $same = ($bk.GetValueKind($prevVersions) -eq $blockedOldKind) -and ($bk.GetValue($prevVersions, $null, 'DoNotExpandEnvironmentNames') -eq $blockedOldData)
+        $st = if ($same) { 'RESTORED' } else { $leftover = $true; 'LEFTOVER' }
+    } else {
+        $st = if ($bk.GetValueNames() -contains $prevVersions) { $leftover = $true; 'LEFTOVER' } else { 'RESTORED' }
+    }
+    Write-Output ("{0} {1} value {2}" -f $st, $blockedPath, $prevVersions)
+} else {
+    $st = if (Test-Path -LiteralPath $blockedPath) { $leftover = $true; 'LEFTOVER' } else { 'RESTORED' }
+    Write-Output ("{0} {1} (key did not exist before)" -f $st, $blockedPath)
+}
+$st = if (Test-Path -LiteralPath $tmp) { $leftover = $true; 'LEFTOVER' } else { 'RESTORED' }
+Write-Output ("{0} {1}" -f $st, $tmp)
+if ($leftover) { exit 1 }

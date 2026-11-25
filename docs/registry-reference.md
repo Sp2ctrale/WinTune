@@ -71,7 +71,7 @@ elevation is needed; HKCU entries are merged over HKLM by `HKCR`):
 | `Software\Classes\Directory\shell\<verb>` | Entries for folders |
 | `Software\Classes\Drive\shell\<verb>` | Entries for drives |
 | `Software\Classes\Directory\Background\shell\<verb>` | Entries for the folder background (not probed) |
-| `<verb>\command` (default value) | Command line, `%1` = the clicked item |
+| `<verb>\command` (default value) | Command line. Placeholder for the clicked item: `%1` for Files (`*`), Folders (`Directory`) and Drives (`Drive`); `%V` for the folder background (`Directory\Background`) |
 | `Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked` | Value name = handler CLSID, data `""` (undocumented) |
 
 Values on a verb key: `MUIVerb` (label), `Icon` (path, optionally `,index`),
@@ -93,13 +93,13 @@ Run on Windows `10.0.26300.0` (Windows 11), French UI.
 | 1. Own verb with `MUIVerb` `WinTune probe é'`, `Icon`, `command`, under `Directory`, `Drive` and `*` | PASS | The verb shows in `Verbs()` of a folder named `probe 'é x`, of drive `C:\` and of a temp file. Quotes and accents in the label and path are fine. |
 | 2a. HKCU copy of an HKLM `Directory\shell` verb with only `ProgrammaticAccessOnly` = `""` | PASS | `AnyCode` ("Open with Visual Studio") disappears from `Verbs()`. |
 | 2b. Same HKCU copy with only `MUIVerb` = `Probe renamed` | PASS | The label changes to `Probe renamed`; the old label is gone; `HKCR\Directory\shell\AnyCode\command` still returns the HKLM command line (HKCU copy has no `command` of its own). |
-| 3. `{596AB062-B4D2-4215-9F74-E9109B0A8153}` (Restore previous versions) as a value in HKCU `Blocked` | FAIL | The verb list of `C:\Windows` is unchanged (24 verbs before and after), read from a fresh PowerShell process. `Blocked` in HKCU did not hide it through `Verbs()`; it may still work for Explorer itself or need an Explorer restart, which the probe does not do. |
+| 3. `{596AB062-B4D2-4215-9F74-E9109B0A8153}` (Restore previous versions) as a value in HKCU `Blocked` | PASS (new-process read) | Precondition: the verb "Restaurer les versions précédentes" is present in `Verbs()` of `C:\Windows` (read from a new PowerShell process, before the write). After the write, a new PowerShell process no longer lists it and nothing else vanished (19 verbs before, 18 after). A first attempt that read before and after in the same process saw no change (24 and 24): an in-process handler cache hides the effect, so always re-read in a new process. Proves only `Verbs()` from a fresh non-Explorer process; Explorer itself and an Explorer restart are untested. |
 
 Consequences: hiding a system (HKLM) classic verb with a
 `ProgrammaticAccessOnly` HKCU copy and renaming it with a `MUIVerb`-only copy
-both work without touching HKLM. Hiding a shellex handler through `Blocked`
-is not confirmed and must not be offered as working until checked in a real
-Explorer session (PR 2 / spec section 8).
+both work without touching HKLM. `Blocked` hides a shellex handler's verb in
+a fresh process; whether the open Explorer honours it immediately is still to
+be confirmed by the owner (PR 2 / spec section 8).
 
 ### Needs the owner's eyes
 
@@ -114,6 +114,10 @@ These cannot be seen through `Verbs()` and need a look at the real menu:
 
 ## Sources
 
+- Microsoft Learn, *Creating Shortcut Menu Handlers* and *Merged View of
+  HKEY_CLASSES_ROOT*: verb keys, `MUIVerb`, `Icon`, `ProgrammaticAccessOnly`,
+  and why HKCU entries override HKLM ones in `HKCR`. The `Blocked` key is
+  undocumented.
 - Microsoft Learn, *Reference for Windows 11 settings* and *Reference for
   Windows 11 and Windows 10 settings*: `TaskbarAl`, `ShowTaskViewButton`,
   `Start_IrisRecommendations`, `Start_Layout`, `ShowRecentList`,

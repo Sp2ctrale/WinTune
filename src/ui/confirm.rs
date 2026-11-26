@@ -174,7 +174,6 @@ impl WinTuneApp {
     /// Asks before putting variables (slot ids) back to what they were before
     /// WinTune changed them. The partners of a rename come with them; a
     /// restored `Path` names the folders that go and come back.
-    #[allow(dead_code)] // The page (Task 6) uses it; remove then.
     pub(super) fn request_restore_environment(&mut self, ids: Vec<String>) {
         if ids.is_empty() {
             return;

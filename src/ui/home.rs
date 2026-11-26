@@ -129,6 +129,7 @@ impl WinTuneApp {
             ActiveTab::Tweaks => tr.t("nav.explorer"),
             ActiveTab::StartPrivacy => tr.t("nav.start"),
             ActiveTab::Startup => tr.t("nav.startup"),
+            ActiveTab::Environment => tr.t("nav.environment"),
             _ => tr.t("nav.context_menu"),
         };
         let history = &self.history;

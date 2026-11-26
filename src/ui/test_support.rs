@@ -361,7 +361,6 @@ impl TempIcons {
     }
 
     /// A user variable of any registry type.
-    #[allow(dead_code)] // The page (Task 6) uses it; remove then.
     pub(super) fn seed_env_raw(&self, name: &str, value: winreg::RegValue) {
         let (k, _) = self
             .sandbox
@@ -369,6 +368,31 @@ impl TempIcons {
             .create_subkey(self.hkcu(crate::environment::USER_ENV_KEY))
             .expect("create Environment key");
         k.set_raw_value(name, &value).unwrap();
+    }
+
+    /// A text value under the sandbox's `Volatile Environment` key, which the
+    /// app must never read or show.
+    pub(super) fn seed_volatile(&self, name: &str, value: &str) {
+        let (k, _) = self
+            .sandbox
+            .root
+            .create_subkey(self.hkcu(crate::environment::VOLATILE_ENV_KEY))
+            .expect("create Volatile Environment key");
+        k.set_value(name, &value).unwrap();
+    }
+
+    /// The value names of this account's `Environment` key, as stored.
+    pub(super) fn user_env_names(&self) -> Vec<String> {
+        self.sandbox
+            .root
+            .open_subkey(self.hkcu(crate::environment::USER_ENV_KEY))
+            .map(|key| {
+                key.enum_values()
+                    .filter_map(|v| v.ok())
+                    .map(|(n, _)| n)
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Type and decoded text of this account's variable `name`.

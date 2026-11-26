@@ -651,7 +651,6 @@ impl WinTuneApp {
     /// Writes the pending changes in one background job. It asks first when
     /// the changes could surprise (`env_apply_lines`); otherwise History can
     /// undo it.
-    #[allow(dead_code)] // The page (Task 6) uses it; remove then.
     pub(super) fn start_env_apply(&mut self, ctx: &egui::Context) {
         if self.refuse_if_busy() {
             return;

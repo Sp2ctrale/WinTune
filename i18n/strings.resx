@@ -1522,4 +1522,142 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="env.problem.twice" xml:space="preserve">
     <value>{0} is changed twice in one Apply.</value>
   </data>
+  <data name="nav.environment" xml:space="preserve">
+    <value>Environment variables</value>
+  </data>
+  <data name="env.subtitle" xml:space="preserve">
+    <value>Your variables and the folders Windows searches for programs.</value>
+  </data>
+  <data name="env.note" xml:space="preserve">
+    <value>New programs see your changes. Windows that are already open, such as terminals, keep the old values until you restart them.</value>
+  </data>
+  <data name="env.search" xml:space="preserve">
+    <value>Search variables and folders</value>
+  </data>
+  <data name="env.scanning" xml:space="preserve">
+    <value>Reading your variables…</value>
+  </data>
+  <data name="env.unreadable" xml:space="preserve">
+    <value>Cannot read your variables: {0}</value>
+  </data>
+  <data name="env.no_match" xml:space="preserve">
+    <value>Nothing matches your search.</value>
+  </data>
+  <data name="env.path.title" xml:space="preserve">
+    <value>Your Path</value>
+  </data>
+  <data name="env.path.empty" xml:space="preserve">
+    <value>You have no Path of your own yet. Add a first folder below.</value>
+  </data>
+  <data name="env.path.clean" xml:space="preserve">
+    <value>Remove missing and duplicates</value>
+  </data>
+  <data name="env.path.clean_none" xml:space="preserve">
+    <value>No folder is missing or a duplicate.</value>
+  </data>
+  <data name="env.path.add_hint" xml:space="preserve">
+    <value>Folder to add, for example C:\Tools\bin</value>
+  </data>
+  <data name="env.path.add" xml:space="preserve">
+    <value>Add to Path</value>
+  </data>
+  <data name="env.browse" xml:space="preserve">
+    <value>Browse…</value>
+  </data>
+  <data name="env.pill.not_found" xml:space="preserve">
+    <value>Folder not found</value>
+  </data>
+  <data name="env.pill.duplicate" xml:space="preserve">
+    <value>Duplicate</value>
+  </data>
+  <data name="env.pill.will_add" xml:space="preserve">
+    <value>Will be added</value>
+  </data>
+  <data name="env.pill.moved" xml:space="preserve">
+    <value>Moved</value>
+  </data>
+  <data name="env.pill.will_remove" xml:space="preserve">
+    <value>Will be removed</value>
+  </data>
+  <data name="env.pill.uses_refs" xml:space="preserve">
+    <value>Uses %…%</value>
+  </data>
+  <data name="env.pill.read_only" xml:space="preserve">
+    <value>Read only</value>
+  </data>
+  <data name="env.pill.will_change" xml:space="preserve">
+    <value>Will be changed</value>
+  </data>
+  <data name="env.pill.will_rename" xml:space="preserve">
+    <value>Will be renamed {0}</value>
+  </data>
+  <data name="env.pill.will_delete" xml:space="preserve">
+    <value>Will be deleted</value>
+  </data>
+  <data name="env.move_up" xml:space="preserve">
+    <value>Move up</value>
+  </data>
+  <data name="env.move_down" xml:space="preserve">
+    <value>Move down</value>
+  </data>
+  <data name="env.no_move" xml:space="preserve">
+    <value>Already at the end of the list.</value>
+  </data>
+  <data name="env.edit" xml:space="preserve">
+    <value>Edit</value>
+  </data>
+  <data name="env.remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="env.delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="env.not_text" xml:space="preserve">
+    <value>This value is not text. WinTune shows it but does not change it.</value>
+  </data>
+  <data name="env.vars.title" xml:space="preserve">
+    <value>Your variables</value>
+  </data>
+  <data name="env.vars.add" xml:space="preserve">
+    <value>Add a variable</value>
+  </data>
+  <data name="env.vars.empty" xml:space="preserve">
+    <value>You have no other variable.</value>
+  </data>
+  <data name="env.system.title" xml:space="preserve">
+    <value>For every account (read only)</value>
+  </data>
+  <data name="env.system.path" xml:space="preserve">
+    <value>Path (every account)</value>
+  </data>
+  <data name="env.system.unreadable" xml:space="preserve">
+    <value>Cannot read the system variables: {0}</value>
+  </data>
+  <data name="env.var_title_add" xml:space="preserve">
+    <value>Add a variable</value>
+  </data>
+  <data name="env.var_title_edit" xml:space="preserve">
+    <value>Edit variable</value>
+  </data>
+  <data name="env.entry_title" xml:space="preserve">
+    <value>Edit folder</value>
+  </data>
+  <data name="env.name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="env.value" xml:space="preserve">
+    <value>Value</value>
+  </data>
+  <data name="env.dialog_ok" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="env.pending" xml:space="preserve">
+    <value>{0} changes not applied</value>
+  </data>
+  <data name="env.up_to_date" xml:space="preserve">
+    <value>All changes applied</value>
+  </data>
+  <data name="env.nothing_to_apply" xml:space="preserve">
+    <value>Nothing to apply</value>
+  </data>
 </root>

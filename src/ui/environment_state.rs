@@ -22,7 +22,6 @@ pub(super) type EnvScanJob = BackgroundJob<EnvScan>;
 /// A variable being edited, by its lowercase name: the name it has now, or
 /// the name chosen for a new variable.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-#[allow(dead_code)] // `New` is built by the page (Task 6); remove then.
 pub(super) enum VarKey {
     Existing(String),
     New(String),
@@ -38,7 +37,6 @@ pub(super) struct EnvPending {
 
 /// The dialog open on the page, if any.
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)] // The page (Task 6) uses it; remove then.
 pub(super) enum EnvDialog {
     Variable {
         key: Option<VarKey>,
@@ -141,6 +139,12 @@ impl WinTuneApp {
     /// The changes Apply writes: the `Path` change, then one per variable
     /// edit the last scan still shows as different. Empty before a scan.
     pub(super) fn env_changes(&self) -> Vec<EnvChange> {
+        self.env_changes_except(None)
+    }
+
+    /// `env_changes` without the change of the variable edit under `skip`:
+    /// what the other edits do while that one is being made in a dialog.
+    pub(super) fn env_changes_except(&self, skip: Option<&VarKey>) -> Vec<EnvChange> {
         let Some(scan) = &self.env_scan else {
             return Vec::new();
         };
@@ -151,6 +155,9 @@ impl WinTuneApp {
             .filter_map(|edit| path_change(edit, scan.user_path()))
             .collect();
         for (key, edit) in &self.env_pending.vars {
+            if Some(key) == skip {
+                continue;
+            }
             let current = match key {
                 VarKey::Existing(name) => scan.user_var(name),
                 VarKey::New(_) => None,
@@ -160,20 +167,17 @@ impl WinTuneApp {
         changes
     }
 
-    #[allow(dead_code)] // The page (Task 6) uses it; remove then.
     pub(super) fn env_pending_count(&self) -> usize {
         self.env_changes().len()
     }
 
     /// "Discard": forgets every pending edit.
-    #[allow(dead_code)] // The page (Task 6) uses it; remove then.
     pub(super) fn discard_env_changes(&mut self) {
         self.env_pending = EnvPending::default();
     }
 
     /// The `Path` edit, started from the scanned value on first use. `None`
     /// before the first scan, or when the `Path` is not text.
-    #[allow(dead_code)] // The page (Task 6) uses it; remove then.
     pub(super) fn env_path_edit_mut(&mut self) -> Option<&mut PathEdit> {
         if self.env_pending.path.is_none() {
             let current = self.env_scan.as_ref()?.user_path();
@@ -224,7 +228,6 @@ impl WinTuneApp {
     /// The wanted `Path` entries (the edit, else the scanned ones) with their
     /// expansion and flags. A folder the scan did not check is checked here
     /// once and remembered.
-    #[allow(dead_code)] // The page (Task 6) uses it; remove then.
     pub(super) fn env_path_infos(&mut self) -> Vec<EntryInfo> {
         let Some(scan) = &self.env_scan else {
             return Vec::new();

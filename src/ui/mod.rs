@@ -11,6 +11,7 @@ mod confirm;
 mod context_menu_existing;
 mod context_menu_tab;
 mod environment_state;
+mod environment_tab;
 mod gallery_tab;
 mod history_panel;
 mod home;
@@ -167,18 +168,20 @@ pub(crate) enum ActiveTab {
     Settings,
     ContextMenu,
     Startup,
+    Environment,
 }
 
 impl ActiveTab {
     /// Every page that can be opened, in navigation order (the tests walk it).
     #[cfg(test)]
-    pub(crate) const ALL: [ActiveTab; 9] = [
+    pub(crate) const ALL: [ActiveTab; 10] = [
         ActiveTab::Home,
         ActiveTab::Associations,
         ActiveTab::Tweaks,
         ActiveTab::StartPrivacy,
         ActiveTab::ContextMenu,
         ActiveTab::Startup,
+        ActiveTab::Environment,
         ActiveTab::Gallery,
         ActiveTab::History,
         ActiveTab::Settings,
@@ -193,6 +196,7 @@ impl ActiveTab {
             ActiveTab::StartPrivacy => Some("Start & Privacy"),
             ActiveTab::ContextMenu => Some("Context menu"),
             ActiveTab::Startup => Some("Startup apps"),
+            ActiveTab::Environment => Some("Environment variables"),
             ActiveTab::Home | ActiveTab::Gallery | ActiveTab::History | ActiveTab::Settings => None,
         }
     }
@@ -207,6 +211,7 @@ impl ActiveTab {
                 | ActiveTab::StartPrivacy
                 | ActiveTab::ContextMenu
                 | ActiveTab::Startup
+                | ActiveTab::Environment
         )
     }
 }
@@ -316,12 +321,10 @@ pub struct WinTuneApp {
     /// answers, plus folders checked since.
     env_folders: HashMap<String, bool>,
     /// Filter typed in the Environment variables page.
-    #[allow(dead_code)] // The page (Task 6) uses it; remove then.
     env_search: String,
     /// The variable or folder dialog, while open.
     env_dialog: Option<environment_state::EnvDialog>,
     /// The folder typed in the Path section's add box.
-    #[allow(dead_code)] // The page (Task 6) uses it; remove then.
     env_new_entry: String,
     tr: Tr,
     /// The theme actually shown this frame (Light or Dark, never System):
@@ -478,6 +481,7 @@ impl WinTuneApp {
         self.show_confirm_dialog(ctx);
         self.show_icon_picker(ctx);
         self.show_menu_rename_dialog(ctx);
+        self.show_env_dialog(ctx);
         self.show_caption(ctx);
         self.show_nav(ctx);
         if !self.active_tab.owns_action_bar() {
@@ -494,6 +498,7 @@ impl WinTuneApp {
             ActiveTab::Gallery => self.show_gallery_tab(ctx),
             ActiveTab::ContextMenu => self.show_context_menu_tab(ctx),
             ActiveTab::Startup => self.show_startup_tab(ctx),
+            ActiveTab::Environment => self.show_environment_tab(ctx),
         }
 
         self.toasts.show(ctx, &self.tr.t("toast.clear_all"));

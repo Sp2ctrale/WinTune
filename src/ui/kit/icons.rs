@@ -29,11 +29,12 @@ pub enum Icon {
     More,
     Folder,
     Startup,
+    Environment,
 }
 
 impl Icon {
     /// Every icon, for tests and galleries.
-    pub const ALL: [Icon; 21] = [
+    pub const ALL: [Icon; 22] = [
         Icon::Home,
         Icon::Associations,
         Icon::Explorer,
@@ -55,6 +56,7 @@ impl Icon {
         Icon::More,
         Icon::Folder,
         Icon::Startup,
+        Icon::Environment,
     ];
 }
 
@@ -81,7 +83,8 @@ pub fn glyph(icon: Icon) -> char {
         Icon::ChevronDown => '\u{E70D}',
         Icon::More => '\u{E712}',
         Icon::Folder => '\u{E8B7}',
-        Icon::Startup => '\u{E7E8}', // PowerButton
+        Icon::Startup => '\u{E7E8}',     // PowerButton
+        Icon::Environment => '\u{E943}', // Code
     }
 }
 

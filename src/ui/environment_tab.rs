@@ -218,12 +218,13 @@ impl WinTuneApp {
             |ui| {
                 // Right to left: Remove missing and duplicates at the far right.
                 if !not_text {
-                    let resp = ui.add_enabled(flagged, secondary_button(&clean_label));
-                    clean = if flagged {
-                        resp.clicked()
-                    } else {
-                        resp.on_disabled_hover_text(tr.t("env.path.clean_none"))
-                            .clicked()
+                    let reason = busy
+                        .clone()
+                        .or_else(|| (!flagged).then(|| tr.t("env.path.clean_none")));
+                    let resp = ui.add_enabled(reason.is_none(), secondary_button(&clean_label));
+                    clean = match &reason {
+                        Some(reason) => resp.on_disabled_hover_text(reason).clicked(),
+                        None => resp.clicked(),
                     };
                 }
                 if has_snapshot {
@@ -277,7 +278,7 @@ impl WinTuneApp {
                     });
                 }
                 ui.add_space(space::S);
-                added = self.env_add_line(ui);
+                added = self.env_add_line(ui, busy.as_deref());
                 shown
             },
         );
@@ -409,12 +410,15 @@ impl WinTuneApp {
     }
 
     /// The field, Browse and Add under the list. Returns the folder to add
-    /// when the user chose Add.
-    fn env_add_line(&mut self, ui: &mut egui::Ui) -> Option<String> {
+    /// when the user chose Add. While a job runs (`busy` is why) nothing is
+    /// added: the job's end would drop the edit.
+    fn env_add_line(&mut self, ui: &mut egui::Ui, busy: Option<&str>) -> Option<String> {
         let tr = self.tr;
         let p = kit::current_palette(ui.ctx());
         let mut text = std::mem::take(&mut self.env_new_entry);
-        let problem = entry_problem(&text).map(|p| messages::env_problem(tr, &p));
+        let problem = busy
+            .map(str::to_string)
+            .or_else(|| entry_problem(&text).map(|p| messages::env_problem(tr, &p)));
         let (browse_label, add_label) = (tr.t("env.browse"), tr.t("env.path.add"));
         let (mut browse, mut add) = (false, false);
         ui.horizontal(|ui| {
@@ -511,7 +515,13 @@ impl WinTuneApp {
         kit::section_with_action(
             ui,
             &tr.t("env.vars.title"),
-            |ui| add = ui.add(secondary_button(&add_label)).clicked(),
+            |ui| {
+                let resp = ui.add_enabled(busy.is_none(), secondary_button(&add_label));
+                add = match &busy {
+                    Some(reason) => resp.on_disabled_hover_text(reason).clicked(),
+                    None => resp.clicked(),
+                };
+            },
             |ui| {
                 if none_at_all {
                     note_line(ui, &tr.t("env.vars.empty"));
@@ -605,12 +615,18 @@ impl WinTuneApp {
         let more = tr.t("tweaks.more");
         let more_for = tr.t_args("tweaks.more_for", &[&row.name]);
         let cut = short(&row.value);
-        let uses_refs = text
-            && kind_to_write(
-                row.scanned.as_ref().map(|v| v.kind),
-                &row.edit_name,
-                &row.value,
-            ) == REG_EXPAND_SZ_KIND;
+        // A value nobody edits is what the registry holds; an edited or new
+        // one gets the type the write will give it.
+        let uses_refs = match (&row.scanned, &row.pending) {
+            (Some(var), None | Some(VarPending::Delete)) => var.uses_references(),
+            _ => {
+                text && kind_to_write(
+                    row.scanned.as_ref().map(|v| v.kind),
+                    &row.edit_name,
+                    &row.value,
+                ) == REG_EXPAND_SZ_KIND
+            }
+        };
 
         let mut chosen = None;
         kit::SettingRow {
@@ -818,7 +834,10 @@ impl WinTuneApp {
                     (entry_problem(text), field.lost_focus())
                 }
             };
-            let problem = problem.map(|p| messages::env_problem(tr, &p));
+            // A running job would drop the edit when it ends.
+            let problem = this
+                .busy_or_blocked(&None)
+                .or_else(|| problem.map(|p| messages::env_problem(tr, &p)));
             if let Some(problem) = &problem {
                 ui.label(
                     RichText::new(problem)
@@ -888,6 +907,16 @@ impl WinTuneApp {
                 }
             }
             EnvDialog::Entry { index, text } => {
+                let current = match (&self.env_pending.path, &self.env_scan) {
+                    (Some(edit), _) => edit.texts(),
+                    (None, Some(scan)) => scan.user_path_entries(),
+                    (None, None) => Vec::new(),
+                };
+                // OK on a folder nobody changed is no edit, and keeps its
+                // spaces; a changed one is trimmed.
+                if index.is_some_and(|i| current.get(i) == Some(&text)) {
+                    return;
+                }
                 let text = text.trim().to_string();
                 if let Some(edit) = self.env_path_edit_mut() {
                     match index {
@@ -1414,6 +1443,101 @@ mod tests {
         apply_and_accept(&mut app, &ctx);
 
         assert_eq!(fx.user_env_names(), ["FOO"], "{}", app.last_notice());
+    }
+
+    #[test]
+    fn nothing_can_be_added_or_cleaned_while_a_job_runs() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let d = dir(&fx);
+        fx.seed_env(false, "Path", 2, &format!(r"{d}\a;{d}\a"));
+        let mut app = page_app(&fx, &ctx);
+        let release = hold_job(&mut app);
+        let reason = app.busy_or_blocked(&None).expect("busy");
+
+        app.env_new_entry = format!(r"{d}\new");
+        let add = pos_of_key(&mut app, &ctx, "env.path.add");
+        click_at(&mut app, &ctx, add);
+        assert_eq!(app.env_pending.path, None, "a folder was added");
+        assert!(hover_texts(&mut app, &ctx, add).contains(&reason));
+
+        click_key(&mut app, &ctx, "env.path.clean");
+        assert_eq!(app.env_pending.path, None, "the list was cleaned");
+
+        click_key(&mut app, &ctx, "env.vars.add");
+        assert_eq!(app.env_dialog, None, "the variable dialog opened");
+
+        app.env_dialog = Some(EnvDialog::Variable {
+            key: None,
+            name: "NEW".into(),
+            value: "v".into(),
+        });
+        let shown = texts(&mut app, &ctx);
+        assert!(shown.contains(&reason), "{shown:?}");
+        click_key(&mut app, &ctx, "env.dialog_ok");
+        assert!(app.env_dialog.is_some(), "OK was accepted during a job");
+        assert!(app.env_pending.vars.is_empty());
+
+        release.send(()).unwrap();
+        run_until_idle(&mut app, &ctx);
+    }
+
+    #[test]
+    fn uses_refs_follows_the_stored_type_until_the_value_is_edited() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "PLAIN", 1, "%FOO%");
+        let mut app = page_app(&fx, &ctx);
+        let pill = app.tr.t("env.pill.uses_refs");
+
+        let shown = texts(&mut app, &ctx);
+        assert!(!shown.contains(&pill), "REG_SZ shown as expandable");
+
+        // An edit gets the type the write will give it.
+        app.env_pending.vars.insert(
+            VarKey::Existing("plain".into()),
+            VarEdit {
+                original: Some("PLAIN".into()),
+                wanted: Some(("PLAIN".into(), "%BAR%".into())),
+            },
+        );
+        let shown = texts(&mut app, &ctx);
+        assert!(shown.contains(&pill), "{shown:?}");
+    }
+
+    #[test]
+    fn ok_on_an_unchanged_folder_is_no_edit_and_keeps_its_spaces() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let d = dir(&fx);
+        let padded = format!(r"  {d}\a ");
+        fx.seed_env(false, "Path", 2, &format!(r"{d}\b;{padded}"));
+        let mut app = page_app(&fx, &ctx);
+
+        for (i, text) in [(0, format!(r"{d}\b")), (1, padded.clone())] {
+            app.env_dialog = Some(EnvDialog::Entry {
+                index: Some(i),
+                text,
+            });
+            click_key(&mut app, &ctx, "env.dialog_ok");
+            assert_eq!(app.env_dialog, None);
+            assert_eq!(app.env_pending.path, None, "entry {i} became an edit");
+        }
+        let shown = texts(&mut app, &ctx);
+        assert!(!shown.contains(&app.tr.t("env.pill.will_add")), "{shown:?}");
+        assert!(!shown.contains(&app.tr.t("env.pill.will_remove")));
+        assert!(!shown.contains(&app.tr.t("tweaks.discard")));
+
+        // A changed entry is trimmed, and the folder it replaces is removed.
+        app.env_dialog = Some(EnvDialog::Entry {
+            index: Some(1),
+            text: format!(r" {d}\c "),
+        });
+        click_key(&mut app, &ctx, "env.dialog_ok");
+        assert_eq!(
+            app.env_pending.path.as_ref().map(|p| p.texts()),
+            Some(vec![format!(r"{d}\b"), format!(r"{d}\c")])
+        );
     }
 
     #[test]

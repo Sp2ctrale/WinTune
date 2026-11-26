@@ -1369,4 +1369,52 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="startup.source.common_folder" xml:space="preserve">
     <value>Dossier Démarrage (tous les comptes)</value>
   </data>
+  <data name="nav.startup" xml:space="preserve">
+    <value>Applications au démarrage</value>
+  </data>
+  <data name="startup.subtitle" xml:space="preserve">
+    <value>Programmes lancés à l'ouverture de session Windows.</value>
+  </data>
+  <data name="startup.unofficial_hint" xml:space="preserve">
+    <value>Utilise le même interrupteur que le Gestionnaire des tâches, que Microsoft ne documente pas.</value>
+  </data>
+  <data name="startup.next_sign_in" xml:space="preserve">
+    <value>Les changements prennent effet à la prochaine ouverture de session.</value>
+  </data>
+  <data name="startup.search" xml:space="preserve">
+    <value>Rechercher une application au démarrage</value>
+  </data>
+  <data name="startup.pill.all_users" xml:space="preserve">
+    <value>Tous les comptes</value>
+  </data>
+  <data name="startup.pill.both" xml:space="preserve">
+    <value>Pour vous et tous les comptes</value>
+  </data>
+  <data name="startup.pill.not_found" xml:space="preserve">
+    <value>Programme introuvable</value>
+  </data>
+  <data name="startup.pill.will_turn_off" xml:space="preserve">
+    <value>Sera désactivée</value>
+  </data>
+  <data name="startup.pill.will_turn_on" xml:space="preserve">
+    <value>Sera activée</value>
+  </data>
+  <data name="startup.scanning" xml:space="preserve">
+    <value>Lecture des applications au démarrage…</value>
+  </data>
+  <data name="startup.empty" xml:space="preserve">
+    <value>Aucun programme ne démarre à l'ouverture de session.</value>
+  </data>
+  <data name="startup.no_match" xml:space="preserve">
+    <value>Aucune application ne correspond à votre recherche.</value>
+  </data>
+  <data name="startup.pending" xml:space="preserve">
+    <value>{0} non appliquée(s)</value>
+  </data>
+  <data name="startup.up_to_date" xml:space="preserve">
+    <value>Tous les changements sont appliqués</value>
+  </data>
+  <data name="startup.nothing_to_apply" xml:space="preserve">
+    <value>Rien à appliquer</value>
+  </data>
 </root>

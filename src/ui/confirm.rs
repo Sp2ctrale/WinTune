@@ -48,7 +48,6 @@ pub(super) enum ConfirmAction {
     /// effects of the hides were read.
     ApplyMenu,
     /// Startup switch slot ids whose original must be put back.
-    #[allow(dead_code)] // The Startup apps page (next task) uses it; remove then.
     RestoreStartup(Vec<String>),
 }
 
@@ -134,7 +133,6 @@ impl WinTuneApp {
 
     /// Asks before putting startup switches (slot ids) back to what they
     /// were before WinTune changed them.
-    #[allow(dead_code)] // The Startup apps page (next task) uses it; remove then.
     pub(super) fn request_restore_startup(&mut self, ids: Vec<String>) {
         if ids.is_empty() {
             return;

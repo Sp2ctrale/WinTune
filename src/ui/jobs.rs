@@ -422,7 +422,6 @@ impl WinTuneApp {
 
     /// Writes the pending on/off choices to the registry in one background
     /// job. No confirmation: nothing is deleted, and History can undo it.
-    #[allow(dead_code)] // The Startup apps page (next task) uses it; remove then.
     pub(super) fn start_startup_apply(&mut self, ctx: &egui::Context) {
         if self.refuse_if_busy() {
             return;

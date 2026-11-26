@@ -28,6 +28,7 @@ mod safety_tests;
 mod settings;
 mod shell;
 mod startup_state;
+mod startup_tab;
 #[cfg(test)]
 mod test_support;
 mod tweaks_tab;
@@ -150,17 +151,19 @@ pub(crate) enum ActiveTab {
     History,
     Settings,
     ContextMenu,
+    Startup,
 }
 
 impl ActiveTab {
     /// Every page that can be opened, in navigation order (the tests walk it).
     #[cfg(test)]
-    pub(crate) const ALL: [ActiveTab; 8] = [
+    pub(crate) const ALL: [ActiveTab; 9] = [
         ActiveTab::Home,
         ActiveTab::Associations,
         ActiveTab::Tweaks,
         ActiveTab::StartPrivacy,
         ActiveTab::ContextMenu,
+        ActiveTab::Startup,
         ActiveTab::Gallery,
         ActiveTab::History,
         ActiveTab::Settings,
@@ -174,6 +177,7 @@ impl ActiveTab {
             ActiveTab::Tweaks => Some("Explorer & Taskbar"),
             ActiveTab::StartPrivacy => Some("Start & Privacy"),
             ActiveTab::ContextMenu => Some("Context menu"),
+            ActiveTab::Startup => Some("Startup apps"),
             ActiveTab::Home | ActiveTab::Gallery | ActiveTab::History | ActiveTab::Settings => None,
         }
     }
@@ -187,6 +191,7 @@ impl ActiveTab {
                 | ActiveTab::Tweaks
                 | ActiveTab::StartPrivacy
                 | ActiveTab::ContextMenu
+                | ActiveTab::Startup
         )
     }
 }
@@ -278,7 +283,6 @@ pub struct WinTuneApp {
     /// applied yet, by `StartupItem::id`.
     startup_pending: BTreeMap<String, bool>,
     /// Filter typed in the Startup apps page (name / program).
-    #[allow(dead_code)] // The Startup apps page (next task) uses it; remove then.
     startup_search: String,
     tr: Tr,
     /// The theme actually shown this frame (Light or Dark, never System):
@@ -437,6 +441,7 @@ impl WinTuneApp {
             ActiveTab::Tweaks | ActiveTab::StartPrivacy => self.show_tweaks_tab(ctx),
             ActiveTab::Gallery => self.show_gallery_tab(ctx),
             ActiveTab::ContextMenu => self.show_context_menu_tab(ctx),
+            ActiveTab::Startup => self.show_startup_tab(ctx),
         }
 
         self.toasts.show(ctx, &self.tr.t("toast.clear_all"));

@@ -95,7 +95,6 @@ impl WinTuneApp {
 
     /// The changes Apply writes: one per pending id the last scan still
     /// lists and whose wish differs from the current state.
-    #[allow(dead_code)] // The Startup apps page (next task) uses it; remove then.
     pub(super) fn startup_changes(&self) -> Vec<StartupChange> {
         let Some(scan) = &self.startup_scan else {
             return Vec::new();
@@ -106,20 +105,17 @@ impl WinTuneApp {
             .collect()
     }
 
-    #[allow(dead_code)] // The Startup apps page (next task) uses it; remove then.
     pub(super) fn startup_pending_count(&self) -> usize {
         self.startup_changes().len()
     }
 
     /// "Discard": forgets the pending choices.
-    #[allow(dead_code)] // The Startup apps page (next task) uses it; remove then.
     pub(super) fn discard_startup_changes(&mut self) {
         self.startup_pending.clear();
     }
 
     /// How the UI names a switch slot (as in History's saved originals): the
     /// scanned item's name, else the value name inside the slot id.
-    #[allow(dead_code)] // The Startup apps page (next task) uses it; remove then.
     pub(super) fn startup_slot_name(&self, slot_id: &str) -> String {
         if let Some(item) = self.startup_scan.as_ref().and_then(|s| s.by_slot(slot_id)) {
             return item.display_name.clone();

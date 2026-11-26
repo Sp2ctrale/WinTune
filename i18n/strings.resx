@@ -1370,4 +1370,52 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="startup.source.common_folder" xml:space="preserve">
     <value>Startup folder (every account)</value>
   </data>
+  <data name="nav.startup" xml:space="preserve">
+    <value>Startup apps</value>
+  </data>
+  <data name="startup.subtitle" xml:space="preserve">
+    <value>Programs that start when you sign in to Windows.</value>
+  </data>
+  <data name="startup.unofficial_hint" xml:space="preserve">
+    <value>Uses the same switch as Task Manager, which Microsoft does not document.</value>
+  </data>
+  <data name="startup.next_sign_in" xml:space="preserve">
+    <value>Changes take effect the next time you sign in.</value>
+  </data>
+  <data name="startup.search" xml:space="preserve">
+    <value>Search startup apps</value>
+  </data>
+  <data name="startup.pill.all_users" xml:space="preserve">
+    <value>All users</value>
+  </data>
+  <data name="startup.pill.both" xml:space="preserve">
+    <value>For you and every account</value>
+  </data>
+  <data name="startup.pill.not_found" xml:space="preserve">
+    <value>Program not found</value>
+  </data>
+  <data name="startup.pill.will_turn_off" xml:space="preserve">
+    <value>Will be turned off</value>
+  </data>
+  <data name="startup.pill.will_turn_on" xml:space="preserve">
+    <value>Will be turned on</value>
+  </data>
+  <data name="startup.scanning" xml:space="preserve">
+    <value>Reading startup apps…</value>
+  </data>
+  <data name="startup.empty" xml:space="preserve">
+    <value>No program starts when you sign in.</value>
+  </data>
+  <data name="startup.no_match" xml:space="preserve">
+    <value>No app matches your search.</value>
+  </data>
+  <data name="startup.pending" xml:space="preserve">
+    <value>{0} not applied</value>
+  </data>
+  <data name="startup.up_to_date" xml:space="preserve">
+    <value>All changes applied</value>
+  </data>
+  <data name="startup.nothing_to_apply" xml:space="preserve">
+    <value>Nothing to apply</value>
+  </data>
 </root>

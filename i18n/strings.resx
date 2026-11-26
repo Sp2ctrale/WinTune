@@ -1356,7 +1356,7 @@ Restoring the original puts the choice back, but Windows protects it with a hash
     <value>Turned off for every account on this PC. WinTune changes only your account.</value>
   </data>
   <data name="startup.locked.all_users" xml:space="preserve">
-    <value>Turned on for every account. WinTune cannot turn it off for your account alone yet.</value>
+    <value>This app starts for every account. WinTune cannot change it for your account alone yet.</value>
   </data>
   <data name="startup.source.user_run" xml:space="preserve">
     <value>Run key (you)</value>

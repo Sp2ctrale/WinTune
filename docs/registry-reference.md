@@ -377,10 +377,10 @@ The sources are documented. The switch is not.
 
 | Claim | Status | Source |
 | --- | --- | --- |
-| The Run keys (HKCU, HKLM, Wow6432Node), the `RunOnce` keys and the two Startup folders start programs; Task Manager lists and can disable them; a command line is limited to 260 characters | DOCUMENTED | Microsoft Learn, *Startup apps* (https://learn.microsoft.com/windows/compatibility/startup-apps) |
-| Run values are `REG_SZ` or `REG_EXPAND_SZ`; HKLM `RunOnce` runs only for administrators | DOCUMENTED | Microsoft Learn, *Run and RunOnce registry keys* (https://learn.microsoft.com/windows/win32/setupapi/run-and-runonce-registry-keys) |
+| The Run keys (HKCU, HKLM, Wow6432Node), the `RunOnce` keys and the two Startup folders start programs; Task Manager lists and can disable them; a command line is limited to 260 characters; Run values are `REG_SZ` or `REG_EXPAND_SZ` | DOCUMENTED | Microsoft Learn, *Startup apps* (https://learn.microsoft.com/windows/compatibility/startup-apps) |
+| HKLM `RunOnce` runs only for administrators; the 260-character limit | DOCUMENTED | Microsoft Learn, *Run and RunOnce registry keys* (https://learn.microsoft.com/windows/win32/setupapi/run-and-runonce-registry-keys) |
 | Task Manager and Settings turn an item off by writing a `REG_BINARY` of 12 bytes (flag DWORD plus FILETIME) under HKCU `StartupApproved\{Run,Run32,StartupFolder}`, named like the item; no value means on | OBSERVED | Read-only probe, Windows 11 build 26300 (spec 3.2). Microsoft Learn does not document `StartupApproved`. `Run32` for the 32-bit key is inferred from its name |
-| Flag `2` and `6` are on, `3` is off (with the time it was turned off) | OBSERVED | Same probe: `03` in HKCU entries, `02` and `06` in HKLM entries |
+| Flag `2` and `6` are on, `3` is off (with the time it was turned off) | OBSERVED | Same probe: `03` seen as the off value, flags 2 and 6 seen as on values |
 | Flag `7` is off | FOLKLORE | Repeated in public write-ups, not seen on the probe PC. WinTune accepts it as off, and puts back whatever it found |
 | A change takes effect at the next sign-in, with no Explorer restart | FOLKLORE | No Microsoft source found |
 | A per-user switch in HKCU turns off an all-users item for that user only | FOLKLORE | An inference: nothing documents it. This is what the flags below and checklist items 2 and 3 are for |
@@ -398,16 +398,13 @@ Because the format is undocumented, the Startup apps page carries the
 
 `PER_USER_SWITCH_WORKS` in `src/startup/mod.rs` has one flag per source: does a
 per-user switch in HKCU turn items of that source off? A source whose flag is
-`false` shows its rows locked ("Turned on for every account...") and Apply
-refuses them. Current values:
-
-| Source | `PER_USER_SWITCH_WORKS` |
-| --- | --- |
-| Run key (you) | `true` |
-| Run key (every account) | `true`, until checklist item 2 is run |
-| Run key, 32-bit (every account) | `false`: the development PC has no 32-bit item to check it with |
-| Startup folder (you) | `true` |
-| Startup folder (every account) | `true`, until checklist item 3 is run |
+`false` shows its rows locked ("This app starts for every account...") and
+Apply refuses them. The table in `src/startup/mod.rs` is the source of truth
+for the values; this page does not repeat them, so it stays true when a flag
+changes. Per-user sources are always `true`. The all-users sources start as:
+`MachineRun` and `CommonFolder` `true` (until checklist items 2 and 3 are run),
+`MachineRun32` `false` (the development PC has no 32-bit item to check it
+with).
 
 If checklist item 2 or 3 fails, set the matching entry to `false` in
 `src/startup/mod.rs`. That is a one-line change, and the rows of that source

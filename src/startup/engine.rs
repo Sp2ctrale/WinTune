@@ -79,7 +79,7 @@ fn problem(
     }
     if change.sources.iter().any(|s| !(opts.switch_works)(*s)) {
         return Some(
-            "turned on for every account; WinTune cannot change it for your account alone"
+            "this app starts for every account; WinTune cannot change it for your account alone yet"
                 .to_string(),
         );
     }

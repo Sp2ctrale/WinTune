@@ -53,10 +53,11 @@ impl WinTuneApp {
                 JobPoll::Running => return,
                 JobPoll::Finished(scan) => {
                     // A choice the registry already matches (applied by a
-                    // partial Apply, or changed elsewhere) is no longer pending.
+                    // partial Apply, or changed elsewhere), or for an item the
+                    // scan no longer lists, is no longer pending.
                     self.startup_pending.retain(|id, wanted_on| {
                         scan.find(id)
-                            .is_none_or(|item| startup_change(item, *wanted_on).is_some())
+                            .is_some_and(|item| startup_change(item, *wanted_on).is_some())
                     });
                     self.startup_scan = Some(scan);
                 }
@@ -200,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn a_scan_drops_only_the_choices_the_registry_already_matches() {
+    fn a_scan_drops_the_choices_it_matches_or_no_longer_lists() {
         let fx = TempIcons::new(&[]);
         let ctx = egui::Context::default();
         let mut app = fx.app(&ctx);
@@ -209,9 +210,10 @@ mod tests {
         app.startup_pending.insert("run:gone".into(), false);
         app.request_startup_scan();
         run_until_startup_scanned(&mut app, &ctx);
-        // Already on: nothing to do. Not listed: kept, it counts for nothing.
+        // Already on: nothing to do. Not listed: pruned, so Discard goes too.
         assert!(!app.startup_pending.contains_key("run:app"));
-        assert!(app.startup_pending.contains_key("run:gone"));
+        assert!(!app.startup_pending.contains_key("run:gone"));
+        assert!(app.startup_pending.is_empty());
         assert_eq!(app.startup_pending_count(), 0);
 
         app.startup_pending.insert("run:app".into(), false);

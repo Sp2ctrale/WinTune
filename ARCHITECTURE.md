@@ -248,9 +248,10 @@ HKCU only. `HKLM`, `Run` values and Startup folder files are never touched.
   translated only when drawn, by `history_module` and `history_action` in
   `i18n/messages.rs`; unknown labels are shown as stored.
 - **Startup apps modules.** `startup_tab.rs` draws the page,
-  `startup_state.rs` holds the scan job, pending choices and the apply and
-  restore jobs, and `history_panel.rs` and `originals.rs` add the History
-  filter and the Saved originals group.
+  `startup_state.rs` holds the scan job and the pending choices, the apply
+  and restore jobs live in `jobs.rs` (`start_startup_apply`,
+  `start_startup_restore`, `finish_startup_job`), and `history_panel.rs` and
+  `originals.rs` add the History filter and the Saved originals group.
 - **One file per page.** The two tweak tabs share `tweaks_tab.rs`, and each
   shows its own `TweakGroup`s. They are kit pages: a section per group, a
   `SettingRow` per tweak with its state pill, and a `…` menu on rows that

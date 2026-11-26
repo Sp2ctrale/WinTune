@@ -215,8 +215,8 @@ scheduled tasks and services are not listed.
 - **Locked rows.** A row is shown with its toggle disabled, and says why, when
   its switch cannot be read, is stored in a way WinTune does not know, is
   turned off for every account in `HKLM`, or belongs to an all-users source
-  where a per-user switch has not been shown to work (today the 32-bit
-  all-users Run key).
+  where a per-user switch has not been shown to work (the sources whose flag
+  in `PER_USER_SWITCH_WORKS` is `false`).
 - **Program not found.** A pill appears when a Run command names a program
   with a folder path and that file does not exist (a leftover from an
   uninstalled app). Bare names such as `ms-teams.exe` are never flagged.

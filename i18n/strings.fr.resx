@@ -1355,7 +1355,7 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
     <value>Désactivée pour tous les comptes de ce PC. WinTune ne modifie que votre compte.</value>
   </data>
   <data name="startup.locked.all_users" xml:space="preserve">
-    <value>Activée pour tous les comptes. WinTune ne peut pas encore la désactiver pour votre compte seul.</value>
+    <value>Cette application démarre pour tous les comptes. WinTune ne peut pas encore la modifier pour votre compte seul.</value>
   </data>
   <data name="startup.source.user_run" xml:space="preserve">
     <value>Clé Run (vous)</value>

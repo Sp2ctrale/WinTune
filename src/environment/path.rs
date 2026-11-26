@@ -133,7 +133,7 @@ pub fn join_entries(entries: &[String]) -> String {
         .join(";")
 }
 
-fn unquote(text: &str) -> &str {
+pub(super) fn unquote(text: &str) -> &str {
     text.strip_prefix('"')
         .and_then(|t| t.strip_suffix('"'))
         .unwrap_or(text)

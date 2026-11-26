@@ -4,12 +4,14 @@
 //! WinTune only ever writes values of `HKCU\Environment`. Nothing is written
 //! under HKLM, and `HKCU\Volatile Environment` is never read or written.
 
-use crate::backups::Slot;
+use crate::backups::{RegTarget, Slot};
 
 mod path;
 pub use path::*;
 mod rules;
 pub use rules::*;
+mod scan;
+pub use scan::*;
 
 pub const USER_ENV_KEY: &str = "Environment";
 pub const SYSTEM_ENV_KEY: &str = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment";
@@ -21,6 +23,21 @@ pub const PATH_LIMIT: usize = 8191;
 
 pub const REG_SZ_KIND: u32 = 1;
 pub const REG_EXPAND_SZ_KIND: u32 = 2;
+
+/// Where variables live. Writes only ever use `user`; `machine` is read.
+pub struct EnvTarget {
+    pub user: RegTarget,
+    pub machine: RegTarget,
+}
+
+impl EnvTarget {
+    pub fn current_user() -> Self {
+        Self {
+            user: RegTarget::current_user(),
+            machine: RegTarget::local_machine(),
+        }
+    }
+}
 
 pub fn is_path_name(name: &str) -> bool {
     name.eq_ignore_ascii_case(PATH_NAME)

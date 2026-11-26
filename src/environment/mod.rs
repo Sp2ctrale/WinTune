@@ -6,6 +6,8 @@
 
 use crate::backups::{RegTarget, Slot};
 
+mod engine;
+pub use engine::*;
 mod path;
 pub use path::*;
 mod rules;

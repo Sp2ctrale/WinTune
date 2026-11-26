@@ -188,7 +188,7 @@ pub fn restore_snapshot(t: &RegTarget, slot: &Slot, s: &Snapshot) -> Result<(), 
 /// The safety net before any write: saves `store`, then exports every taken
 /// snapshot to `<reg_dir>\<file_stamp>-<stem>.reg`. Returns that file.
 pub fn save_then_export(
-    store: &UserBackups,
+    store: &impl Serialize,
     store_path: &Path,
     t: &RegTarget,
     taken: &[(Slot, Snapshot)],

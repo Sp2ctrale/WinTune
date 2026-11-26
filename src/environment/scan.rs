@@ -60,6 +60,17 @@ fn path_entries(vars: &[EnvVar]) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The variables that feed `%name%` expansion, as `Resolver::new` takes
+/// them: text variables only; expandable means `REG_EXPAND_SZ`.
+pub fn resolver_vars(vars: &[EnvVar]) -> Vec<(String, String, bool)> {
+    vars.iter()
+        .filter_map(|v| {
+            let value = v.value.clone()?;
+            Some((v.name.clone(), value, v.kind == REG_EXPAND_SZ_KIND))
+        })
+        .collect()
+}
+
 impl EnvScan {
     pub fn user_var(&self, name: &str) -> Option<&EnvVar> {
         self.user.iter().find(|v| v.name.eq_ignore_ascii_case(name))
@@ -77,17 +88,12 @@ impl EnvScan {
         path_entries(&self.system)
     }
 
-    /// Text variables only; expandable means `REG_EXPAND_SZ`.
     pub fn resolver(&self, process: fn(&str) -> Option<String>) -> Resolver {
-        let side = |vars: &[EnvVar]| {
-            vars.iter()
-                .filter_map(|v| {
-                    let value = v.value.clone()?;
-                    Some((v.name.clone(), value, v.kind == REG_EXPAND_SZ_KIND))
-                })
-                .collect()
-        };
-        Resolver::new(side(&self.user), side(&self.system), process)
+        Resolver::new(
+            resolver_vars(&self.user),
+            resolver_vars(&self.system),
+            process,
+        )
     }
 }
 

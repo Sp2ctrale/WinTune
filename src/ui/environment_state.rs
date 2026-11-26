@@ -9,9 +9,9 @@ use std::path::Path;
 use super::{kit, WinTuneApp};
 use crate::backups::Slot;
 use crate::environment::{
-    analyze_entries, kind_to_write, load_env_store, path_change, scan_environment, unquote,
-    var_change, EntryInfo, EnvBackupStore, EnvChange, EnvScan, EnvVar, PathEdit, Resolver, VarEdit,
-    REG_EXPAND_SZ_KIND,
+    analyze_entries, kind_to_write, load_env_store, path_change, resolver_vars, scan_environment,
+    unquote, var_change, EntryInfo, EnvBackupStore, EnvChange, EnvScan, PathEdit, Resolver,
+    VarEdit, REG_EXPAND_SZ_KIND,
 };
 use crate::i18n::messages;
 use crate::tasks::{BackgroundJob, JobPoll};
@@ -203,15 +203,7 @@ impl WinTuneApp {
         let Some(scan) = &self.env_scan else {
             return Resolver::new(Vec::new(), Vec::new(), process);
         };
-        let side = |vars: &[EnvVar]| -> Vec<(String, String, bool)> {
-            vars.iter()
-                .filter_map(|v| {
-                    let value = v.value.clone()?;
-                    Some((v.name.clone(), value, v.kind == REG_EXPAND_SZ_KIND))
-                })
-                .collect()
-        };
-        let mut user = side(&scan.user);
+        let mut user = resolver_vars(&scan.user);
         for edit in self.env_pending.vars.values() {
             let kind = edit
                 .original
@@ -226,7 +218,7 @@ impl WinTuneApp {
                 user.push((name.clone(), value.clone(), expandable));
             }
         }
-        Resolver::new(user, side(&scan.system), process)
+        Resolver::new(user, resolver_vars(&scan.system), process)
     }
 
     /// The wanted `Path` entries (the edit, else the scanned ones) with their

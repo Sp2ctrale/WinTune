@@ -25,6 +25,7 @@ impl WinTuneApp {
         if self.pending_confirm.is_some()
             || self.icon_picker.is_some()
             || self.menu_rename.is_some()
+            || self.env_dialog.is_some()
         {
             return;
         }

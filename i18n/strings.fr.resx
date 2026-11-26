@@ -1420,4 +1420,105 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="startup.nothing_to_apply" xml:space="preserve">
     <value>Rien à appliquer</value>
   </data>
+  <data name="job.apply_environment" xml:space="preserve">
+    <value>Application des changements de variables…</value>
+  </data>
+  <data name="job.restore_environment" xml:space="preserve">
+    <value>Restauration des variables d'environnement…</value>
+  </data>
+  <data name="job.name.apply_environment" xml:space="preserve">
+    <value>L'application des changements de variables</value>
+  </data>
+  <data name="job.name.restore_environment" xml:space="preserve">
+    <value>La restauration des variables d'environnement</value>
+  </data>
+  <data name="report.applied_environment" xml:space="preserve">
+    <value>{0} changement(s) de variables appliqué(s)</value>
+  </data>
+  <data name="report.restored_environment" xml:space="preserve">
+    <value>{0} variable(s) restaurée(s)</value>
+  </data>
+  <data name="history.module.environment" xml:space="preserve">
+    <value>Variables d'environnement</value>
+  </data>
+  <data name="env.scan_failed" xml:space="preserve">
+    <value>Impossible de lire les variables d'environnement : {0}</value>
+  </data>
+  <data name="env.apply_title" xml:space="preserve">
+    <value>Appliquer ces changements ?</value>
+  </data>
+  <data name="env.apply_message" xml:space="preserve">
+    <value>{0}</value>
+  </data>
+  <data name="env.restore_title" xml:space="preserve">
+    <value>Restaurer les variables d'origine ?</value>
+  </data>
+  <data name="env.restore_message" xml:space="preserve">
+    <value>{0} retrouveront la valeur qu'elles avaient avant que WinTune les modifie.</value>
+  </data>
+  <data name="env.restore_many" xml:space="preserve">
+    <value>{0} variables</value>
+  </data>
+  <data name="env.confirm.deleted" xml:space="preserve">
+    <value>{0} sera supprimée.</value>
+  </data>
+  <data name="env.confirm.path_removed" xml:space="preserve">
+    <value>Retirés de Path :
+{0}</value>
+  </data>
+  <data name="env.confirm.path_added" xml:space="preserve">
+    <value>Remis dans Path :
+{0}</value>
+  </data>
+  <data name="env.warning.removes" xml:space="preserve">
+    <value>{0} est utilisée par Windows et de nombreux programmes. La supprimer ou la renommer peut les casser.</value>
+  </data>
+  <data name="env.warning.path_too_long" xml:space="preserve">
+    <value>Avec le Path du système, votre Path fera {0} caractères. L'invite de commandes ne peut pas utiliser un Path de plus de 8 191 caractères.</value>
+  </data>
+  <data name="env.warning.path_changed" xml:space="preserve">
+    <value>Path a été modifié par un autre programme depuis le début de vos changements. Appliquer écrit votre liste : les dossiers ajoutés par ce programme seront retirés.</value>
+  </data>
+  <data name="env.problem.empty_name" xml:space="preserve">
+    <value>Saisissez un nom.</value>
+  </data>
+  <data name="env.problem.name_equals" xml:space="preserve">
+    <value>Un nom ne peut pas contenir =.</value>
+  </data>
+  <data name="env.problem.name_nul" xml:space="preserve">
+    <value>Un nom ne peut pas contenir de caractère nul.</value>
+  </data>
+  <data name="env.problem.name_too_long" xml:space="preserve">
+    <value>Un nom compte au plus 255 caractères.</value>
+  </data>
+  <data name="env.problem.name_taken" xml:space="preserve">
+    <value>Vous avez déjà une variable nommée {0}.</value>
+  </data>
+  <data name="env.problem.path_name" xml:space="preserve">
+    <value>Modifiez Path dans la section Votre Path.</value>
+  </data>
+  <data name="env.problem.empty_value" xml:space="preserve">
+    <value>Saisissez une valeur. Pour retirer une variable, supprimez-la.</value>
+  </data>
+  <data name="env.problem.value_too_long" xml:space="preserve">
+    <value>Une valeur compte au plus 32 767 caractères.</value>
+  </data>
+  <data name="env.problem.value_nul" xml:space="preserve">
+    <value>Une valeur ne peut pas contenir de caractère nul.</value>
+  </data>
+  <data name="env.problem.empty_entry" xml:space="preserve">
+    <value>Saisissez un dossier.</value>
+  </data>
+  <data name="env.problem.entry_semicolon" xml:space="preserve">
+    <value>Un dossier ne peut pas contenir ;.</value>
+  </data>
+  <data name="env.problem.gone" xml:space="preserve">
+    <value>{0} n'existe plus.</value>
+  </data>
+  <data name="env.problem.not_text" xml:space="preserve">
+    <value>{0} n'est pas du texte : WinTune ne la modifie pas.</value>
+  </data>
+  <data name="env.problem.twice" xml:space="preserve">
+    <value>{0} est modifiée deux fois dans la même application.</value>
+  </data>
 </root>

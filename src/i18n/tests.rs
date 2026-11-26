@@ -427,6 +427,70 @@ fn every_startup_message_translates_in_every_shipped_language() {
 }
 
 #[test]
+fn every_environment_message_translates_in_every_shipped_language() {
+    use super::messages::{env_problem, env_warning, history_module};
+    use crate::environment::{EnvProblem, EnvWarning};
+
+    let named = |make: fn(String) -> EnvProblem| make("X".to_string());
+    for (code, _) in Tr::languages() {
+        let tr = Tr::new(code);
+        let mut texts: Vec<String> = [
+            EnvProblem::EmptyName,
+            EnvProblem::NameHasEquals,
+            EnvProblem::NameHasNul,
+            EnvProblem::NameTooLong,
+            EnvProblem::PathName,
+            EnvProblem::EmptyValue,
+            EnvProblem::ValueTooLong,
+            EnvProblem::ValueHasNul,
+            EnvProblem::EmptyEntry,
+            EnvProblem::EntryHasSemicolon,
+        ]
+        .iter()
+        .map(|p| env_problem(tr, p))
+        .collect();
+        for problem in [
+            named(EnvProblem::NameTaken),
+            named(EnvProblem::Gone),
+            named(EnvProblem::NotText),
+            named(EnvProblem::Twice),
+        ] {
+            let text = env_problem(tr, &problem);
+            assert!(text.contains('X'), "{code}: {text:?}");
+            texts.push(text);
+        }
+        let removes = env_warning(tr, &EnvWarning::Removes("X".into()));
+        assert!(removes.contains('X'), "{code}: {removes:?}");
+        let long = env_warning(tr, &EnvWarning::PathTooLong(9000));
+        assert!(long.contains("9000"), "{code}: {long:?}");
+        texts.extend([
+            removes,
+            long,
+            env_warning(tr, &EnvWarning::PathChangedElsewhere),
+        ]);
+        // An unmapped label passes through unchanged, so compare with the key.
+        let module = history_module(tr, "Environment variables");
+        assert_eq!(module, tr.t("history.module.environment"), "{code}");
+        assert_ne!(module, "history.module.environment", "{code}");
+        texts.push(module);
+
+        let unique: BTreeSet<&String> = texts.iter().collect();
+        assert_eq!(unique.len(), texts.len(), "{code}: duplicates in {texts:?}");
+        for text in &texts {
+            assert!(!text.is_empty() && !text.contains('{'), "{code}: {text:?}");
+            assert!(
+                !text.starts_with("env.") && !text.starts_with("history."),
+                "{code}: looks like a bare key: {text:?}"
+            );
+        }
+    }
+    assert_eq!(
+        history_module(Tr::new("fr"), "Environment variables"),
+        "Variables d'environnement"
+    );
+}
+
+#[test]
 fn every_key_used_in_the_code_exists_in_english() {
     let en = keys_of("en").expect("English catalog");
     let re = regex::Regex::new(r#"\.t(?:_args)?\(\s*"([A-Za-z0-9_.]+)""#).unwrap();

@@ -8,6 +8,7 @@ use crate::regsnap::test_support::Sandbox;
 use eframe::egui::{self, FullOutput, RawInput, ViewportCommand, ViewportEvent, ViewportId};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use winreg::enums::HKEY_CURRENT_USER;
@@ -19,6 +20,8 @@ pub(super) struct TempIcons {
     pub(super) dir: PathBuf,
     pub(super) sandbox: Sandbox,
     opened: Arc<Mutex<Vec<PathBuf>>>,
+    /// How many times the app announced an environment change (never sent).
+    broadcasts: Arc<AtomicUsize>,
 }
 
 pub(super) const TEST_HIVE: &str = "S-1-5-21-test";
@@ -92,6 +95,28 @@ impl TempIcons {
             },
             startup_store_path: self.dir.join("startup-backups.json"),
             startup_switch_works: |s| s != crate::startup::Source::MachineRun32,
+            env_target: {
+                let sandbox = self.sandbox.path.clone();
+                Arc::new(move || {
+                    let at = |hive: &str| crate::backups::RegTarget {
+                        root: RegKey::predef(HKEY_CURRENT_USER),
+                        root_name: "HKEY_CURRENT_USER".into(),
+                        base: format!("{}\\{}", sandbox, hive),
+                    };
+                    crate::environment::EnvTarget {
+                        user: at("HKCU"),
+                        machine: at("HKLM"),
+                    }
+                })
+            },
+            env_store_path: self.dir.join("environment-backups.json"),
+            notify_environment: {
+                let broadcasts = self.broadcasts.clone();
+                Arc::new(move || {
+                    broadcasts.fetch_add(1, Ordering::SeqCst);
+                })
+            },
+            process_var: |_| None,
             // Never created: programs under it would count as Windows' own.
             windows_dir: self.dir.join("Windows"),
             resolve_indirect: |_| None,
@@ -151,6 +176,7 @@ impl TempIcons {
             dir,
             sandbox,
             opened: Arc::default(),
+            broadcasts: Arc::default(),
         }
     }
 
@@ -310,6 +336,72 @@ impl TempIcons {
             .ok()?;
         key.get_raw_value(name).ok().map(|v| v.bytes)
     }
+
+    /// A text variable under the sandbox's `Environment` key, on the machine
+    /// side (`machine`, under `SYSTEM_ENV_KEY`) or the user side. `kind` is
+    /// the registry type: 1 (`REG_SZ`) or 2 (`REG_EXPAND_SZ`).
+    pub(super) fn seed_env(&self, machine: bool, name: &str, kind: u32, value: &str) {
+        let vtype = match kind {
+            1 => winreg::enums::RegType::REG_SZ,
+            2 => winreg::enums::RegType::REG_EXPAND_SZ,
+            other => panic!("seed_env: kind {other} is not text"),
+        };
+        let (k, _) = if machine {
+            self.machine_key()
+                .create_subkey(crate::environment::SYSTEM_ENV_KEY)
+        } else {
+            self.sandbox
+                .root
+                .create_subkey(self.hkcu(crate::environment::USER_ENV_KEY))
+        }
+        .expect("create Environment key");
+        let bytes = crate::environment::encode_text(value);
+        k.set_raw_value(name, &winreg::RegValue { bytes, vtype })
+            .unwrap();
+    }
+
+    /// A user variable of any registry type.
+    #[allow(dead_code)] // The page (Task 6) uses it; remove then.
+    pub(super) fn seed_env_raw(&self, name: &str, value: winreg::RegValue) {
+        let (k, _) = self
+            .sandbox
+            .root
+            .create_subkey(self.hkcu(crate::environment::USER_ENV_KEY))
+            .expect("create Environment key");
+        k.set_raw_value(name, &value).unwrap();
+    }
+
+    /// Type and decoded text of this account's variable `name`.
+    pub(super) fn user_env(&self, name: &str) -> Option<(u32, String)> {
+        let key = self
+            .sandbox
+            .root
+            .open_subkey(self.hkcu(crate::environment::USER_ENV_KEY))
+            .ok()?;
+        let value = key.get_raw_value(name).ok()?;
+        Some((
+            value.vtype as u32,
+            crate::context_menu::fileinfo::decode_utf16le(&value.bytes),
+        ))
+    }
+
+    /// Environment change announcements the app made so far.
+    pub(super) fn broadcast_count(&self) -> usize {
+        self.broadcasts.load(Ordering::SeqCst)
+    }
+}
+
+/// Runs frames until no environment scan is pending or running.
+pub(super) fn run_until_env_scanned(app: &mut WinTuneApp, ctx: &egui::Context) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while (app.env_scan_needed || app.env_scan_job.is_some()) && Instant::now() < deadline {
+        frame(app, ctx, RawInput::default());
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(
+        !app.env_scan_needed && app.env_scan_job.is_none(),
+        "the environment scan never finished"
+    );
 }
 
 /// Runs frames until no startup scan is pending or running.

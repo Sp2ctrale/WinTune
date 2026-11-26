@@ -1421,4 +1421,105 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="startup.nothing_to_apply" xml:space="preserve">
     <value>Nothing to apply</value>
   </data>
+  <data name="job.apply_environment" xml:space="preserve">
+    <value>Applying environment changes…</value>
+  </data>
+  <data name="job.restore_environment" xml:space="preserve">
+    <value>Restoring environment variables…</value>
+  </data>
+  <data name="job.name.apply_environment" xml:space="preserve">
+    <value>Applying environment changes</value>
+  </data>
+  <data name="job.name.restore_environment" xml:space="preserve">
+    <value>Restoring environment variables</value>
+  </data>
+  <data name="report.applied_environment" xml:space="preserve">
+    <value>{0} environment change(s) applied</value>
+  </data>
+  <data name="report.restored_environment" xml:space="preserve">
+    <value>{0} variable(s) restored</value>
+  </data>
+  <data name="history.module.environment" xml:space="preserve">
+    <value>Environment variables</value>
+  </data>
+  <data name="env.scan_failed" xml:space="preserve">
+    <value>Could not read the environment variables: {0}</value>
+  </data>
+  <data name="env.apply_title" xml:space="preserve">
+    <value>Apply these changes?</value>
+  </data>
+  <data name="env.apply_message" xml:space="preserve">
+    <value>{0}</value>
+  </data>
+  <data name="env.restore_title" xml:space="preserve">
+    <value>Restore original variables?</value>
+  </data>
+  <data name="env.restore_message" xml:space="preserve">
+    <value>{0} will get back the value they had before WinTune changed them.</value>
+  </data>
+  <data name="env.restore_many" xml:space="preserve">
+    <value>{0} variables</value>
+  </data>
+  <data name="env.confirm.deleted" xml:space="preserve">
+    <value>{0} will be deleted.</value>
+  </data>
+  <data name="env.confirm.path_removed" xml:space="preserve">
+    <value>Removed from Path:
+{0}</value>
+  </data>
+  <data name="env.confirm.path_added" xml:space="preserve">
+    <value>Added back to Path:
+{0}</value>
+  </data>
+  <data name="env.warning.removes" xml:space="preserve">
+    <value>{0} is used by Windows and many programs. Deleting or renaming it can break them.</value>
+  </data>
+  <data name="env.warning.path_too_long" xml:space="preserve">
+    <value>With the system Path, your Path will be {0} characters long. Command Prompt cannot use a Path over 8,191 characters.</value>
+  </data>
+  <data name="env.warning.path_changed" xml:space="preserve">
+    <value>Path was changed by another program since you started editing. Apply writes your list, so folders that program added will be removed.</value>
+  </data>
+  <data name="env.problem.empty_name" xml:space="preserve">
+    <value>Enter a name.</value>
+  </data>
+  <data name="env.problem.name_equals" xml:space="preserve">
+    <value>A name cannot contain =.</value>
+  </data>
+  <data name="env.problem.name_nul" xml:space="preserve">
+    <value>A name cannot contain a null character.</value>
+  </data>
+  <data name="env.problem.name_too_long" xml:space="preserve">
+    <value>A name can have at most 255 characters.</value>
+  </data>
+  <data name="env.problem.name_taken" xml:space="preserve">
+    <value>You already have a variable named {0}.</value>
+  </data>
+  <data name="env.problem.path_name" xml:space="preserve">
+    <value>Edit Path in the Your Path section.</value>
+  </data>
+  <data name="env.problem.empty_value" xml:space="preserve">
+    <value>Enter a value. To remove a variable, delete it.</value>
+  </data>
+  <data name="env.problem.value_too_long" xml:space="preserve">
+    <value>A value can have at most 32,767 characters.</value>
+  </data>
+  <data name="env.problem.value_nul" xml:space="preserve">
+    <value>A value cannot contain a null character.</value>
+  </data>
+  <data name="env.problem.empty_entry" xml:space="preserve">
+    <value>Enter a folder.</value>
+  </data>
+  <data name="env.problem.entry_semicolon" xml:space="preserve">
+    <value>A folder cannot contain ;.</value>
+  </data>
+  <data name="env.problem.gone" xml:space="preserve">
+    <value>{0} no longer exists.</value>
+  </data>
+  <data name="env.problem.not_text" xml:space="preserve">
+    <value>{0} is not text, so WinTune does not change it.</value>
+  </data>
+  <data name="env.problem.twice" xml:space="preserve">
+    <value>{0} is changed twice in one Apply.</value>
+  </data>
 </root>

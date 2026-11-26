@@ -972,6 +972,9 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="home.startup_status" xml:space="preserve">
     <value>{0} apps, {1} turned off</value>
   </data>
+  <data name="home.environment_status" xml:space="preserve">
+    <value>{0} variables, {1} folders in Path</value>
+  </data>
   <data name="job.apply_menu" xml:space="preserve">
     <value>Applying context menu entries…</value>
   </data>

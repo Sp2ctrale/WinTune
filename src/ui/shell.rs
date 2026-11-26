@@ -81,6 +81,7 @@ impl WinTuneApp {
             self.reload_tweak_store();
             self.reload_menu_store();
             self.reload_startup_store();
+            self.reload_env_store();
         }
         if page == ActiveTab::Associations && self.active_tab != page {
             self.request_status_refresh();
@@ -1396,8 +1397,30 @@ mod tests {
             },
         );
         startup_entry.time = "2000-01-02 00:00:00".into();
-        app.history = vec![entry, menu_entry, startup_entry];
+        let mut env_entry = crate::history::HistoryEntry::from_report(
+            "Environment variables",
+            "Apply",
+            &crate::associations::OperationReport {
+                succeeded: vec!["FRVAR".into()],
+                ..Default::default()
+            },
+        );
+        env_entry.time = "2000-01-03 00:00:00".into();
+        app.history = vec![entry, menu_entry, startup_entry, env_entry];
         app.open_page(ActiveTab::History);
+        // Same for an environment variable's original.
+        app.env_store
+            .snapshots
+            .users
+            .entry("TEST\\user".to_string())
+            .or_default()
+            .insert(
+                crate::environment::env_slot("FRVAR").id(),
+                crate::backups::Backup {
+                    timestamp: "2026-01-02 03:04:05".into(),
+                    snapshot: crate::backups::Snapshot::Value(Default::default()),
+                },
+            );
         // `open_page` reloaded the stores from disk, so put the unknown
         // tweak back in memory.
         app.tweak_store
@@ -1472,6 +1495,8 @@ mod tests {
             "Open with App".to_string(),
             // A turned-off startup app.
             "Off app".to_string(),
+            // A changed environment variable.
+            "FRVAR".to_string(),
         ];
         rows.extend(
             applied_tweaks
@@ -1498,6 +1523,14 @@ mod tests {
                 .any(|t| t.starts_with("2000-01-02") && t.contains(&module)),
             "no Startup apps operation: {texts:?}"
         );
+        // The Environment variables operation, by its French module name.
+        let module = app.tr.t("history.module.environment");
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.starts_with("2000-01-03") && t.contains(&module)),
+            "no Environment variables operation: {texts:?}"
+        );
 
         // Home: the Startup apps tile, with the counts of the last scan.
         app.active_tab = ActiveTab::Home;
@@ -1512,9 +1545,15 @@ mod tests {
                 .filter(|i| i.state != crate::startup::StartupState::On)
                 .count()
         });
+        let (vars, folders) = app
+            .env_scan
+            .as_ref()
+            .map_or((0, 0), |s| (s.user.len(), s.user_path_entries().len()));
         for drawn in [
             app.tr.t("nav.startup"),
             app.tr.t_args("home.startup_status", &[&items, &off]),
+            app.tr.t("nav.environment"),
+            app.tr.t_args("home.environment_status", &[&vars, &folders]),
         ] {
             assert!(
                 home.contains(&drawn),

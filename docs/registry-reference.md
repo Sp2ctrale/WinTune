@@ -291,8 +291,157 @@ each step, check the open Explorer first, then again after an Explorer restart.
 Record anything that differs, with the entry, the place and the Windows
 version, before merging.
 
+## Startup apps
+
+The Startup apps module lists the programs that start when a user signs in and
+turns each one off or on for the current account. It reads the keys and
+folders below and writes only a per-user switch.
+
+### What WinTune reads
+
+| Source | Key or folder | `StartupApproved` sub-key | All users |
+| --- | --- | --- | --- |
+| Run key (you) | HKCU `Software\Microsoft\Windows\CurrentVersion\Run` | `Run` | No |
+| Run key (every account) | HKLM `Software\Microsoft\Windows\CurrentVersion\Run` | `Run` | Yes |
+| Run key, 32-bit (every account) | HKLM `SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run` | `Run32` | Yes |
+| Startup folder (you) | `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup` | `StartupFolder` | No |
+| Startup folder (every account) | `%ProgramData%\Microsoft\Windows\Start Menu\Programs\StartUp` | `StartupFolder` | Yes |
+
+The key strings WinTune uses (in `src/startup/mod.rs`, without the hive):
+
+- `Software\Microsoft\Windows\CurrentVersion\Run` (`RUN_KEY`, read in HKCU and
+  in HKLM)
+- `SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run` (`RUN32_KEY`,
+  read in HKLM)
+- `Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run`
+- `Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run32`
+- `Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder`
+
+The three `StartupApproved` keys are read in HKCU and in HKLM, and written
+only in HKCU. A Run value or a file becomes one row; a per-user item and an
+all-users item that share a `StartupApproved` key and a name (ignoring case)
+are one row. The folders are read from `%APPDATA%` and `%ProgramData%`, not
+from the shell's known-folder API. Every regular file in a Startup folder is
+listed, except `desktop.ini` and hidden or system files. Run values that are
+not `REG_SZ` or `REG_EXPAND_SZ`, and the default value, are skipped.
+
+Not listed: `RunOnce` keys (they run once, then are removed), packaged
+(Store/MSIX) startup tasks, scheduled tasks and services. Task Manager shows
+the packaged tasks; WinTune does not.
+
+### What WinTune writes
+
+Only HKCU `StartupApproved\{Run,Run32,StartupFolder}\<name>`, one value per
+row, `REG_BINARY`, 12 bytes: a little-endian DWORD flag, then a FILETIME.
+`<name>` is the Run value name, or the file name with its extension for a
+Startup folder (`Discord.lnk`).
+
+| Action | Value written |
+| --- | --- |
+| Turn off | `03 00 00 00` followed by the current time as a FILETIME |
+| Turn on | The original put back, when it was absent or an on value (`02` or `06`); otherwise `02 00 00 00` followed by 8 zero bytes |
+| Restore original | The exact original value, or the value deleted if there was none |
+
+WinTune never edits or deletes a `Run` value, never touches a file in a
+Startup folder, and never writes under HKLM. Before the first change to a
+switch, its original state is saved in `startup-backups.json` (in
+`%ProgramData%\Wintune`, per user, by value path) and a `.reg` export is written, as for the other
+modules. When an Apply brings a switch back to its original, its snapshot is
+dropped and the store saved again, so no Restore original is offered for a
+state that is already the original.
+
+How a row's state is read: no value means on; a `REG_BINARY` of at least 4
+bytes whose flag is `2` or `6` means on and `3` or `7` means off; anything
+else (another type, fewer than 4 bytes, another flag) is an unknown shape. A
+row counts as off when either its HKCU or its HKLM switch is off. Its state is
+"Turned off by WinTune" when WinTune holds a snapshot of the switch, else
+"Turned off by another program" (Task Manager, Settings, an installer).
+
+A row is shown locked, with its toggle disabled, when:
+
+- the switch cannot be read (`Unreadable`);
+- the HKCU or HKLM switch has an unknown shape (`UnknownShape`);
+- the HKLM switch is off (`OffForEveryone`): WinTune changes only the current
+  account;
+- one of its sources has its per-user switch flag set to `false` (see below;
+  `AllUsersOnly`).
+
+"Program not found" is shown on a Run command whose program has a folder part
+and does not exist; a bare name such as `ms-teams.exe` is never flagged. The
+program name shown is the product name from the file's version info, else the
+file name without extension.
+
+### Evidence
+
+The sources are documented. The switch is not.
+
+| Claim | Status | Source |
+| --- | --- | --- |
+| The Run keys (HKCU, HKLM, Wow6432Node), the `RunOnce` keys and the two Startup folders start programs; Task Manager lists and can disable them; a command line is limited to 260 characters; Run values are `REG_SZ` or `REG_EXPAND_SZ` | DOCUMENTED | Microsoft Learn, *Startup apps* (https://learn.microsoft.com/windows/compatibility/startup-apps) |
+| HKLM `RunOnce` runs only for administrators; the 260-character limit | DOCUMENTED | Microsoft Learn, *Run and RunOnce registry keys* (https://learn.microsoft.com/windows/win32/setupapi/run-and-runonce-registry-keys) |
+| Task Manager and Settings turn an item off by writing a `REG_BINARY` of 12 bytes (flag DWORD plus FILETIME) under HKCU `StartupApproved\{Run,Run32,StartupFolder}`, named like the item; no value means on | OBSERVED | Read-only probe, Windows 11 build 26300 (spec 3.2). Microsoft Learn does not document `StartupApproved`. `Run32` for the 32-bit key is inferred from its name |
+| Flag `2` and `6` are on, `3` is off (with the time it was turned off) | OBSERVED | Same probe: `03` seen as the off value, flags 2 and 6 seen as on values |
+| Flag `7` is off | FOLKLORE | Repeated in public write-ups, not seen on the probe PC. WinTune accepts it as off, and puts back whatever it found |
+| A change takes effect at the next sign-in, with no Explorer restart | FOLKLORE | No Microsoft source found |
+| A per-user switch in HKCU turns off an all-users item for that user only | FOLKLORE | An inference: nothing documents it. This is what the flags below and checklist items 2 and 3 are for |
+
+Shapes seen on the development PC (spec 3.4): 14 per-user Run values, 3
+all-users Run values, an empty 32-bit Run key, 4 values turned off in HKCU
+`StartupApproved` (one of them `03` with a zero time, written by another tool),
+one approved value without a Run value, several Run values without an approved
+value, and a `desktop.ini` in both Startup folders.
+
+Because the format is undocumented, the Startup apps page carries the
+**Unofficial** pill.
+
+### Per-user switch flags
+
+`PER_USER_SWITCH_WORKS` in `src/startup/mod.rs` has one flag per source: does a
+per-user switch in HKCU turn items of that source off? A source whose flag is
+`false` shows its rows locked ("This app starts for every account...") and
+Apply refuses them. The table in `src/startup/mod.rs` is the source of truth
+for the values; this page does not repeat them, so it stays true when a flag
+changes. Per-user sources are always `true`. The all-users sources start as:
+`MachineRun` and `CommonFolder` `true` (until checklist items 2 and 3 are run),
+`MachineRun32` `false` (the development PC has no 32-bit item to check it
+with).
+
+If checklist item 2 or 3 fails, set the matching entry to `false` in
+`src/startup/mod.rs`. That is a one-line change, and the rows of that source
+become read-only.
+
+#### Pre-merge checklist (Startup apps)
+
+Not run by the developer: the switch format was read from the registry and the
+engine is covered by tests in a sandbox, but no startup item was turned off in
+WinTune and then watched across a sign-in. The owner runs this before merging.
+For each step, sign out and back in to see whether the program starts. Write
+the result next to each item.
+
+- [ ] 1. Per-user Run item. Turn one off in WinTune and Apply. Task Manager's
+  Startup tab shows it as Disabled; after signing out and in, it does not
+  start. Turn it back on: it starts again. Result: ______
+- [ ] 2. All-users Run item (an HKLM `Run` value). Same test. If Task Manager
+  does not show Disabled, or the program still starts, set `MachineRun` to
+  `false` in `PER_USER_SWITCH_WORKS`. Result: ______
+- [ ] 3. Startup folder. First a shortcut in the per-user folder, then one in
+  the all-users folder (if there is none, copy any shortcut there, and remove
+  it afterwards). Same test. If the all-users one fails, set `CommonFolder` to
+  `false`. Result: ______
+- [ ] 4. In Task Manager, turn an item off. WinTune shows it as "Turned off by
+  another program". Result: ______
+- [ ] 5. In History, Saved originals, Startup apps: **Restore original** for an
+  item changed above. It is back as it was, and Task Manager agrees. Result:
+  ______
+
+Record anything that differs, with the item, its source and the Windows
+version, before merging.
+
 ## Sources
 
+- Microsoft Learn, *Startup apps* and *Run and RunOnce registry keys*: the
+  Run keys, the Startup folders and Task Manager's role. The `StartupApproved`
+  switch is undocumented (flagged "Unofficial" in the app).
 - Microsoft Learn, *Creating Shortcut Menu Handlers* and *Merged View of
   HKEY_CLASSES_ROOT*: verb keys, `MUIVerb`, `Icon`, `ProgrammaticAccessOnly`,
   and why HKCU entries override HKLM ones in `HKCR`. The `Blocked` key is

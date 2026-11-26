@@ -969,6 +969,9 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="home.menu_status" xml:space="preserve">
     <value>{0} entries, {1} hidden</value>
   </data>
+  <data name="home.startup_status" xml:space="preserve">
+    <value>{0} apps, {1} turned off</value>
+  </data>
   <data name="job.apply_menu" xml:space="preserve">
     <value>Applying context menu entries…</value>
   </data>
@@ -1300,5 +1303,122 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   </data>
   <data name="menu.rename_ok" xml:space="preserve">
     <value>Rename</value>
+  </data>
+  <data name="job.apply_startup" xml:space="preserve">
+    <value>Applying startup changes…</value>
+  </data>
+  <data name="job.restore_startup" xml:space="preserve">
+    <value>Restoring startup apps…</value>
+  </data>
+  <data name="job.name.apply_startup" xml:space="preserve">
+    <value>Applying startup changes</value>
+  </data>
+  <data name="job.name.restore_startup" xml:space="preserve">
+    <value>Restoring startup apps</value>
+  </data>
+  <data name="report.applied_startup" xml:space="preserve">
+    <value>{0} startup change(s) applied</value>
+  </data>
+  <data name="report.restored_startup" xml:space="preserve">
+    <value>{0} startup app(s) restored</value>
+  </data>
+  <data name="history.module.startup" xml:space="preserve">
+    <value>Startup apps</value>
+  </data>
+  <data name="startup.scan_failed" xml:space="preserve">
+    <value>Could not read the startup apps: {0}</value>
+  </data>
+  <data name="startup.restore_title" xml:space="preserve">
+    <value>Restore original startup settings?</value>
+  </data>
+  <data name="startup.restore_message" xml:space="preserve">
+    <value>{0} will get back the on/off state they had before WinTune changed them.</value>
+  </data>
+  <data name="startup.restore_many" xml:space="preserve">
+    <value>{0} apps</value>
+  </data>
+  <data name="startup.state.on" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="startup.state.off" xml:space="preserve">
+    <value>Turned off by WinTune</value>
+  </data>
+  <data name="startup.state.off_elsewhere" xml:space="preserve">
+    <value>Turned off by another program</value>
+  </data>
+  <data name="startup.locked.unreadable" xml:space="preserve">
+    <value>Cannot read this app's switch: {0}</value>
+  </data>
+  <data name="startup.locked.unknown" xml:space="preserve">
+    <value>Its switch is stored in a way WinTune does not know, so WinTune leaves it alone.</value>
+  </data>
+  <data name="startup.locked.machine" xml:space="preserve">
+    <value>Turned off for every account on this PC. WinTune changes only your account.</value>
+  </data>
+  <data name="startup.locked.all_users" xml:space="preserve">
+    <value>This app starts for every account. WinTune cannot change it for your account alone yet.</value>
+  </data>
+  <data name="startup.source.user_run" xml:space="preserve">
+    <value>Run key (you)</value>
+  </data>
+  <data name="startup.source.machine_run" xml:space="preserve">
+    <value>Run key (every account)</value>
+  </data>
+  <data name="startup.source.machine_run32" xml:space="preserve">
+    <value>Run key, 32-bit (every account)</value>
+  </data>
+  <data name="startup.source.user_folder" xml:space="preserve">
+    <value>Startup folder (you)</value>
+  </data>
+  <data name="startup.source.common_folder" xml:space="preserve">
+    <value>Startup folder (every account)</value>
+  </data>
+  <data name="nav.startup" xml:space="preserve">
+    <value>Startup apps</value>
+  </data>
+  <data name="startup.subtitle" xml:space="preserve">
+    <value>Programs that start when you sign in to Windows.</value>
+  </data>
+  <data name="startup.unofficial_hint" xml:space="preserve">
+    <value>Uses the same switch as Task Manager, which Microsoft does not document.</value>
+  </data>
+  <data name="startup.next_sign_in" xml:space="preserve">
+    <value>Changes take effect the next time you sign in.</value>
+  </data>
+  <data name="startup.search" xml:space="preserve">
+    <value>Search startup apps</value>
+  </data>
+  <data name="startup.pill.all_users" xml:space="preserve">
+    <value>All users</value>
+  </data>
+  <data name="startup.pill.both" xml:space="preserve">
+    <value>For you and every account</value>
+  </data>
+  <data name="startup.pill.not_found" xml:space="preserve">
+    <value>Program not found</value>
+  </data>
+  <data name="startup.pill.will_turn_off" xml:space="preserve">
+    <value>Will be turned off</value>
+  </data>
+  <data name="startup.pill.will_turn_on" xml:space="preserve">
+    <value>Will be turned on</value>
+  </data>
+  <data name="startup.scanning" xml:space="preserve">
+    <value>Reading startup apps…</value>
+  </data>
+  <data name="startup.empty" xml:space="preserve">
+    <value>No program starts when you sign in.</value>
+  </data>
+  <data name="startup.no_match" xml:space="preserve">
+    <value>No app matches your search.</value>
+  </data>
+  <data name="startup.pending" xml:space="preserve">
+    <value>{0} not applied</value>
+  </data>
+  <data name="startup.up_to_date" xml:space="preserve">
+    <value>All changes applied</value>
+  </data>
+  <data name="startup.nothing_to_apply" xml:space="preserve">
+    <value>Nothing to apply</value>
   </data>
 </root>

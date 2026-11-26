@@ -72,6 +72,26 @@ impl TempIcons {
                 })
             },
             menu_store_path: self.dir.join("context-menu-backups.json"),
+            startup_target: {
+                let sandbox = self.sandbox.path.clone();
+                let (user_folder, common_folder) =
+                    (self.startup_folder(false), self.startup_folder(true));
+                Arc::new(move || {
+                    let at = |hive: &str| crate::backups::RegTarget {
+                        root: RegKey::predef(HKEY_CURRENT_USER),
+                        root_name: "HKEY_CURRENT_USER".into(),
+                        base: format!("{}\\{}", sandbox, hive),
+                    };
+                    crate::startup::StartupTarget {
+                        user: at("HKCU"),
+                        machine: at("HKLM"),
+                        user_folder: Some(user_folder.clone()),
+                        common_folder: Some(common_folder.clone()),
+                    }
+                })
+            },
+            startup_store_path: self.dir.join("startup-backups.json"),
+            startup_switch_works: |s| s != crate::startup::Source::MachineRun32,
             // Never created: programs under it would count as Windows' own.
             windows_dir: self.dir.join("Windows"),
             resolve_indirect: |_| None,
@@ -109,6 +129,8 @@ impl TempIcons {
         let dir = std::env::temp_dir().join(format!("wintune-ui-{}-{}", std::process::id(), nanos));
         fs::create_dir_all(dir.join("icons")).unwrap();
         fs::create_dir_all(dir.join("programs")).unwrap();
+        fs::create_dir_all(dir.join("startup-user")).unwrap();
+        fs::create_dir_all(dir.join("startup-common")).unwrap();
         for exe in ["code.exe", "wt.exe", "powershell.exe", "cmd.exe"] {
             fs::write(dir.join("programs").join(exe), b"x").unwrap();
         }
@@ -252,6 +274,55 @@ impl TempIcons {
         let (k, _) = self.machine_key().create_subkey(&key).unwrap();
         k.set_value("", &"Seeded").unwrap();
     }
+
+    /// The Startup folder of this account or (`common`) of every account.
+    pub(super) fn startup_folder(&self, common: bool) -> PathBuf {
+        self.dir.join(if common {
+            "startup-common"
+        } else {
+            "startup-user"
+        })
+    }
+
+    /// A `REG_SZ` Run value `name` under `RUN_KEY`, on the sandbox's machine
+    /// side (`machine`) or the user side.
+    pub(super) fn seed_run(&self, machine: bool, name: &str, command: &str) {
+        self.seed_run_in(machine, crate::startup::RUN_KEY, name, command);
+    }
+
+    /// Like `seed_run`, under any Run key (`RUN_KEY` or `RUN32_KEY`).
+    pub(super) fn seed_run_in(&self, machine: bool, key: &str, name: &str, command: &str) {
+        let (k, _) = if machine {
+            self.machine_key().create_subkey(key)
+        } else {
+            self.sandbox.root.create_subkey(self.hkcu(key))
+        }
+        .expect("create Run key");
+        k.set_value(name, &command).unwrap();
+    }
+
+    /// Data of this account's `StartupApproved\Run` value `name`.
+    pub(super) fn user_switch(&self, name: &str) -> Option<Vec<u8>> {
+        let key = self
+            .sandbox
+            .root
+            .open_subkey(self.hkcu(&crate::startup::Approved::Run.key()))
+            .ok()?;
+        key.get_raw_value(name).ok().map(|v| v.bytes)
+    }
+}
+
+/// Runs frames until no startup scan is pending or running.
+pub(super) fn run_until_startup_scanned(app: &mut WinTuneApp, ctx: &egui::Context) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while (app.startup_scan_needed || app.startup_scan_job.is_some()) && Instant::now() < deadline {
+        frame(app, ctx, RawInput::default());
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(
+        !app.startup_scan_needed && app.startup_scan_job.is_none(),
+        "the startup scan never finished"
+    );
 }
 
 /// Runs frames until no scan of the right-click menu is pending or running.

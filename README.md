@@ -1,7 +1,7 @@
 # WinTune
 
 WinTune is a Windows 10/11 desktop app for customizing the system. Every change it
-makes can be undone. It has four modules:
+makes can be undone. It has five modules:
 
 - **File associations**: custom icons, the double-click action (open in your
   editor or run the script), right-click verbs, and Explorer preview metadata.
@@ -17,6 +17,9 @@ makes can be undone. It has four modules:
   folder in VS Code, Windows Terminal, PowerShell, Command Prompt or any
   program), per Windows account. It can also hide or rename entries that are
   already there.
+- **Startup apps**: the programs that start when you sign in (Run keys and
+  Startup folders), each with a toggle to turn it off or on for your account,
+  using the same switch as Task Manager.
 
 Built with Rust and [egui](https://github.com/emilk/egui). The interface is
 available in English and Français, and the theme follows Windows (or can be
@@ -184,6 +187,44 @@ Under "My entries", two more sections list what the menu already holds.
   shown again under its own name is already back to its original and leaves
   the list. The Home page counts hidden entries.
 
+## Startup apps
+
+The **Startup apps** page lists the classic startup programs Task Manager
+reads: the `Run` keys (yours, every account's, and the 32-bit one for every
+account) and the Startup folders (yours and every account's). Each row shows
+the app's name, its product name, the command or file, and a pill when it
+applies to every account. RunOnce keys, Store (packaged) startup tasks,
+scheduled tasks and services are not listed.
+
+- **Turn off and on, per account.** Each row has a toggle. Changes stay
+  pending until you press Apply (Discard drops them). WinTune writes the same
+  `StartupApproved` switch as Task Manager, under `HKCU` only: it never edits
+  a `Run` value, never touches a file in a Startup folder and never writes
+  under `HKLM`, so an all-users app is turned off for your account alone. No
+  confirmation is asked, because Apply is not destructive and History can
+  undo it.
+- **Takes effect at next sign-in.** The page says so; nothing starts or
+  stops while you are signed in.
+- **States.** A row is **On**, **Turned off by WinTune** (WinTune holds the
+  original switch, so Restore original is offered) or **Turned off by another
+  program** (Task Manager, Settings or an installer turned it off). Task
+  Manager shows the same state as WinTune.
+- **Unofficial.** Microsoft does not document the switch, so the page carries
+  an **Unofficial** pill. The format was read from a real Windows 11 PC; see
+  [docs/registry-reference.md](docs/registry-reference.md#startup-apps).
+- **Locked rows.** A row is shown with its toggle disabled, and says why, when
+  its switch cannot be read, is stored in a way WinTune does not know, is
+  turned off for every account in `HKLM`, or belongs to an all-users source
+  where a per-user switch has not been shown to work (the sources whose flag
+  in `PER_USER_SWITCH_WORKS` is `false`).
+- **Program not found.** A pill appears when a Run command names a program
+  with a folder path and that file does not exist (a leftover from an
+  uninstalled app). Bare names such as `ms-teams.exe` are never flagged.
+- **Undo.** In **History**, **Saved originals** has a **Startup apps** group
+  that puts each switch back exactly as it was, or removes it if there was
+  none. Every apply and restore is logged under "Startup apps". The Home tile
+  reads "{n} apps, {m} turned off".
+
 ## Safety and undo
 
 Before anything is written:
@@ -230,7 +271,7 @@ leave that key alone.
 
 The **History** page lists every operation and, under **Saved originals**,
 every snapshot WinTune holds. You can restore one item, or a whole group
-(File associations, Explorer & Taskbar, Start & Privacy, Context menu). Each restore asks
+(File associations, Explorer & Taskbar, Start & Privacy, Context menu, Startup apps). Each restore asks
 first. Restoring an extension puts it back to its exact pre-WinTune state. It
 also removes every ProgID that WinTune created, including ones you renamed
 since. A snapshot is deleted only once it has been fully restored; if the
@@ -246,6 +287,7 @@ Everything lives in `%ProgramData%\Wintune`:
 | `backups.json` | Original-state snapshots of file associations, used by the rollback |
 | `tweaks-backups.json` | Original state of each Explorer & Taskbar tweak, per user |
 | `context-menu-backups.json` | Original state of each Context menu key, hidden entry and name, per user |
+| `startup-backups.json` | Original state of each Startup apps switch, per user |
 | `history.jsonl` | One line per operation (apply, rollback, restore), shown by the **History** page |
 | `reg-backups\*.reg` | `.reg` safety net written before each apply |
 | `gallery.pak` | Optional compressed icon pack, built from the icon folder |
@@ -259,8 +301,9 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `regsnap` | Generic snapshot, restore, delete-tree and `.reg` export. Every module that writes to the registry builds on it |
 | `associations` | File-association engine on an injectable `AssocTarget`, split into `target`, `validate`, `store`, `apply`, `rollback`, `status` and `tests` |
 | `tweaks` | Explorer & Taskbar tweaks engine (catalog, status, apply, restore) on an injectable `TweakTarget` |
-| `backups` | Snapshot store shared by tweaks and the Context menu (per user, per slot), with save-then-export and restore |
+| `backups` | Snapshot store shared by tweaks, the Context menu and Startup apps (per user, per slot), with save-then-export and restore |
 | `context_menu` | Context menu engine (entries, programs, catalog of Windows entries, scan of existing entries, apply, status, restore) on an injectable `MenuTarget` |
+| `startup` | Startup apps engine (scan of the Run keys and Startup folders, `StartupApproved` switch, apply, restore) on an injectable `StartupTarget` |
 | `persist` | JSON stores: a missing file is empty, a corrupt or unreadable file is a `LoadError` (a code the UI translates), saves are atomic |
 | `history` | Operation log (`history.jsonl`): append one line per operation, read the most recent |
 | `models` | Config and backup data types, `ThemeMode`, plus the default rules |
@@ -269,7 +312,7 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `detector` | VS Code, WSL and user-hive detection |
 | `clock` | Local timestamps |
 | `i18n` | Translations: `.resx` catalogs in `i18n/`, the `Tr` handle, and engine message codes turned into text |
-| `ui` | egui interface, one file per page (`home`, `associations_tab`, `tweaks_tab` for both tweak pages, `context_menu_tab`, `gallery_tab` for Icons, `history_panel`, `settings`), `originals` (History's saved originals), `icon_grid` (the shared icon grid) and `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation and action bars), `autosave`, `confirm`, `rule_status`, `jobs`, and `kit/`, the design kit that holds the theme and every control |
+| `ui` | egui interface, one file per page (`home`, `associations_tab`, `tweaks_tab` for both tweak pages, `context_menu_tab`, `startup_tab`, `gallery_tab` for Icons, `history_panel`, `settings`), `originals` (History's saved originals), `icon_grid` (the shared icon grid) and `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation and action bars), `autosave`, `confirm`, `rule_status`, `jobs`, and `kit/`, the design kit that holds the theme and every control |
 | `main.rs` | Window setup only |
 
 Apply, rollback and pack building run on a background thread, a progress bar

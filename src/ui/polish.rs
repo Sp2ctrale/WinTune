@@ -13,6 +13,7 @@ pub(super) fn search_box_id(tab: ActiveTab) -> Option<egui::Id> {
         ActiveTab::Tweaks | ActiveTab::StartPrivacy => Some(egui::Id::new("search_tweaks")),
         ActiveTab::Gallery => Some(egui::Id::new("search_gallery")),
         ActiveTab::ContextMenu => Some(egui::Id::new("search_menu_others")),
+        ActiveTab::Startup => Some(egui::Id::new("search_startup")),
         ActiveTab::Home | ActiveTab::History | ActiveTab::Settings => None,
     }
 }

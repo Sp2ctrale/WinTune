@@ -3,10 +3,27 @@
 //! user accepts it in the dialog.
 
 use super::{kit, WinTuneApp};
+use crate::i18n::Tr;
 use eframe::egui;
 
 /// Entry names listed in the restore question before it gives a count.
 const MAX_NAMED: usize = 3;
+
+/// The distinct `names` joined by commas, or a count (`many_key`, "{0}
+/// apps") past `MAX_NAMED`.
+fn named_list(tr: Tr, names: impl Iterator<Item = String>, many_key: &str) -> String {
+    let mut distinct: Vec<String> = Vec::new();
+    for name in names {
+        if !distinct.contains(&name) {
+            distinct.push(name);
+        }
+    }
+    if distinct.len() > MAX_NAMED {
+        tr.t_args(many_key, &[&distinct.len()])
+    } else {
+        distinct.join(", ")
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum ConfirmAction {
@@ -30,6 +47,8 @@ pub(super) enum ConfirmAction {
     /// Applies the context menu list and pending changes, once the side
     /// effects of the hides were read.
     ApplyMenu,
+    /// Startup switch slot ids whose original must be put back.
+    RestoreStartup(Vec<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -99,22 +118,36 @@ impl WinTuneApp {
             return;
         }
         let tr = self.tr;
-        let mut names: Vec<String> = Vec::new();
-        for name in keys.iter().map(|k| self.menu_key_title(k)) {
-            if !names.contains(&name) {
-                names.push(name);
-            }
-        }
-        let named = if names.len() > MAX_NAMED {
-            tr.t_args("menu.restore_many", &[&names.len()])
-        } else {
-            names.join(", ")
-        };
+        let named = named_list(
+            tr,
+            keys.iter().map(|k| self.menu_key_title(k)),
+            "menu.restore_many",
+        );
         self.pending_confirm = Some(Confirm {
             title: tr.t("menu.restore_title"),
             message: tr.t_args("menu.restore_message", &[&named]),
             confirm_label: tr.t("confirm.restore"),
             action: ConfirmAction::RestoreMenuKeys(keys),
+        });
+    }
+
+    /// Asks before putting startup switches (slot ids) back to what they
+    /// were before WinTune changed them.
+    pub(super) fn request_restore_startup(&mut self, ids: Vec<String>) {
+        if ids.is_empty() {
+            return;
+        }
+        let tr = self.tr;
+        let named = named_list(
+            tr,
+            ids.iter().map(|id| self.startup_slot_name(id)),
+            "startup.restore_many",
+        );
+        self.pending_confirm = Some(Confirm {
+            title: tr.t("startup.restore_title"),
+            message: tr.t_args("startup.restore_message", &[&named]),
+            confirm_label: tr.t("confirm.restore"),
+            action: ConfirmAction::RestoreStartup(ids),
         });
     }
 
@@ -161,6 +194,7 @@ impl WinTuneApp {
             ConfirmAction::RestoreMenuKeys(keys) => self.start_menu_restore(ctx, keys),
             ConfirmAction::RemoveMenuEntry { id } => self.remove_menu_entry(&id),
             ConfirmAction::ApplyMenu => self.run_menu_apply(ctx),
+            ConfirmAction::RestoreStartup(ids) => self.start_startup_restore(ctx, ids),
         }
     }
 
@@ -455,6 +489,71 @@ mod tests {
         assert!(app.pending_confirm.is_none());
         assert!(app.is_busy());
         run_until_idle(&mut app, &ctx);
+    }
+
+    #[test]
+    fn restoring_a_startup_app_asks_first_and_restores() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_run(false, "App", r#""C:\Apps\app.exe""#);
+        let mut app = fx.app(&ctx);
+        app.request_startup_scan();
+        run_until_startup_scanned(&mut app, &ctx);
+        app.startup_pending.insert("run:app".into(), false);
+        app.start_startup_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        assert!(fx.user_switch("App").is_some(), "{}", app.last_notice());
+
+        let id = crate::startup::Approved::Run.slot("App").id();
+        app.request_restore_startup(vec![id.clone()]);
+        let confirm = app.pending_confirm.as_ref().expect("asks first");
+        assert_eq!(confirm.action, ConfirmAction::RestoreStartup(vec![id]));
+        assert!(confirm.message.contains("App"), "{}", confirm.message);
+        assert!(!app.is_busy(), "restored without confirmation");
+
+        app.resolve_confirm(&ctx, true);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+
+        assert_eq!(fx.user_switch("App"), None);
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Startup apps", "Restore")
+        );
+    }
+
+    #[test]
+    fn a_startup_restore_names_at_most_three_apps() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        let slots = |names: &[&str]| -> Vec<String> {
+            names
+                .iter()
+                .map(|n| crate::startup::Approved::Run.slot(n).id())
+                .collect()
+        };
+        app.request_restore_startup(slots(&["A", "B"]));
+        assert!(app
+            .pending_confirm
+            .as_ref()
+            .unwrap()
+            .message
+            .contains("A, B"));
+        app.request_restore_startup(slots(&["A", "B", "C", "D"]));
+        assert!(
+            app.pending_confirm
+                .as_ref()
+                .unwrap()
+                .message
+                .contains("4 apps"),
+            "{}",
+            app.pending_confirm.as_ref().unwrap().message
+        );
+        app.pending_confirm = None;
+        app.request_restore_startup(Vec::new());
+        assert!(app.pending_confirm.is_none());
     }
 
     #[test]

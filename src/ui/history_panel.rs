@@ -21,6 +21,7 @@ pub(super) enum HistoryFilter {
     Explorer,
     Start,
     ContextMenu,
+    Startup,
 }
 
 impl HistoryFilter {
@@ -33,6 +34,7 @@ impl HistoryFilter {
             Self::Explorer => stored_module == "Explorer & Taskbar",
             Self::Start => stored_module == "Start & Privacy",
             Self::ContextMenu => stored_module == "Context menu",
+            Self::Startup => stored_module == "Startup apps",
         }
     }
 }
@@ -78,6 +80,7 @@ impl WinTuneApp {
             tr.t("history.module.explorer"),
             tr.t("history.module.start"),
             tr.t("history.module.context_menu"),
+            tr.t("history.module.startup"),
         ];
         let options = [
             (HistoryFilter::All, labels[0].as_str()),
@@ -85,6 +88,7 @@ impl WinTuneApp {
             (HistoryFilter::Explorer, labels[2].as_str()),
             (HistoryFilter::Start, labels[3].as_str()),
             (HistoryFilter::ContextMenu, labels[4].as_str()),
+            (HistoryFilter::Startup, labels[5].as_str()),
         ];
         kit::section(ui, &heading, |ui| {
             if self.history.is_empty() {
@@ -329,6 +333,36 @@ mod tests {
         );
         assert!(
             !texts.contains(&title_of(&assoc, "File associations")),
+            "{texts:?}"
+        );
+    }
+
+    #[test]
+    fn the_startup_filter_shows_only_startup_operations() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let startup = entry("Startup apps", "Apply");
+        let menu = entry("Context menu", "Apply");
+        let mut app = history_app(&fx, &ctx, vec![startup.clone(), menu.clone()]);
+        assert!(HistoryFilter::Startup.matches("Startup apps"));
+        assert!(!HistoryFilter::Startup.matches("Context menu"));
+
+        let label = app.tr.t("history.module.startup");
+        let out = settled(&mut app, &ctx);
+        let at = text_centers(&out, &label)
+            .into_iter()
+            .rfind(|c| c.x > 220.0)
+            .expect("startup chip");
+        click_at(&mut app, &ctx, at);
+        let out = settled(&mut app, &ctx);
+        assert_eq!(app.history_filter, HistoryFilter::Startup);
+        let texts = drawn_texts(&out);
+        assert!(
+            texts.contains(&title_of(&startup, "Startup apps")),
+            "{texts:?}"
+        );
+        assert!(
+            !texts.contains(&title_of(&menu, "Context menu")),
             "{texts:?}"
         );
     }

@@ -80,6 +80,7 @@ impl WinTuneApp {
             self.reload_backup_store();
             self.reload_tweak_store();
             self.reload_menu_store();
+            self.reload_startup_store();
         }
         if page == ActiveTab::Associations && self.active_tab != page {
             self.request_status_refresh();
@@ -94,6 +95,12 @@ impl WinTuneApp {
         }
         if page == ActiveTab::ContextMenu && self.active_tab != page {
             self.request_menu_scan();
+        }
+        if page == ActiveTab::Startup && !self.is_busy() {
+            self.reload_startup_store();
+        }
+        if page == ActiveTab::Startup && self.active_tab != page {
+            self.request_startup_scan();
         }
         if self.active_tab != page {
             self.focus_search = false;
@@ -119,6 +126,7 @@ impl WinTuneApp {
         let explorer = tr.t("nav.explorer");
         let start = tr.t("nav.start");
         let context_menu = tr.t("nav.context_menu");
+        let startup = tr.t("nav.startup");
         let icons = tr.t("nav.icons");
         let history = tr.t("nav.history");
         let settings = tr.t("nav.settings");
@@ -154,6 +162,7 @@ impl WinTuneApp {
                         kit::Icon::ContextMenu,
                         &context_menu,
                     ),
+                    item(ActiveTab::Startup, kit::Icon::Startup, &startup),
                 ],
             },
             kit::NavGroup {
@@ -1080,6 +1089,101 @@ mod tests {
             }
         }
 
+        // The Startup apps page: a normal item, one that is off, a locked
+        // 32-bit all-users item, a missing program and a pending change (so
+        // Discard shows).
+        {
+            use crate::startup::{StartupLock, StartupState, RUN32_KEY};
+            let exe = std::env::current_exe().expect("current exe");
+            fx.seed_run(false, "Normal app", &format!("\"{}\"", exe.display()));
+            fx.seed_run(false, "Off app", &format!("\"{}\"", exe.display()));
+            fx.seed_run(false, "Lost app", r#""C:\Nowhere\lost.exe""#);
+            fx.seed_run_in(
+                true,
+                RUN32_KEY,
+                "Locked app",
+                &format!("\"{}\"", exe.display()),
+            );
+            app.request_startup_scan();
+            run_until_startup_scanned(&mut app, &ctx);
+            app.startup_pending.insert("run:off app".into(), false);
+            app.startup_pending.insert("run:normal app".into(), false);
+            app.start_startup_apply(&ctx);
+            run_until_idle(&mut app, &ctx);
+            run_until_startup_scanned(&mut app, &ctx);
+            assert_eq!(
+                app.startup_scan
+                    .as_ref()
+                    .and_then(|s| s.find("run:off app"))
+                    .map(|i| i.state),
+                Some(StartupState::Off),
+                "{}",
+                app.last_notice()
+            );
+            // One off app, one wish to turn it on, one to turn another off.
+            app.startup_pending.insert("run:off app".into(), true);
+            app.startup_pending.insert("run:lost app".into(), false);
+            app.active_tab = ActiveTab::Startup;
+            let mut texts = Vec::new();
+            for _ in 0..3 {
+                texts.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
+            }
+            let locked_reason =
+                crate::i18n::messages::startup_lock(app.tr, &StartupLock::AllUsersOnly);
+            let out = frame(&mut app, &ctx, tall_input(vec![]));
+            let at = text_center(&out, "Locked app").expect("locked row not drawn");
+            let toggle = ctx
+                .viewport_for(egui::ViewportId::ROOT, |v| {
+                    v.prev_pass
+                        .widgets
+                        .layers()
+                        .flat_map(|(_, widgets)| widgets.iter())
+                        .filter(|w| w.rect.size() == egui::vec2(40.0, 20.0))
+                        .filter(|w| w.rect.center().x > at.x)
+                        .filter(|w| {
+                            w.rect.center().y > at.y - 8.0 && w.rect.center().y - at.y < 48.0
+                        })
+                        .map(|w| w.rect.center())
+                        .min_by(|a, b| (a.y - at.y).total_cmp(&(b.y - at.y)))
+                })
+                .expect("locked toggle not found");
+            texts.extend(hover_texts(&mut app, &ctx, toggle));
+            let mut positive = vec![
+                app.tr.t("nav.startup"),
+                app.tr.t("startup.subtitle"),
+                app.tr.t("startup.next_sign_in"),
+                app.tr.t("tweaks.pill.unofficial"),
+                app.tr.t("startup.pill.all_users"),
+                app.tr.t("startup.pill.not_found"),
+                app.tr.t("startup.pill.will_turn_on"),
+                app.tr.t("startup.pill.will_turn_off"),
+                app.tr.t_args("startup.pending", &[&2]),
+                app.tr.t("tweaks.discard"),
+                crate::i18n::messages::startup_state(app.tr, StartupState::Off),
+                "Normal app".to_string(),
+                "Locked app".to_string(),
+                locked_reason.clone(),
+            ];
+            positive.retain(|t| !t.is_empty());
+            for drawn in positive {
+                assert!(
+                    texts.iter().any(|t| t.contains(&drawn)),
+                    "{drawn:?} not drawn on Startup apps: {texts:?}"
+                );
+            }
+            assert!(
+                !english_only.iter().any(|(_, v)| **v == locked_reason),
+                "English lock reason"
+            );
+            for (key, value) in &english_only {
+                assert!(
+                    !texts.iter().any(|t| t == *value),
+                    "the Startup apps page draws English-only text {value:?} (key {key})"
+                );
+            }
+            app.startup_pending.clear();
+        }
+
         // The History page: saved originals in every group, one opened
         // operation with an error and a `.reg` path, then a broken store.
         app.config.extensions = vec![rule(".a"), rule(".b")];
@@ -1107,7 +1211,16 @@ mod tests {
             },
         );
         menu_entry.time = "2000-01-01 00:00:00".into();
-        app.history = vec![entry, menu_entry];
+        let mut startup_entry = crate::history::HistoryEntry::from_report(
+            "Startup apps",
+            "Apply",
+            &crate::associations::OperationReport {
+                succeeded: vec!["Off app".into()],
+                ..Default::default()
+            },
+        );
+        startup_entry.time = "2000-01-02 00:00:00".into();
+        app.history = vec![entry, menu_entry, startup_entry];
         app.open_page(ActiveTab::History);
         // `open_page` reloaded the stores from disk, so put the unknown
         // tweak back in memory.
@@ -1181,6 +1294,8 @@ mod tests {
             "Open one".to_string(),
             // A hidden third-party verb, by name.
             "Open with App".to_string(),
+            // A turned-off startup app.
+            "Off app".to_string(),
         ];
         rows.extend(
             applied_tweaks
@@ -1197,6 +1312,43 @@ mod tests {
             assert!(
                 !texts.iter().any(|t| t == *value),
                 "the History page draws English-only text {value:?} (key {key})"
+            );
+        }
+        // The Startup apps operation, by its French module name.
+        let module = app.tr.t("history.module.startup");
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.starts_with("2000-01-02") && t.contains(&module)),
+            "no Startup apps operation: {texts:?}"
+        );
+
+        // Home: the Startup apps tile, with the counts of the last scan.
+        app.active_tab = ActiveTab::Home;
+        let mut home = Vec::new();
+        for _ in 0..3 {
+            home.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
+        }
+        let items = app.startup_scan.as_ref().expect("startup scan").items.len();
+        let off = app.startup_scan.as_ref().map_or(0, |s| {
+            s.items
+                .iter()
+                .filter(|i| i.state != crate::startup::StartupState::On)
+                .count()
+        });
+        for drawn in [
+            app.tr.t("nav.startup"),
+            app.tr.t_args("home.startup_status", &[&items, &off]),
+        ] {
+            assert!(
+                home.contains(&drawn),
+                "{drawn:?} not drawn on Home: {home:?}"
+            );
+        }
+        for (key, value) in &english_only {
+            assert!(
+                !home.iter().any(|t| t == *value),
+                "Home draws English-only text {value:?} (key {key})"
             );
         }
     }

@@ -25,7 +25,7 @@ fn default_text(target: &MenuTarget, rel: &str) -> Option<String> {
 }
 
 /// `%NAME%` replaced by the variable's value; unknown names stay as written.
-pub(super) fn expand_env(text: &str) -> String {
+pub(crate) fn expand_env(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(start) = rest.find('%') {
@@ -55,7 +55,7 @@ pub(super) fn expand_env(text: &str) -> String {
 
 /// The program of a command line: the first quoted token, else the text up
 /// to the first `.exe`, else the first word; variables expanded.
-pub(super) fn command_program(command: &str) -> Option<String> {
+pub(crate) fn command_program(command: &str) -> Option<String> {
     let command = command.trim();
     let program = if let Some(rest) = command.strip_prefix('"') {
         rest.split('"').next().unwrap_or_default()

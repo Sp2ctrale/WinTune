@@ -6,6 +6,9 @@
 
 use std::path::PathBuf;
 
+mod scan;
+pub use scan::*;
+
 use crate::backups::{RegTarget, Slot};
 use crate::regsnap::ValueSnapshot;
 
@@ -128,6 +131,7 @@ impl Switch {
 
 const REG_BINARY: u32 = 3;
 
+/// Flag rules: absent = on; wrong kind or under 4 bytes = unknown; 2/6 on; 3/7 off; else unknown.
 pub fn read_switch(v: &ValueSnapshot) -> Switch {
     if !v.exists {
         return Switch::Absent;

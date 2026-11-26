@@ -4,7 +4,7 @@ pub mod catalog;
 pub mod engine;
 pub mod existing;
 pub mod fileinfo;
-mod origin;
+pub(crate) mod origin;
 pub mod programs;
 
 use std::collections::{BTreeMap, BTreeSet};

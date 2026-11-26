@@ -107,7 +107,10 @@ keyed by account, so an account only ever sees and edits its own entries.
   `Folder`, `Directory`, `Directory\Background` and `Drive`, in HKCU and HKLM
   `Classes`. It skips `WinTune.*` verbs, the canonical verbs (open, opennew,
   explore, find, print, printto, runas, runasuser, openas, properties),
-  catalog entries and anything run from the Windows folder. A verb the
+  catalog entries and anything run from the Windows folder, except a file in
+  `System32\DriverStore` whose product name is not Windows' own (checked in
+  any language: it contains both "Microsoft" and "Windows"; no name counts as
+  Windows'). A verb the
   installer already hides (`ProgrammaticAccessOnly` in the machine copy, or
   `LegacyDisable`) is skipped unless WinTune holds a snapshot of it. An entry whose
   program file cannot be found is skipped too (fail closed) unless WinTune
@@ -117,7 +120,9 @@ keyed by account, so an account only ever sees and edits its own entries.
 - **Scan job** (`ui/menu_existing_state.rs`): the scan runs as a background job
   at startup, when the page opens and after every other job, and never while
   a job runs, so a page never reads half-written keys. Rows are drawn only
-  when no scan is running.
+  when no scan is running. Pending hides and renames are cleared by an Apply
+  without errors; after a refused or partial one they stay, and each finished
+  scan drops the pending choices its rows already match.
 - **Hide and rename writes** (`engine.rs`, `apply_menu`, one pass together
   with the added entries): hide a verb writes `ProgrammaticAccessOnly` on an
   HKCU copy of the verb key; show removes it and deletes the copy if WinTune

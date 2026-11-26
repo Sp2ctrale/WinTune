@@ -402,12 +402,26 @@ fn verb_label(
 
 /// Whether a row behind `file` is Windows' own and so never listed. Fails
 /// closed: an unknown file counts as Windows' unless WinTune holds a snapshot
-/// of the row (it changed it, so it must stay undoable).
+/// of the row (it changed it, so it must stay undoable). Drivers (graphics
+/// cards, mostly) install their handlers in the driver store under the
+/// Windows folder: such a file is listed only when its product name names
+/// another vendor.
 fn windows_owned(file: Option<&str>, has_snapshot: bool, opts: &ScanOptions) -> bool {
     match file {
+        Some(file) if under_dir(file, &opts.windows_dir.join(r"System32\DriverStore")) => {
+            (opts.product_name)(Path::new(file)).is_none_or(|name| is_windows_product(&name))
+        }
         Some(file) => under_dir(file, &opts.windows_dir),
         None => !has_snapshot,
     }
+}
+
+/// A product name Windows' own files carry, in any language ("Microsoft®
+/// Windows® Operating System", "Système d'exploitation Microsoft®
+/// Windows®"), or no name at all.
+fn is_windows_product(name: &str) -> bool {
+    let name = name.to_lowercase();
+    name.trim().is_empty() || (name.contains("microsoft") && name.contains("windows"))
 }
 
 /// What a row shows as its origin: the product name, else the file name.
@@ -1065,6 +1079,50 @@ mod tests {
         let scan = env.scan(&UserBackups::default());
         assert_eq!(scan.others.len(), 1, "{:?}", scan.others);
         assert_eq!(scan.others[0].label, "Sibling");
+    }
+
+    #[test]
+    fn driver_store_handlers_are_listed_only_for_other_vendors() {
+        let env = Env::new();
+        let store = env.windows().join(r"System32\DriverStore\FileRepository");
+        let file = |name: &str| store.join(name).display().to_string();
+        let vendor = "{DDDDDDDD-2222-3333-4444-555555555555}";
+        env.handler(
+            "Directory\\Background",
+            "GfxPanel",
+            vendor,
+            &file(r"gfx.inf_1\gfxmenu.dll"),
+        );
+        let english = "{EEEEEEEE-2222-3333-4444-555555555555}";
+        env.handler("*", "WinEn", english, &file(r"win.inf_1\en.dll"));
+        let french = "{FFFFFFFF-2222-3333-4444-555555555555}";
+        env.handler("*", "WinFr", french, &file(r"win.inf_1\fr.dll"));
+        let blank = "{ABABABAB-2222-3333-4444-555555555555}";
+        env.handler("*", "Blank", blank, &file(r"win.inf_1\blank.dll"));
+        let unknown = "{CDCDCDCD-2222-3333-4444-555555555555}";
+        env.handler("*", "Unknown", unknown, &file(r"x.inf_1\unknown.dll"));
+        // Elsewhere under the Windows folder a vendor name does not count.
+        let system = "{EFEFEFEF-2222-3333-4444-555555555555}";
+        let in_system32 = env.windows().join(r"System32\gfxmenu.dll");
+        env.handler("*", "Sys", system, &in_system32.display().to_string());
+
+        let mut opts = env.opts();
+        opts.product_name = &|path| {
+            let name = path.file_stem()?.to_string_lossy().into_owned();
+            match name.as_str() {
+                "gfxmenu" => Some("Graphics Control Panel".into()),
+                "en" => Some("Microsoft® Windows® Operating System".into()),
+                "fr" => Some("Système d’exploitation Microsoft® Windows®".into()),
+                "blank" => Some("  ".into()),
+                _ => None,
+            }
+        };
+        let scan = scan(&env.target(), &UserBackups::default(), &opts);
+        assert_eq!(scan.others.len(), 1, "{:?}", scan.others);
+        let row = &scan.others[0];
+        assert_eq!(row.id, format!("clsid:{vendor}"));
+        assert_eq!(row.origin.as_deref(), Some("Graphics Control Panel"));
+        assert_eq!(row.places, places(&[Place::Background]));
     }
 
     #[test]

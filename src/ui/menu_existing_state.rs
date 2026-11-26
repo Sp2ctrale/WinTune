@@ -70,7 +70,15 @@ impl WinTuneApp {
         if let Some(job) = self.menu_scan_job.as_mut() {
             match job.poll() {
                 JobPoll::Running => return,
-                JobPoll::Finished(scan) => self.menu_scan = Some(scan),
+                JobPoll::Finished(scan) => {
+                    // A choice the registry already matches (applied by a
+                    // partial Apply, or changed elsewhere) is no longer pending.
+                    self.menu_pending.retain(|id, pending| {
+                        scan.find(id)
+                            .is_none_or(|entry| existing_change(entry, pending).is_some())
+                    });
+                    self.menu_scan = Some(scan);
+                }
                 JobPoll::Panicked(msg) => {
                     let text = self.tr.t_args("menu.scan_failed", &[&msg]);
                     self.notify(kit::ToastKind::Error, text);
@@ -320,6 +328,26 @@ mod tests {
         app.menu_pending
             .insert("verb:gone|x".into(), pending(Some(true), None));
         assert!(app.menu_existing_changes().is_empty());
+    }
+
+    #[test]
+    fn a_scan_drops_only_the_choices_the_registry_already_matches() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let (mut app, id) = scanned_verb(&fx, &ctx);
+        let rename = pending(Some(false), Some(Some("Mine")));
+        app.menu_pending
+            .insert(id.clone(), pending(Some(false), None));
+        app.menu_pending
+            .insert("verb:gone|x".into(), pending(Some(true), None));
+        scan_now(&mut app, &ctx);
+        assert_eq!(app.menu_pending.get(&id), None, "already shown");
+        // Not listed by this scan: kept, it counts for nothing anyway.
+        assert!(app.menu_pending.contains_key("verb:gone|x"));
+
+        app.menu_pending.insert(id.clone(), rename.clone());
+        scan_now(&mut app, &ctx);
+        assert_eq!(app.menu_pending.get(&id), Some(&rename), "still to do");
     }
 
     #[test]

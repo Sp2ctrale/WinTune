@@ -6,7 +6,9 @@
 
 use std::path::PathBuf;
 
+mod engine;
 mod scan;
+pub use engine::*;
 pub use scan::*;
 
 use crate::backups::{RegTarget, Slot};

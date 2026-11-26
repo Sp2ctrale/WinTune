@@ -8,6 +8,8 @@ use crate::backups::Slot;
 
 mod path;
 pub use path::*;
+mod rules;
+pub use rules::*;
 
 pub const USER_ENV_KEY: &str = "Environment";
 pub const SYSTEM_ENV_KEY: &str = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment";

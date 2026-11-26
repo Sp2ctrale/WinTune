@@ -968,6 +968,9 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="home.menu_status" xml:space="preserve">
     <value>{0} entrée(s), {1} masquée(s)</value>
   </data>
+  <data name="home.startup_status" xml:space="preserve">
+    <value>{0} application(s), {1} désactivée(s)</value>
+  </data>
   <data name="job.apply_menu" xml:space="preserve">
     <value>Application des entrées du menu contextuel…</value>
   </data>

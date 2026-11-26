@@ -5,6 +5,7 @@ use super::{kit, ActiveTab, WinTuneApp};
 use crate::associations::RuleStatus;
 use crate::context_menu::{EntryStatus, ExistingState};
 use crate::i18n::messages;
+use crate::startup::StartupState;
 use crate::tweaks::TweakStatus;
 use eframe::egui;
 
@@ -69,6 +70,15 @@ impl WinTuneApp {
             .iter()
             .filter(|e| matches!(self.menu_statuses.get(&e.id), Some(EntryStatus::Changed(_))))
             .count();
+        // 0 until the first scan ends.
+        let (startup_count, startup_off) = self.startup_scan.as_ref().map_or((0, 0), |scan| {
+            let off = scan
+                .items
+                .iter()
+                .filter(|i| i.state != StartupState::On)
+                .count();
+            (scan.items.len(), off)
+        });
         vec![
             ModuleSummary {
                 page: ActiveTab::Associations,
@@ -83,6 +93,12 @@ impl WinTuneApp {
                 icon: kit::Icon::ContextMenu,
                 status: tr.t_args("home.menu_status", &[&menu_count, &menu_hidden]),
                 drift: menu_changed,
+            },
+            ModuleSummary {
+                page: ActiveTab::Startup,
+                icon: kit::Icon::Startup,
+                status: tr.t_args("home.startup_status", &[&startup_count, &startup_off]),
+                drift: 0,
             },
         ]
     }
@@ -112,6 +128,7 @@ impl WinTuneApp {
             ActiveTab::Associations => tr.t("nav.associations"),
             ActiveTab::Tweaks => tr.t("nav.explorer"),
             ActiveTab::StartPrivacy => tr.t("nav.start"),
+            ActiveTab::Startup => tr.t("nav.startup"),
             _ => tr.t("nav.context_menu"),
         };
         let history = &self.history;
@@ -389,6 +406,51 @@ mod tests {
         app.active_tab = ActiveTab::Home;
         let texts = drawn_texts(&frame(&mut app, &ctx, RawInput::default()));
         assert!(texts.contains(&expected), "{texts:?}");
+    }
+
+    #[test]
+    fn the_startup_tile_counts_apps_and_turned_off() {
+        use crate::startup::{Approved, Origin, Source, StartupItem, StartupScan, StartupState};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        app.rule_statuses.clear();
+        app.tweak_statuses.clear();
+        // Both counts are 0 until the first scan.
+        let before = app.tr.t_args("home.startup_status", &[&0, &0]);
+        assert_eq!(status_of(&app, ActiveTab::Startup), (before, 0));
+
+        let item = |name: &str, state| StartupItem {
+            id: format!("run:{name}"),
+            approved: Approved::Run,
+            name: name.into(),
+            display_name: name.into(),
+            program: format!(r"C:\Apps\{name}.exe"),
+            origins: vec![Origin {
+                source: Source::UserRun,
+                detail: String::new(),
+            }],
+            program_missing: false,
+            state,
+            locked: None,
+            has_snapshot: false,
+        };
+        app.startup_scan = Some(StartupScan {
+            items: vec![item("a", StartupState::On), item("b", StartupState::Off)],
+        });
+        let expected = app.tr.t_args("home.startup_status", &[&2, &1]);
+        assert_eq!(expected, "2 apps, 1 turned off");
+        assert_eq!(status_of(&app, ActiveTab::Startup), (expected.clone(), 0));
+
+        app.active_tab = ActiveTab::Home;
+        let out = {
+            frame(&mut app, &ctx, RawInput::default());
+            frame(&mut app, &ctx, RawInput::default())
+        };
+        let texts = drawn_texts(&out);
+        assert!(texts.contains(&app.tr.t("nav.startup")), "{texts:?}");
+        click_text(&mut app, &ctx, &expected);
+        assert_eq!(app.active_tab, ActiveTab::Startup);
     }
 
     #[test]

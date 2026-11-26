@@ -80,6 +80,7 @@ impl WinTuneApp {
             self.reload_backup_store();
             self.reload_tweak_store();
             self.reload_menu_store();
+            self.reload_startup_store();
         }
         if page == ActiveTab::Associations && self.active_tab != page {
             self.request_status_refresh();
@@ -1210,7 +1211,16 @@ mod tests {
             },
         );
         menu_entry.time = "2000-01-01 00:00:00".into();
-        app.history = vec![entry, menu_entry];
+        let mut startup_entry = crate::history::HistoryEntry::from_report(
+            "Startup apps",
+            "Apply",
+            &crate::associations::OperationReport {
+                succeeded: vec!["Off app".into()],
+                ..Default::default()
+            },
+        );
+        startup_entry.time = "2000-01-02 00:00:00".into();
+        app.history = vec![entry, menu_entry, startup_entry];
         app.open_page(ActiveTab::History);
         // `open_page` reloaded the stores from disk, so put the unknown
         // tweak back in memory.
@@ -1284,6 +1294,8 @@ mod tests {
             "Open one".to_string(),
             // A hidden third-party verb, by name.
             "Open with App".to_string(),
+            // A turned-off startup app.
+            "Off app".to_string(),
         ];
         rows.extend(
             applied_tweaks
@@ -1300,6 +1312,43 @@ mod tests {
             assert!(
                 !texts.iter().any(|t| t == *value),
                 "the History page draws English-only text {value:?} (key {key})"
+            );
+        }
+        // The Startup apps operation, by its French module name.
+        let module = app.tr.t("history.module.startup");
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.starts_with("2000-01-02") && t.contains(&module)),
+            "no Startup apps operation: {texts:?}"
+        );
+
+        // Home: the Startup apps tile, with the counts of the last scan.
+        app.active_tab = ActiveTab::Home;
+        let mut home = Vec::new();
+        for _ in 0..3 {
+            home.extend(drawn_texts(&frame(&mut app, &ctx, tall_input(vec![]))));
+        }
+        let items = app.startup_scan.as_ref().expect("startup scan").items.len();
+        let off = app.startup_scan.as_ref().map_or(0, |s| {
+            s.items
+                .iter()
+                .filter(|i| i.state != crate::startup::StartupState::On)
+                .count()
+        });
+        for drawn in [
+            app.tr.t("nav.startup"),
+            app.tr.t_args("home.startup_status", &[&items, &off]),
+        ] {
+            assert!(
+                home.contains(&drawn),
+                "{drawn:?} not drawn on Home: {home:?}"
+            );
+        }
+        for (key, value) in &english_only {
+            assert!(
+                !home.iter().any(|t| t == *value),
+                "Home draws English-only text {value:?} (key {key})"
             );
         }
     }

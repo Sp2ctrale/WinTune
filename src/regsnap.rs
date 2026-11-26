@@ -420,6 +420,8 @@ pub(crate) mod test_support {
     const SANDBOX_PARENT: &str = "Software\\WinTuneTest";
 
     /// A throw-away key under `HKCU\Software\WinTuneTest`, deleted on drop.
+    /// The `WinTuneTest` parent itself stays: deleting it while other tests
+    /// create their sandboxes made those creates fail with ERROR_KEY_DELETED.
     pub struct Sandbox {
         pub root: RegKey,
         pub path: String,
@@ -439,14 +441,21 @@ pub(crate) mod test_support {
                 nanos
             );
             let root = RegKey::predef(HKEY_CURRENT_USER);
-            // Tests run in parallel and a finishing sandbox removes the shared
-            // parent key once it is empty: creating ours at that exact moment
-            // can fail with NotFound. Simply try again.
+            // Sandboxes never delete the shared parent key (see `Drop`), so
+            // within one test run nothing races this create. The retry only
+            // covers another process (an older checkout's tests) deleting the
+            // parent at this exact moment: Windows then reports the parent as
+            // marked for deletion (ERROR_KEY_DELETED) or missing.
+            const ERROR_KEY_DELETED: i32 = 1018;
             let mut attempt = 0;
             loop {
                 match root.create_subkey(&path) {
                     Ok(_) => break,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound && attempt < 20 => {
+                    Err(e)
+                        if (e.raw_os_error() == Some(ERROR_KEY_DELETED)
+                            || e.kind() == std::io::ErrorKind::NotFound)
+                            && attempt < 20 =>
+                    {
                         attempt += 1;
                         std::thread::sleep(std::time::Duration::from_millis(5));
                     }
@@ -467,8 +476,8 @@ pub(crate) mod test_support {
 
     impl Drop for Sandbox {
         fn drop(&mut self) {
+            // Only our own key: the shared parent is left for other sandboxes.
             let _ = self.root.delete_subkey_all(&self.path);
-            let _ = self.root.delete_subkey(SANDBOX_PARENT); // only succeeds when empty
         }
     }
 }

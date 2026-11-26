@@ -46,7 +46,8 @@ cargo clippy --all-targets -- -D warnings
 ```
 
 The tests that touch the registry run in a throw-away sandbox under
-`HKCU\Software\WinTuneTest`, which is removed after each test. They never touch
+`HKCU\Software\WinTuneTest`, which is removed after each test (the empty
+`WinTuneTest` key itself stays, so parallel tests never race on it). They never touch
 `HKLM`, and they do not need elevation, because the administrator manifest is
 embedded only into the `WinTune` binary and not into the test harness.
 

@@ -303,6 +303,29 @@ mod tests {
         assert!(Approved::Run.slot("X").id().ends_with("\\\\X"));
     }
 
+    /// The reference doc quotes each location between backticks. Match the
+    /// terminated form: `...\StartupApproved\Run` is a prefix of
+    /// `...\StartupApproved\Run32`, and the Run key sits inside every
+    /// `...\RunOnce` path, so a bare `contains` would pass without the entry.
+    #[test]
+    fn the_registry_reference_names_every_startup_location() {
+        let doc = include_str!("../../docs/registry-reference.md");
+        let quoted = |text: &str| format!("`{text}`");
+        let want = [
+            RUN_KEY.to_string(),
+            RUN32_KEY.to_string(),
+            Approved::Run.key(),
+            Approved::Run32.key(),
+            Approved::StartupFolder.key(),
+            "startup-backups.json".to_string(),
+            "PER_USER_SWITCH_WORKS".to_string(),
+        ];
+        for text in want {
+            assert!(doc.contains(&quoted(&text)), "doc lacks {}", quoted(&text));
+        }
+        assert!(doc.contains("Pre-merge checklist (Startup apps)"));
+    }
+
     #[test]
     fn now_filetime_is_after_2020() {
         assert!(now_filetime() > 132_223_104_000_000_000);

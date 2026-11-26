@@ -155,9 +155,13 @@ Under "My entries", two more sections list what the menu already holds.
   shell extensions). Each row names the program that added it. A search box
   (Ctrl+F) filters by name or program. Entries that live in the Windows folder,
   entries whose program file cannot be found, and verbs the installer already
-  hides are not listed (unless WinTune hid them).
+  hides are not listed (unless WinTune hid them). Drivers, such as a graphics
+  card's control panel, are the exception: they install into the Windows
+  driver store, and their entries are listed when the file names another
+  vendor than Microsoft Windows.
 - **Hide and show.** Each row has a toggle. Changes stay pending until you
-  press Apply (Discard drops them). Hiding is per account: nothing is written
+  press Apply (Discard drops them). If Apply fails, the changes stay pending
+  so you can try again. Hiding is per account: nothing is written
   under `HKLM`, and another account still sees the entry. A pill shows what
   will change.
 - **Unofficial.** Shell extensions and modern entries are hidden through a

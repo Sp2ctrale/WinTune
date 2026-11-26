@@ -421,12 +421,7 @@ impl WinTuneApp {
         let title = job.title().to_string();
         let title_text = self.tr.t(job.name_key());
         let history_label = job.history_label();
-        let menu_apply = matches!(job, RunningJob::ContextMenu { restore: false, .. });
         self.job = None;
-        // Applied or not, the next scan shows what the registry holds.
-        if menu_apply {
-            self.menu_pending.clear();
-        }
 
         match finished {
             Finished::Apply(outcome) => {
@@ -492,6 +487,12 @@ impl WinTuneApp {
 
     fn finish_menu_job(&mut self, outcome: MenuOutcome) {
         self.menu_store = outcome.store;
+        // A clean apply did everything asked. After a refused or partial
+        // one the choices stay, so Apply can be tried again; the next scan
+        // drops those the registry already matches.
+        if !outcome.restored && outcome.report.errors.is_empty() {
+            self.menu_pending.clear();
+        }
         let kind = if outcome.restored {
             ReportKind::RestoredMenu
         } else {
@@ -943,28 +944,36 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_menu_apply_still_clears_pending() {
+    fn a_failed_menu_apply_keeps_pending() {
         use super::super::menu_existing_state::PendingExisting;
         let fx = TempIcons::new(&[]);
         let ctx = egui::Context::default();
         let mut app = two_menu_entries(&fx, &ctx);
-        app.menu_pending.insert(
-            "verb:x|y".into(),
-            PendingExisting {
-                hidden: Some(true),
-                label: None,
+        let hide = PendingExisting {
+            hidden: Some(true),
+            label: None,
+        };
+        // A panic, then a refusal reported as errors.
+        let jobs: [fn(&crate::tasks::ProgressSink) -> MenuOutcome; 2] = [
+            |_| panic!("boom"),
+            |_| MenuOutcome {
+                report: OperationReport {
+                    errors: vec!["refused".into()],
+                    ..Default::default()
+                },
+                store: Default::default(),
+                restored: false,
             },
-        );
-        app.job = Some(RunningJob::ContextMenu {
-            job: BackgroundJob::spawn(
-                "Applying context menu entries",
-                || {},
-                |_| -> MenuOutcome { panic!("boom") },
-            ),
-            restore: false,
-        });
-        run_until_idle(&mut app, &ctx);
-        assert!(app.menu_pending.is_empty());
+        ];
+        for job in jobs {
+            app.menu_pending.insert("verb:x|y".into(), hide.clone());
+            app.job = Some(RunningJob::ContextMenu {
+                job: BackgroundJob::spawn("Applying context menu entries", || {}, job),
+                restore: false,
+            });
+            run_until_idle(&mut app, &ctx);
+            assert_eq!(app.menu_pending.get("verb:x|y"), Some(&hide));
+        }
     }
 
     #[test]

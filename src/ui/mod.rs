@@ -27,6 +27,7 @@ mod rule_status;
 mod safety_tests;
 mod settings;
 mod shell;
+mod startup_state;
 #[cfg(test)]
 mod test_support;
 mod tweaks_tab;
@@ -47,6 +48,9 @@ use crate::i18n::{messages, Tr};
 use crate::models::ThemeMode;
 use crate::models::{app_data_dir, AppConfig, BackupStore};
 use crate::persist::LoadError;
+use crate::startup::{
+    default_startup_store_path, Source, StartupBackupStore, StartupScan, StartupTarget,
+};
 use crate::tweaks::{
     current_user_label, default_tweak_store_path, notify_explorer_settings, TweakBackupStore,
     TweakStatus, TweakTarget,
@@ -86,6 +90,11 @@ pub(crate) struct AppEnv {
     /// Where the context menu entries are written (HKCU).
     pub menu_target: Arc<dyn Fn() -> MenuTarget + Send + Sync>,
     pub menu_store_path: PathBuf,
+    /// Where the startup switches are read (HKLM, folders) and written (HKCU).
+    pub startup_target: Arc<dyn Fn() -> StartupTarget + Send + Sync>,
+    pub startup_store_path: PathBuf,
+    /// Whether a per-user switch turns items of a source off.
+    pub startup_switch_works: fn(Source) -> bool,
     /// Where each preset program of the context menu lives.
     pub programs: Programs,
     /// `%SystemRoot%`: menu entries whose program is under it are Windows'
@@ -118,6 +127,9 @@ impl AppEnv {
             }),
             menu_target: Arc::new(MenuTarget::current_user),
             menu_store_path: default_menu_store_path(),
+            startup_target: Arc::new(StartupTarget::current_user),
+            startup_store_path: default_startup_store_path(),
+            startup_switch_works: Source::per_user_switch_works,
             programs: Programs::detect(),
             windows_dir: std::env::var_os("SystemRoot")
                 .map(PathBuf::from)
@@ -188,6 +200,8 @@ pub(super) enum ReportKind {
     RestoredTweaks,
     AppliedMenu,
     RestoredMenu,
+    AppliedStartup,
+    RestoredStartup,
 }
 
 pub struct WinTuneApp {
@@ -251,6 +265,21 @@ pub struct WinTuneApp {
     menu_rename: Option<(String, String)>,
     /// Filter typed in the Other programs section (label / origin).
     menu_search: String,
+    /// Original switches of the startup apps (startup-backups.json).
+    startup_store: StartupBackupStore,
+    /// Set when startup-backups.json cannot be read: startup changes are blocked.
+    startup_store_error: Option<LoadError>,
+    /// Startup apps as last read; `None` until the first scan ends. Kept
+    /// while a new scan runs.
+    startup_scan: Option<StartupScan>,
+    startup_scan_job: Option<startup_state::ScanJob>,
+    startup_scan_needed: bool,
+    /// The wanted "on" state of the apps the user toggled and has not
+    /// applied yet, by `StartupItem::id`.
+    startup_pending: BTreeMap<String, bool>,
+    /// Filter typed in the Startup apps page (name / program).
+    #[allow(dead_code)] // The Startup apps page (next task) uses it; remove then.
+    startup_search: String,
     tr: Tr,
     /// The theme actually shown this frame (Light or Dark, never System):
     /// what the old palette helpers receive.
@@ -297,6 +326,8 @@ impl WinTuneApp {
         app.reload_history();
         app.request_status_refresh();
         app.request_menu_scan();
+        app.reload_startup_store();
+        app.request_startup_scan();
         app
     }
 
@@ -354,6 +385,13 @@ impl WinTuneApp {
             menu_pending: BTreeMap::new(),
             menu_rename: None,
             menu_search: String::new(),
+            startup_store: StartupBackupStore::default(),
+            startup_store_error: None,
+            startup_scan: None,
+            startup_scan_job: None,
+            startup_scan_needed: false,
+            startup_pending: BTreeMap::new(),
+            startup_search: String::new(),
             tr,
             ui_theme,
             focus_search: false,
@@ -376,6 +414,7 @@ impl WinTuneApp {
         self.handle_shortcuts(ctx);
         self.pump_status_refresh(ctx);
         self.pump_menu_scan(ctx);
+        self.pump_startup_scan(ctx);
         self.guard_close_while_busy(ctx);
 
         // Before the nav: the dialog claims the keyboard first (it is an Area,
@@ -532,6 +571,8 @@ impl WinTuneApp {
                 }
             }
             ReportKind::RestoredMenu => tr.t_args("report.restored_menu", &[&count]),
+            ReportKind::AppliedStartup => tr.t_args("report.applied_startup", &[&count]),
+            ReportKind::RestoredStartup => tr.t_args("report.restored_startup", &[&count]),
         };
         if let Some(first) = report.errors.first() {
             msg.push_str(&tr.t_args("report.errors", &[&report.errors.len(), first]));

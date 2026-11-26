@@ -1300,4 +1300,73 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="menu.rename_ok" xml:space="preserve">
     <value>Renommer</value>
   </data>
+  <data name="job.apply_startup" xml:space="preserve">
+    <value>Application des changements de démarrage…</value>
+  </data>
+  <data name="job.restore_startup" xml:space="preserve">
+    <value>Restauration des applications au démarrage…</value>
+  </data>
+  <data name="job.name.apply_startup" xml:space="preserve">
+    <value>L'application des changements de démarrage</value>
+  </data>
+  <data name="job.name.restore_startup" xml:space="preserve">
+    <value>La restauration des applications au démarrage</value>
+  </data>
+  <data name="report.applied_startup" xml:space="preserve">
+    <value>{0} changement(s) de démarrage appliqué(s)</value>
+  </data>
+  <data name="report.restored_startup" xml:space="preserve">
+    <value>{0} application(s) au démarrage restaurée(s)</value>
+  </data>
+  <data name="history.module.startup" xml:space="preserve">
+    <value>Applications au démarrage</value>
+  </data>
+  <data name="startup.scan_failed" xml:space="preserve">
+    <value>Impossible de lire les applications au démarrage : {0}</value>
+  </data>
+  <data name="startup.restore_title" xml:space="preserve">
+    <value>Restaurer les réglages de démarrage d'origine ?</value>
+  </data>
+  <data name="startup.restore_message" xml:space="preserve">
+    <value>{0} : l'état activé ou désactivé d'avant les changements de WinTune sera rétabli.</value>
+  </data>
+  <data name="startup.restore_many" xml:space="preserve">
+    <value>{0} applications</value>
+  </data>
+  <data name="startup.state.on" xml:space="preserve">
+    <value>Activée</value>
+  </data>
+  <data name="startup.state.off" xml:space="preserve">
+    <value>Désactivée par WinTune</value>
+  </data>
+  <data name="startup.state.off_elsewhere" xml:space="preserve">
+    <value>Désactivée par un autre programme</value>
+  </data>
+  <data name="startup.locked.unreadable" xml:space="preserve">
+    <value>Impossible de lire l'interrupteur de cette application : {0}</value>
+  </data>
+  <data name="startup.locked.unknown" xml:space="preserve">
+    <value>Son interrupteur est stocké d'une façon que WinTune ne connaît pas : WinTune n'y touche pas.</value>
+  </data>
+  <data name="startup.locked.machine" xml:space="preserve">
+    <value>Désactivée pour tous les comptes de ce PC. WinTune ne modifie que votre compte.</value>
+  </data>
+  <data name="startup.locked.all_users" xml:space="preserve">
+    <value>Activée pour tous les comptes. WinTune ne peut pas encore la désactiver pour votre compte seul.</value>
+  </data>
+  <data name="startup.source.user_run" xml:space="preserve">
+    <value>Clé Run (vous)</value>
+  </data>
+  <data name="startup.source.machine_run" xml:space="preserve">
+    <value>Clé Run (tous les comptes)</value>
+  </data>
+  <data name="startup.source.machine_run32" xml:space="preserve">
+    <value>Clé Run 32 bits (tous les comptes)</value>
+  </data>
+  <data name="startup.source.user_folder" xml:space="preserve">
+    <value>Dossier Démarrage (vous)</value>
+  </data>
+  <data name="startup.source.common_folder" xml:space="preserve">
+    <value>Dossier Démarrage (tous les comptes)</value>
+  </data>
 </root>

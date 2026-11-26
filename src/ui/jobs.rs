@@ -10,6 +10,9 @@ use crate::context_menu::{apply_menu, entry_problems, restore_keys, MenuBackupSt
 use crate::detector::{build_editor_command, editor_display_name};
 use crate::gallery::{build_compressed_pak, PakStats};
 use crate::models::{BackupStore, ExtensionConfig};
+use crate::startup::{
+    apply_startup, now_filetime, restore_startup, StartupBackupStore, StartupOptions,
+};
 use crate::tasks::{BackgroundJob, JobPoll, Progress};
 use eframe::egui;
 
@@ -38,6 +41,14 @@ pub(super) struct MenuOutcome {
     pub(super) restored: bool,
 }
 
+/// Result of a startup apps job, with the snapshot store after it.
+pub(super) struct StartupOutcome {
+    pub(super) report: OperationReport,
+    pub(super) store: StartupBackupStore,
+    /// True for "restore", false for "apply".
+    pub(super) restored: bool,
+}
+
 pub(super) enum RunningJob {
     Apply(BackgroundJob<StoreOutcome>),
     Rollback(BackgroundJob<StoreOutcome>),
@@ -54,6 +65,11 @@ pub(super) enum RunningJob {
         job: BackgroundJob<MenuOutcome>,
         restore: bool,
     },
+    /// A startup apps job: apply the pending switches, or restore originals.
+    Startup {
+        job: BackgroundJob<StartupOutcome>,
+        restore: bool,
+    },
 }
 
 impl RunningJob {
@@ -64,6 +80,7 @@ impl RunningJob {
             RunningJob::BuildPak(j) => j.title(),
             RunningJob::Tweaks { job, .. } => job.title(),
             RunningJob::ContextMenu { job, .. } => job.title(),
+            RunningJob::Startup { job, .. } => job.title(),
         }
     }
 
@@ -77,6 +94,8 @@ impl RunningJob {
             RunningJob::Tweaks { .. } => "job.apply_tweaks",
             RunningJob::ContextMenu { restore: true, .. } => "job.restore_menu",
             RunningJob::ContextMenu { .. } => "job.apply_menu",
+            RunningJob::Startup { restore: true, .. } => "job.restore_startup",
+            RunningJob::Startup { .. } => "job.apply_startup",
         }
     }
 
@@ -90,6 +109,8 @@ impl RunningJob {
             "job.restore_tweaks" => "job.name.restore_tweaks",
             "job.apply_menu" => "job.name.apply_menu",
             "job.restore_menu" => "job.name.restore_menu",
+            "job.apply_startup" => "job.name.apply_startup",
+            "job.restore_startup" => "job.name.restore_startup",
             _ => "job.name.apply_tweaks",
         }
     }
@@ -107,6 +128,8 @@ impl RunningJob {
             RunningJob::Tweaks { module, .. } => Some((module, "Apply")),
             RunningJob::ContextMenu { restore: true, .. } => Some(("Context menu", "Restore")),
             RunningJob::ContextMenu { .. } => Some(("Context menu", "Apply")),
+            RunningJob::Startup { restore: true, .. } => Some(("Startup apps", "Restore")),
+            RunningJob::Startup { .. } => Some(("Startup apps", "Apply")),
             RunningJob::BuildPak(_) => None,
         }
     }
@@ -118,6 +141,7 @@ impl RunningJob {
             RunningJob::BuildPak(j) => j.progress(),
             RunningJob::Tweaks { job, .. } => job.progress(),
             RunningJob::ContextMenu { job, .. } => job.progress(),
+            RunningJob::Startup { job, .. } => job.progress(),
         }
     }
 }
@@ -386,6 +410,91 @@ impl WinTuneApp {
         });
     }
 
+    /// Why a startup change cannot start: the unreadable snapshot store
+    /// (which the next save would overwrite). Shown as the toast and as the
+    /// hover of the disabled Apply button.
+    pub(super) fn startup_blocked_reason(&self) -> Option<String> {
+        self.startup_store_error.as_ref().map(|e| {
+            let detail = crate::i18n::messages::load_error(self.tr, e);
+            self.tr.t_args("tweaks.blocked", &[&detail])
+        })
+    }
+
+    /// Writes the pending on/off choices to the registry in one background
+    /// job. No confirmation: nothing is deleted, and History can undo it.
+    #[allow(dead_code)] // The Startup apps page (next task) uses it; remove then.
+    pub(super) fn start_startup_apply(&mut self, ctx: &egui::Context) {
+        if self.refuse_if_busy() {
+            return;
+        }
+        if let Some(reason) = self.startup_blocked_reason() {
+            self.notify(ToastKind::Error, reason);
+            return;
+        }
+        let changes = self.startup_changes();
+        if changes.is_empty() {
+            return;
+        }
+        self.spawn_startup_job(
+            ctx,
+            false,
+            "Applying startup changes",
+            move |env, store, opts| apply_startup(&(env.startup_target)(), store, &changes, opts),
+        );
+    }
+
+    /// Puts the given switches (slot ids) back to their saved originals.
+    pub(super) fn start_startup_restore(&mut self, ctx: &egui::Context, ids: Vec<String>) {
+        if self.refuse_if_busy() {
+            return;
+        }
+        if let Some(reason) = self.startup_blocked_reason() {
+            self.notify(ToastKind::Error, reason);
+            return;
+        }
+        self.spawn_startup_job(
+            ctx,
+            true,
+            "Restoring startup apps",
+            move |env, store, opts| restore_startup(&(env.startup_target)(), store, &ids, opts),
+        );
+    }
+
+    fn spawn_startup_job(
+        &mut self,
+        ctx: &egui::Context,
+        restored: bool,
+        title: &'static str,
+        run: impl FnOnce(&super::AppEnv, &mut StartupBackupStore, &StartupOptions) -> OperationReport
+            + Send
+            + 'static,
+    ) {
+        let env = self.env.clone();
+        let mut store = self.startup_store.clone();
+        let user = self.env.user_label.clone();
+        let job = BackgroundJob::spawn(title, repaint(ctx), move |sink| {
+            let progress = |done: usize, total: usize, label: &str| sink.report(done, total, label);
+            let opts = StartupOptions {
+                user,
+                store_path: env.startup_store_path.clone(),
+                reg_backup_dir: env.reg_backup_dir.clone(),
+                progress: &progress,
+                switch_works: env.startup_switch_works,
+                now: now_filetime(),
+            };
+            let report = run(&env, &mut store, &opts);
+            StartupOutcome {
+                report,
+                store,
+                restored,
+            }
+        });
+        self.job = Some(RunningJob::Startup {
+            job,
+            restore: restored,
+        });
+    }
+
     /// Called every frame: forwards progress and handles a finished job.
     pub(super) fn poll_job(&mut self) {
         let Some(job) = self.job.as_mut() else {
@@ -415,6 +524,11 @@ impl WinTuneApp {
             RunningJob::ContextMenu { job, .. } => match job.poll() {
                 JobPoll::Running => return,
                 JobPoll::Finished(outcome) => Finished::Menu(outcome),
+                JobPoll::Panicked(msg) => Finished::Panicked(msg),
+            },
+            RunningJob::Startup { job, .. } => match job.poll() {
+                JobPoll::Running => return,
+                JobPoll::Finished(outcome) => Finished::Startup(outcome),
                 JobPoll::Panicked(msg) => Finished::Panicked(msg),
             },
         };
@@ -462,6 +576,7 @@ impl WinTuneApp {
             }
             Finished::Tweaks(outcome) => self.finish_tweaks_job(outcome),
             Finished::Menu(outcome) => self.finish_menu_job(outcome),
+            Finished::Startup(outcome) => self.finish_startup_job(outcome),
             Finished::Panicked(msg) => {
                 if let Some((module, action)) = history_label {
                     // It may have written part of its changes: keep a trace.
@@ -479,10 +594,30 @@ impl WinTuneApp {
                 self.refresh_tweak_statuses();
                 self.reload_menu_store();
                 self.refresh_menu_statuses();
+                self.reload_startup_store();
             }
         }
         // Any job may have changed the menu (or the snapshots behind it).
         self.request_menu_scan();
+        self.request_startup_scan();
+    }
+
+    fn finish_startup_job(&mut self, outcome: StartupOutcome) {
+        self.startup_store = outcome.store;
+        // A clean apply did everything asked. After a refused or partial
+        // one the choices stay, so Apply can be tried again; the next scan
+        // drops those the registry already matches.
+        if !outcome.restored && outcome.report.errors.is_empty() {
+            self.startup_pending.clear();
+        }
+        let kind = if outcome.restored {
+            ReportKind::RestoredStartup
+        } else {
+            ReportKind::AppliedStartup
+        };
+        self.show_report(kind, &outcome.report);
+        let action = if outcome.restored { "Restore" } else { "Apply" };
+        self.record_history("Startup apps", action, &outcome.report);
     }
 
     fn finish_menu_job(&mut self, outcome: MenuOutcome) {
@@ -511,6 +646,7 @@ enum Finished {
     BuildPak(Result<PakStats, String>),
     Tweaks(TweakOutcome),
     Menu(MenuOutcome),
+    Startup(StartupOutcome),
     Panicked(String),
 }
 
@@ -976,6 +1112,154 @@ mod tests {
         }
     }
 
+    /// One seeded user Run item `App`, scanned.
+    fn scanned_startup_app(fx: &TempIcons, ctx: &egui::Context) -> WinTuneApp {
+        fx.seed_run(false, "App", r#""C:\Apps\app.exe""#);
+        let mut app = fx.app(ctx);
+        app.request_startup_scan();
+        run_until_startup_scanned(&mut app, ctx);
+        assert_eq!(app.startup_scan.as_ref().map(|s| s.items.len()), Some(1));
+        app
+    }
+
+    #[test]
+    fn a_startup_apply_turns_off_logs_and_clears_pending() {
+        use crate::startup::StartupState;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_startup_app(&fx, &ctx);
+        app.startup_pending.insert("run:app".into(), false);
+
+        app.start_startup_apply(&ctx);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+
+        let switch = fx.user_switch("App").expect("switch written");
+        assert_eq!(switch.len(), 12);
+        assert_eq!(switch[..4], [3, 0, 0, 0]);
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Startup apps", "Apply")
+        );
+        assert!(last.errors.is_empty(), "{:?}", last.errors);
+        assert!(app.startup_pending.is_empty());
+        assert!(
+            app.last_notice().starts_with("1 startup change(s) applied"),
+            "{}",
+            app.last_notice()
+        );
+
+        run_until_startup_scanned(&mut app, &ctx);
+        let scan = app.startup_scan.as_ref().unwrap();
+        assert_eq!(scan.find("run:app").unwrap().state, StartupState::Off);
+    }
+
+    #[test]
+    fn a_refused_startup_apply_keeps_the_choice() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_startup_app(&fx, &ctx);
+        app.startup_pending.insert("run:app".into(), false);
+        // The switch became a shape WinTune does not know, after the scan.
+        let (k, _) = fx
+            .sandbox
+            .root
+            .create_subkey(fx.hkcu(&crate::startup::Approved::Run.key()))
+            .unwrap();
+        k.set_value("App", &3u32).unwrap();
+        // An id the scan does not list is never pruned: it shows that the
+        // refusal did not clear the choices.
+        app.startup_pending.insert("run:ghost".into(), false);
+
+        app.start_startup_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+
+        assert!(app.last_notice().contains("error"), "{}", app.last_notice());
+        assert!(app.startup_pending.contains_key("run:ghost"));
+        assert_eq!(fx.user_switch("App"), Some(vec![3, 0, 0, 0]), "overwritten");
+        assert!(!app.env.startup_store_path.exists(), "store written");
+        let last = app.history.first().expect("history entry");
+        assert_eq!(last.errors.len(), 1, "{:?}", last.errors);
+
+        // Right after the job finishes, before any rescan (which may prune
+        // the choice once the item reads as locked), the choice is kept.
+        app.startup_pending.insert("run:app".into(), false);
+        app.finish_startup_job(StartupOutcome {
+            report: OperationReport {
+                errors: vec!["refused".into()],
+                ..Default::default()
+            },
+            store: Default::default(),
+            restored: false,
+        });
+        assert_eq!(app.startup_pending.get("run:app"), Some(&false));
+        assert_eq!(app.startup_pending.len(), 2);
+    }
+
+    #[test]
+    fn an_unreadable_startup_store_blocks_apply_and_restore() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_startup_app(&fx, &ctx);
+        app.startup_pending.insert("run:app".into(), false);
+        app.startup_store_error = Some(corrupt("startup-backups.json", "bad json"));
+
+        app.start_startup_apply(&ctx);
+        assert!(!app.is_busy());
+        assert!(
+            app.last_notice().starts_with("Changes are blocked"),
+            "{}",
+            app.last_notice()
+        );
+        assert_eq!(fx.user_switch("App"), None);
+
+        let id = crate::startup::Approved::Run.slot("App").id();
+        app.start_startup_restore(&ctx, vec![id.clone()]);
+        assert!(!app.is_busy());
+
+        // The same restore runs once the store is readable again.
+        app.startup_store_error = None;
+        app.start_startup_restore(&ctx, vec![id]);
+        assert!(app.is_busy());
+        run_until_idle(&mut app, &ctx);
+    }
+
+    #[test]
+    fn a_startup_apply_with_nothing_pending_starts_nothing() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_startup_app(&fx, &ctx);
+        app.start_startup_apply(&ctx);
+        assert!(!app.is_busy());
+    }
+
+    #[test]
+    fn a_panicking_startup_job_is_logged_and_reloads_the_store() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_startup_app(&fx, &ctx);
+        app.startup_store_error = Some(corrupt("startup-backups.json", "sentinel"));
+        app.startup_pending.insert("run:app".into(), false);
+        app.job = Some(RunningJob::Startup {
+            job: BackgroundJob::spawn(
+                "Applying startup changes",
+                || {},
+                |_| -> StartupOutcome { panic!("boom") },
+            ),
+            restore: false,
+        });
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(app.startup_store_error, None);
+        assert_eq!(app.startup_pending.len(), 1);
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Startup apps", "Apply")
+        );
+        assert!(app.last_notice().contains("failed unexpectedly"));
+    }
+
     #[test]
     fn every_job_title_key_exists_in_english() {
         let tr = crate::i18n::Tr::english();
@@ -995,6 +1279,10 @@ mod tests {
             "job.restore_menu",
             "job.name.apply_menu",
             "job.name.restore_menu",
+            "job.apply_startup",
+            "job.restore_startup",
+            "job.name.apply_startup",
+            "job.name.restore_startup",
         ] {
             assert_ne!(tr.t(key), key);
         }

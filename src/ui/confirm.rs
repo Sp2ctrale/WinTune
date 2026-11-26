@@ -30,6 +30,9 @@ pub(super) enum ConfirmAction {
     /// Applies the context menu list and pending changes, once the side
     /// effects of the hides were read.
     ApplyMenu,
+    /// Startup switch slot ids whose original must be put back.
+    #[allow(dead_code)] // The Startup apps page (next task) uses it; remove then.
+    RestoreStartup(Vec<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -118,6 +121,33 @@ impl WinTuneApp {
         });
     }
 
+    /// Asks before putting startup switches (slot ids) back to what they
+    /// were before WinTune changed them.
+    #[allow(dead_code)] // The Startup apps page (next task) uses it; remove then.
+    pub(super) fn request_restore_startup(&mut self, ids: Vec<String>) {
+        if ids.is_empty() {
+            return;
+        }
+        let tr = self.tr;
+        let mut names: Vec<String> = Vec::new();
+        for name in ids.iter().map(|id| self.startup_slot_name(id)) {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        let named = if names.len() > MAX_NAMED {
+            tr.t_args("startup.restore_many", &[&names.len()])
+        } else {
+            names.join(", ")
+        };
+        self.pending_confirm = Some(Confirm {
+            title: tr.t("startup.restore_title"),
+            message: tr.t_args("startup.restore_message", &[&named]),
+            confirm_label: tr.t("confirm.restore"),
+            action: ConfirmAction::RestoreStartup(ids),
+        });
+    }
+
     /// Asks before an Apply whose hides do more than remove a menu item:
     /// one line per side effect.
     pub(super) fn request_apply_menu(&mut self, warnings: &[String]) {
@@ -161,6 +191,7 @@ impl WinTuneApp {
             ConfirmAction::RestoreMenuKeys(keys) => self.start_menu_restore(ctx, keys),
             ConfirmAction::RemoveMenuEntry { id } => self.remove_menu_entry(&id),
             ConfirmAction::ApplyMenu => self.run_menu_apply(ctx),
+            ConfirmAction::RestoreStartup(ids) => self.start_startup_restore(ctx, ids),
         }
     }
 
@@ -455,6 +486,71 @@ mod tests {
         assert!(app.pending_confirm.is_none());
         assert!(app.is_busy());
         run_until_idle(&mut app, &ctx);
+    }
+
+    #[test]
+    fn restoring_a_startup_app_asks_first_and_restores() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_run(false, "App", r#""C:\Apps\app.exe""#);
+        let mut app = fx.app(&ctx);
+        app.request_startup_scan();
+        run_until_startup_scanned(&mut app, &ctx);
+        app.startup_pending.insert("run:app".into(), false);
+        app.start_startup_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        assert!(fx.user_switch("App").is_some(), "{}", app.last_notice());
+
+        let id = crate::startup::Approved::Run.slot("App").id();
+        app.request_restore_startup(vec![id.clone()]);
+        let confirm = app.pending_confirm.as_ref().expect("asks first");
+        assert_eq!(confirm.action, ConfirmAction::RestoreStartup(vec![id]));
+        assert!(confirm.message.contains("App"), "{}", confirm.message);
+        assert!(!app.is_busy(), "restored without confirmation");
+
+        app.resolve_confirm(&ctx, true);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+
+        assert_eq!(fx.user_switch("App"), None);
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Startup apps", "Restore")
+        );
+    }
+
+    #[test]
+    fn a_startup_restore_names_at_most_three_apps() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        let slots = |names: &[&str]| -> Vec<String> {
+            names
+                .iter()
+                .map(|n| crate::startup::Approved::Run.slot(n).id())
+                .collect()
+        };
+        app.request_restore_startup(slots(&["A", "B"]));
+        assert!(app
+            .pending_confirm
+            .as_ref()
+            .unwrap()
+            .message
+            .contains("A, B"));
+        app.request_restore_startup(slots(&["A", "B", "C", "D"]));
+        assert!(
+            app.pending_confirm
+                .as_ref()
+                .unwrap()
+                .message
+                .contains("4 apps"),
+            "{}",
+            app.pending_confirm.as_ref().unwrap().message
+        );
+        app.pending_confirm = None;
+        app.request_restore_startup(Vec::new());
+        assert!(app.pending_confirm.is_none());
     }
 
     #[test]

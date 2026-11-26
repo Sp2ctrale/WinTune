@@ -1301,4 +1301,73 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="menu.rename_ok" xml:space="preserve">
     <value>Rename</value>
   </data>
+  <data name="job.apply_startup" xml:space="preserve">
+    <value>Applying startup changes…</value>
+  </data>
+  <data name="job.restore_startup" xml:space="preserve">
+    <value>Restoring startup apps…</value>
+  </data>
+  <data name="job.name.apply_startup" xml:space="preserve">
+    <value>Applying startup changes</value>
+  </data>
+  <data name="job.name.restore_startup" xml:space="preserve">
+    <value>Restoring startup apps</value>
+  </data>
+  <data name="report.applied_startup" xml:space="preserve">
+    <value>{0} startup change(s) applied</value>
+  </data>
+  <data name="report.restored_startup" xml:space="preserve">
+    <value>{0} startup app(s) restored</value>
+  </data>
+  <data name="history.module.startup" xml:space="preserve">
+    <value>Startup apps</value>
+  </data>
+  <data name="startup.scan_failed" xml:space="preserve">
+    <value>Could not read the startup apps: {0}</value>
+  </data>
+  <data name="startup.restore_title" xml:space="preserve">
+    <value>Restore original startup settings?</value>
+  </data>
+  <data name="startup.restore_message" xml:space="preserve">
+    <value>{0} will get back the on/off state they had before WinTune changed them.</value>
+  </data>
+  <data name="startup.restore_many" xml:space="preserve">
+    <value>{0} apps</value>
+  </data>
+  <data name="startup.state.on" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="startup.state.off" xml:space="preserve">
+    <value>Turned off by WinTune</value>
+  </data>
+  <data name="startup.state.off_elsewhere" xml:space="preserve">
+    <value>Turned off by another program</value>
+  </data>
+  <data name="startup.locked.unreadable" xml:space="preserve">
+    <value>Cannot read this app's switch: {0}</value>
+  </data>
+  <data name="startup.locked.unknown" xml:space="preserve">
+    <value>Its switch is stored in a way WinTune does not know, so WinTune leaves it alone.</value>
+  </data>
+  <data name="startup.locked.machine" xml:space="preserve">
+    <value>Turned off for every account on this PC. WinTune changes only your account.</value>
+  </data>
+  <data name="startup.locked.all_users" xml:space="preserve">
+    <value>Turned on for every account. WinTune cannot turn it off for your account alone yet.</value>
+  </data>
+  <data name="startup.source.user_run" xml:space="preserve">
+    <value>Run key (you)</value>
+  </data>
+  <data name="startup.source.machine_run" xml:space="preserve">
+    <value>Run key (every account)</value>
+  </data>
+  <data name="startup.source.machine_run32" xml:space="preserve">
+    <value>Run key, 32-bit (every account)</value>
+  </data>
+  <data name="startup.source.user_folder" xml:space="preserve">
+    <value>Startup folder (you)</value>
+  </data>
+  <data name="startup.source.common_folder" xml:space="preserve">
+    <value>Startup folder (every account)</value>
+  </data>
 </root>

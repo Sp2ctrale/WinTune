@@ -375,6 +375,58 @@ fn every_context_menu_message_translates_in_every_shipped_language() {
 }
 
 #[test]
+fn every_startup_message_translates_in_every_shipped_language() {
+    use super::messages::{history_module, startup_lock, startup_source, startup_state};
+    use crate::startup::{Source, StartupLock, StartupState};
+
+    let en = Tr::english();
+    for (code, _) in Tr::languages() {
+        let tr = Tr::new(code);
+        let mut texts: Vec<String> = [
+            StartupState::On,
+            StartupState::Off,
+            StartupState::OffElsewhere,
+        ]
+        .map(|s| startup_state(tr, s))
+        .into();
+        for lock in [
+            StartupLock::UnknownShape,
+            StartupLock::OffForEveryone,
+            StartupLock::AllUsersOnly,
+        ] {
+            texts.push(startup_lock(tr, &lock));
+        }
+        let unreadable = startup_lock(tr, &StartupLock::Unreadable("X".into()));
+        assert!(unreadable.contains('X'), "{code}: {unreadable:?}");
+        texts.push(unreadable);
+        texts.extend(Source::ALL.map(|s| startup_source(tr, s)));
+        // An unmapped label passes through unchanged, so compare with the key.
+        let module = history_module(tr, "Startup apps");
+        assert_eq!(module, tr.t("history.module.startup"), "{code}");
+        assert_ne!(module, "history.module.startup", "{code}");
+        texts.push(module);
+
+        let unique: BTreeSet<&String> = texts.iter().collect();
+        assert_eq!(unique.len(), texts.len(), "{code}: duplicates in {texts:?}");
+        for text in &texts {
+            assert!(!text.is_empty() && !text.contains('{'), "{code}: {text:?}");
+            assert!(
+                !text.starts_with("startup.") && !text.starts_with("history."),
+                "{code}: looks like a bare key: {text:?}"
+            );
+        }
+    }
+    assert_eq!(
+        startup_state(en, StartupState::Off),
+        "Turned off by WinTune"
+    );
+    assert_eq!(
+        history_module(Tr::new("fr"), "Startup apps"),
+        "Applications au d\u{e9}marrage"
+    );
+}
+
+#[test]
 fn every_key_used_in_the_code_exists_in_english() {
     let en = keys_of("en").expect("English catalog");
     let re = regex::Regex::new(r#"\.t(?:_args)?\(\s*"([A-Za-z0-9_.]+)""#).unwrap();

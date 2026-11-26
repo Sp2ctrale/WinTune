@@ -7,6 +7,7 @@ use super::Tr;
 use crate::associations::{DriftField, DriftReason, RuleProblem};
 use crate::context_menu::{EntryProblem, EntryStatus, ExistingState, Locked, Place, RenameProblem};
 use crate::persist::LoadError;
+use crate::startup::{Source, StartupLock, StartupState};
 use crate::tweaks::{CustomReason, TweakGroup};
 
 pub fn rule_problem(tr: Tr, p: &RuleProblem) -> String {
@@ -74,6 +75,36 @@ pub fn locked(tr: Tr, l: &Locked) -> String {
     match l {
         Locked::MachineWide => tr.t("menu.locked.machine"),
         Locked::Unreadable(detail) => tr.t_args("menu.locked.unreadable", &[detail]),
+    }
+}
+
+/// The state of a startup app.
+pub fn startup_state(tr: Tr, s: StartupState) -> String {
+    match s {
+        StartupState::On => tr.t("startup.state.on"),
+        StartupState::Off => tr.t("startup.state.off"),
+        StartupState::OffElsewhere => tr.t("startup.state.off_elsewhere"),
+    }
+}
+
+/// Why WinTune cannot change a startup app.
+pub fn startup_lock(tr: Tr, l: &StartupLock) -> String {
+    match l {
+        StartupLock::Unreadable(detail) => tr.t_args("startup.locked.unreadable", &[detail]),
+        StartupLock::UnknownShape => tr.t("startup.locked.unknown"),
+        StartupLock::OffForEveryone => tr.t("startup.locked.machine"),
+        StartupLock::AllUsersOnly => tr.t("startup.locked.all_users"),
+    }
+}
+
+/// Where a startup app comes from.
+pub fn startup_source(tr: Tr, s: Source) -> String {
+    match s {
+        Source::UserRun => tr.t("startup.source.user_run"),
+        Source::MachineRun => tr.t("startup.source.machine_run"),
+        Source::MachineRun32 => tr.t("startup.source.machine_run32"),
+        Source::UserFolder => tr.t("startup.source.user_folder"),
+        Source::CommonFolder => tr.t("startup.source.common_folder"),
     }
 }
 
@@ -164,6 +195,7 @@ pub fn history_module(tr: Tr, stored: &str) -> String {
         "Explorer & Taskbar" => tr.t("history.module.explorer"),
         "Start & Privacy" => tr.t("history.module.start"),
         "Context menu" => tr.t("history.module.context_menu"),
+        "Startup apps" => tr.t("history.module.startup"),
         other => other.to_string(),
     }
 }

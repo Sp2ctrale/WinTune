@@ -12,6 +12,7 @@ pub mod i18n;
 pub mod models;
 pub mod persist;
 pub mod regsnap;
+pub mod startup;
 pub mod tasks;
 pub mod tweaks;
 pub mod ui;

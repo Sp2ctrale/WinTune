@@ -3,10 +3,27 @@
 //! user accepts it in the dialog.
 
 use super::{kit, WinTuneApp};
+use crate::i18n::Tr;
 use eframe::egui;
 
 /// Entry names listed in the restore question before it gives a count.
 const MAX_NAMED: usize = 3;
+
+/// The distinct `names` joined by commas, or a count (`many_key`, "{0}
+/// apps") past `MAX_NAMED`.
+fn named_list(tr: Tr, names: impl Iterator<Item = String>, many_key: &str) -> String {
+    let mut distinct: Vec<String> = Vec::new();
+    for name in names {
+        if !distinct.contains(&name) {
+            distinct.push(name);
+        }
+    }
+    if distinct.len() > MAX_NAMED {
+        tr.t_args(many_key, &[&distinct.len()])
+    } else {
+        distinct.join(", ")
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum ConfirmAction {
@@ -102,17 +119,11 @@ impl WinTuneApp {
             return;
         }
         let tr = self.tr;
-        let mut names: Vec<String> = Vec::new();
-        for name in keys.iter().map(|k| self.menu_key_title(k)) {
-            if !names.contains(&name) {
-                names.push(name);
-            }
-        }
-        let named = if names.len() > MAX_NAMED {
-            tr.t_args("menu.restore_many", &[&names.len()])
-        } else {
-            names.join(", ")
-        };
+        let named = named_list(
+            tr,
+            keys.iter().map(|k| self.menu_key_title(k)),
+            "menu.restore_many",
+        );
         self.pending_confirm = Some(Confirm {
             title: tr.t("menu.restore_title"),
             message: tr.t_args("menu.restore_message", &[&named]),
@@ -129,17 +140,11 @@ impl WinTuneApp {
             return;
         }
         let tr = self.tr;
-        let mut names: Vec<String> = Vec::new();
-        for name in ids.iter().map(|id| self.startup_slot_name(id)) {
-            if !names.contains(&name) {
-                names.push(name);
-            }
-        }
-        let named = if names.len() > MAX_NAMED {
-            tr.t_args("startup.restore_many", &[&names.len()])
-        } else {
-            names.join(", ")
-        };
+        let named = named_list(
+            tr,
+            ids.iter().map(|id| self.startup_slot_name(id)),
+            "startup.restore_many",
+        );
         self.pending_confirm = Some(Confirm {
             title: tr.t("startup.restore_title"),
             message: tr.t_args("startup.restore_message", &[&named]),

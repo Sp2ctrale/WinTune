@@ -28,6 +28,9 @@ windows-sys = { version = "0.59", features = [
     "Win32_Graphics_Dwm",
     "Win32_UI_Controls",
     "Win32_Storage_FileSystem",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_RemoteDesktop",
+    "Win32_Security_Authentication_Identity",
 ] }
 raw-window-handle = "0.6"
 image = { version = "0.25", default-features = false, features = ["ico", "png", "bmp"] }

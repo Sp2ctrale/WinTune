@@ -5,6 +5,8 @@
 //! live there, but only the system call changes them (it also notifies
 //! running programs); the registry is read for the `.reg` backup only.
 
+mod backend;
 mod catalog;
 
+pub use backend::*;
 pub use catalog::*;

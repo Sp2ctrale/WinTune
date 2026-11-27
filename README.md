@@ -237,8 +237,8 @@ three sections.
 
 - **Your Path.** The user `Path` as a list, one row per entry, as written
   (`%USERPROFILE%\...` stays unexpanded; hover a row to see it expanded). Each
-  row has a `...` menu with Move up, Move down, Edit and Remove, and an **Add a
-  folder** field with a Browse button. A **Folder not found** pill marks an
+  row has a `...` menu with Move up, Move down, Edit and Remove, and a folder
+  field with a Browse button and an **Add to Path** button. A **Folder not found** pill marks an
   entry whose local folder is missing, and a **Duplicate** pill marks a later
   copy of a folder already listed earlier in your `Path` or anywhere in the
   system `Path` (case and a trailing backslash are ignored). **Remove missing
@@ -262,6 +262,13 @@ Ctrl+F filters both sections by name, value or entry.
   characters, or a `Path` another program changed since you started editing). A
   plain add or edit applies at once, since History can undo it. If anything is
   refused or fails, the changes stay pending.
+- **A `Path` changed behind the page is never overwritten blindly.** Apply
+  checks that the registry still holds the `Path` the page read (and its
+  question was based on). If another program changed it in the meantime, for
+  example an installer that added its folder, WinTune refuses the whole Apply
+  and writes nothing. The page then reads `Path` again, and the next Apply asks
+  first: it says another program changed `Path` and names the folders your
+  list would remove.
 - **Types and references are kept.** WinTune writes the registry directly, so
   an entry with `%VAR%` stays unexpanded and a value keeps its type
   (`REG_SZ` or `REG_EXPAND_SZ`). A `REG_SZ` value whose new text holds a

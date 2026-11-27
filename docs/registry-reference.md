@@ -501,6 +501,13 @@ Validation (any problem refuses the whole Apply, with nothing written):
 - A variable changed more than once in one Apply, a text change to a variable
   that is not text, and a change to a variable that vanished since the last
   scan (`Gone`) are refused.
+- An Apply that writes `Path` is refused when `HKCU\Environment`'s `Path` is
+  no longer the one the page read, type and text compared, absent included
+  (`ChangedSinceScan`). The pending list and its confirmation were computed
+  from that read, so writing would drop, without naming it, a folder another
+  program added since. The page reads `Path` again after the refused Apply,
+  and the next Apply asks first, with the warning below and the folders that
+  would be removed.
 
 Warnings (asked in a confirmation before Apply, never a refusal): deleting or
 renaming `Path`, `TEMP`, `TMP` or a variable whose name starts with `OneDrive`;
@@ -578,6 +585,12 @@ variable name such as `WINTUNE_TEST`.
   Result: ______
 - [ ] 5. Delete the test variable in WinTune and Apply. It is gone in a new
   terminal. Result: ______
+- [ ] 6. Edit `Path` in WinTune (move an entry) without applying. Then add a
+  folder through Windows' Environment Variables dialog, and press Apply in
+  WinTune without leaving the page. WinTune refuses and writes nothing (the
+  folder is still in Windows' dialog). After the rescan, Apply again: the
+  confirmation says another program changed `Path` and names the new folder
+  among those that would be removed. Result: ______
 
 Record anything that differs, with the step and the Windows version, before
 merging.

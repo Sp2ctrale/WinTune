@@ -225,7 +225,9 @@ HKCU only. `HKLM`, `Run` values and Startup folder files are never touched.
 
 - **Target** (`mod.rs`): `EnvTarget` carries a `user` and a `machine`
   `RegTarget`. Only `user` is ever written; `machine` (HKLM) is read, and
-  `Volatile Environment` is named by a constant only for a guard test. Each
+  `Volatile Environment` is named by a constant only for tests: the guards
+  that it stays untouched, and the drift test that the registry reference
+  names it. Each
   variable is one `Slot::Value { path: "Environment", name }`; its id is the
   join key between row, pending change, store and History.
 - **Pure parts** (`path.rs`, `rules.rs`): no registry, no disk. `path.rs`
@@ -255,8 +257,11 @@ HKCU only. `HKLM`, `Run` values and Startup folder files are never touched.
   nothing written: a bad name or value, a name taken (ignoring case, after the
   change), a change to a variable that vanished (`Gone`) or is not text
   (`NotText`), and a variable changed twice (`Twice`; a name freed by a delete
-  cannot be reused in the same Apply). Warnings are not refusals: the page asks
-  for a confirmation.
+  cannot be reused in the same Apply). A batch that writes `Path` also carries
+  a `PathBasis`, the raw `Path` (type and text, or absent) the batch and its
+  confirmation were computed from; if the registry's `Path` differs, the
+  whole Apply is refused (`ChangedSinceScan`). Warnings are not refusals: the
+  page asks for a confirmation.
 - **Apply** (`engine.rs`, `apply_environment`): like `apply_startup`. Validate
   against the registry as it is now; snapshot each slot on first touch
   (`take_snapshot`, `record_first`), under the spelling stored in the registry;
@@ -294,9 +299,14 @@ HKCU only. `HKLM`, `Run` values and Startup folder files are never touched.
   Apply asks first only when it deletes a variable, removes a `Path` entry or
   carries a warning (deleting or renaming `Path`, `TEMP`, `TMP`, `OneDrive*`;
   a merged `Path` over 8,191 UTF-16 units; `Path` changed by another program
-  since the edit started). The confirmation lives in `ui/confirm.rs`. Restore
-  asks always, adds the rename partners, and for `Path` names the entries it
-  removes and adds back (`removed_entries` on the entries as written). A
+  since the edit started). The confirmation lives in `ui/confirm.rs`; it
+  carries the `PathBasis` of the scan it was computed from into
+  `run_env_apply`, so a `Path` that changed before the answer is refused, and
+  the rescan after the job makes the next Apply ask with the folders that
+  would go. Restore asks always, adds the rename partners, and for `Path`
+  names the entries it removes and adds back (`removed_entries` on the entries
+  as written); once done, it drops the pending edits of the variables it
+  restored, so Apply cannot undo it. A
   refused or partial Apply keeps the pending changes. An unreadable
   `HKCU\Environment` shows a banner in place of the sections. Engine reasons
   are enums (`EnvProblem`, `EnvWarning`) translated in `i18n/messages.rs`.

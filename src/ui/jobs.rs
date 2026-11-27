@@ -1409,12 +1409,13 @@ mod tests {
             .create_subkey(fx.hkcu(&crate::startup::Approved::Run.key()))
             .unwrap();
         k.set_value("App", &3u32).unwrap();
-        // An id the scan does not list is never pruned: it shows that the
-        // refusal did not clear the choices.
+        // A second choice shows that the refusal did not clear the choices.
         app.startup_pending.insert("run:ghost".into(), false);
 
         app.start_startup_apply(&ctx);
-        run_until_idle(&mut app, &ctx);
+        // Collect the job only: the follow-up scan prunes every pending id
+        // it no longer lists (such as the ghost), which would race this check.
+        finish_job_without_scanning(&mut app);
 
         assert!(app.last_notice().contains("error"), "{}", app.last_notice());
         assert!(app.startup_pending.contains_key("run:ghost"));

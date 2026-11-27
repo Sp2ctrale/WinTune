@@ -1851,4 +1851,73 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="mk.failure.store" xml:space="preserve">
     <value>Le changement est fait, mais les valeurs d'origine n'ont pas pu être mises à jour : {0}</value>
   </data>
+  <data name="nav.mouse_keyboard" xml:space="preserve">
+    <value>Souris et clavier</value>
+  </data>
+  <data name="mk.subtitle" xml:space="preserve">
+    <value>Pointeur, boutons, molette et clavier, chaque réglage avec une annulation.</value>
+  </data>
+  <data name="mk.note" xml:space="preserve">
+    <value>Les changements s'appliquent à tous les programmes quand vous cliquez sur Appliquer, et sont conservés quand vous fermez la session. Certains programmes ne lisent le réglage de la molette qu'à leur démarrage.</value>
+  </data>
+  <data name="mk.search" xml:space="preserve">
+    <value>Rechercher un réglage</value>
+  </data>
+  <data name="mk.scanning" xml:space="preserve">
+    <value>Lecture de vos réglages…</value>
+  </data>
+  <data name="mk.no_match" xml:space="preserve">
+    <value>Aucun réglage ne correspond à votre recherche.</value>
+  </data>
+  <data name="mk.pill.not_applied" xml:space="preserve">
+    <value>Non appliqué</value>
+  </data>
+  <data name="mk.windows_default" xml:space="preserve">
+    <value>Valeur par défaut de Windows</value>
+  </data>
+  <data name="mk.default_shown" xml:space="preserve">
+    <value>C'est déjà la valeur par défaut de Windows.</value>
+  </data>
+  <data name="mk.click_lock_off" xml:space="preserve">
+    <value>Activez d'abord le verrouillage du clic.</value>
+  </data>
+  <data name="mk.trails_off" xml:space="preserve">
+    <value>Activez d'abord les traînées du pointeur.</value>
+  </data>
+  <data name="mk.wheel.lines" xml:space="preserve">
+    <value>Lignes</value>
+  </data>
+  <data name="mk.click_test.title" xml:space="preserve">
+    <value>Test du double-clic</value>
+  </data>
+  <data name="mk.click_test.desc" xml:space="preserve">
+    <value>Utilise la vitesse du curseur, appliquée ou non.</value>
+  </data>
+  <data name="mk.click_test.target" xml:space="preserve">
+    <value>Double-cliquez ici pour tester</value>
+  </data>
+  <data name="mk.click_test.ok" xml:space="preserve">
+    <value>Double-clic détecté</value>
+  </data>
+  <data name="mk.key_test.title" xml:space="preserve">
+    <value>Test de la répétition</value>
+  </data>
+  <data name="mk.key_test.note" xml:space="preserve">
+    <value>Utilise les réglages appliqués</value>
+  </data>
+  <data name="mk.key_test.hint" xml:space="preserve">
+    <value>Tapez ici pour tester la répétition</value>
+  </data>
+  <data name="mk.filter_keys" xml:space="preserve">
+    <value>Les touches filtres sont activées : Windows peut utiliser ses propres réglages de répétition. Désactivez-les dans Paramètres &gt; Accessibilité &gt; Clavier.</value>
+  </data>
+  <data name="mk.pending" xml:space="preserve">
+    <value>{0} changement(s) non appliqué(s)</value>
+  </data>
+  <data name="mk.up_to_date" xml:space="preserve">
+    <value>Tous les changements sont appliqués</value>
+  </data>
+  <data name="mk.nothing_to_apply" xml:space="preserve">
+    <value>Rien à appliquer</value>
+  </data>
 </root>

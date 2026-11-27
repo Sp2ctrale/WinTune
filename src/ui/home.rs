@@ -140,6 +140,7 @@ impl WinTuneApp {
             ActiveTab::StartPrivacy => tr.t("nav.start"),
             ActiveTab::Startup => tr.t("nav.startup"),
             ActiveTab::Environment => tr.t("nav.environment"),
+            ActiveTab::MouseKeyboard => tr.t("nav.mouse_keyboard"),
             _ => tr.t("nav.context_menu"),
         };
         let history = &self.history;

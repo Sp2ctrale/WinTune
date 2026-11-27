@@ -1852,4 +1852,73 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="mk.failure.store" xml:space="preserve">
     <value>The change was made, but the saved originals could not be updated: {0}</value>
   </data>
+  <data name="nav.mouse_keyboard" xml:space="preserve">
+    <value>Mouse &amp; keyboard</value>
+  </data>
+  <data name="mk.subtitle" xml:space="preserve">
+    <value>Pointer, buttons, wheel and keyboard settings, each with an undo.</value>
+  </data>
+  <data name="mk.note" xml:space="preserve">
+    <value>Changes apply to every program when you press Apply, and are kept when you sign out. Some programs read the wheel setting only when they start.</value>
+  </data>
+  <data name="mk.search" xml:space="preserve">
+    <value>Search settings</value>
+  </data>
+  <data name="mk.scanning" xml:space="preserve">
+    <value>Reading your settings…</value>
+  </data>
+  <data name="mk.no_match" xml:space="preserve">
+    <value>No setting matches your search.</value>
+  </data>
+  <data name="mk.pill.not_applied" xml:space="preserve">
+    <value>Not applied</value>
+  </data>
+  <data name="mk.windows_default" xml:space="preserve">
+    <value>Windows default</value>
+  </data>
+  <data name="mk.default_shown" xml:space="preserve">
+    <value>This is already the Windows default.</value>
+  </data>
+  <data name="mk.click_lock_off" xml:space="preserve">
+    <value>Turn on ClickLock first.</value>
+  </data>
+  <data name="mk.trails_off" xml:space="preserve">
+    <value>Turn on pointer trails first.</value>
+  </data>
+  <data name="mk.wheel.lines" xml:space="preserve">
+    <value>Lines</value>
+  </data>
+  <data name="mk.click_test.title" xml:space="preserve">
+    <value>Double-click test</value>
+  </data>
+  <data name="mk.click_test.desc" xml:space="preserve">
+    <value>Uses the speed on the slider, applied or not.</value>
+  </data>
+  <data name="mk.click_test.target" xml:space="preserve">
+    <value>Double-click here to test</value>
+  </data>
+  <data name="mk.click_test.ok" xml:space="preserve">
+    <value>Double-click detected</value>
+  </data>
+  <data name="mk.key_test.title" xml:space="preserve">
+    <value>Key repeat test</value>
+  </data>
+  <data name="mk.key_test.note" xml:space="preserve">
+    <value>Uses the applied settings</value>
+  </data>
+  <data name="mk.key_test.hint" xml:space="preserve">
+    <value>Type here to test key repeat</value>
+  </data>
+  <data name="mk.filter_keys" xml:space="preserve">
+    <value>Filter Keys is on, so Windows may use its own repeat settings. Turn it off in Settings &gt; Accessibility &gt; Keyboard.</value>
+  </data>
+  <data name="mk.pending" xml:space="preserve">
+    <value>{0} changes not applied</value>
+  </data>
+  <data name="mk.up_to_date" xml:space="preserve">
+    <value>All changes applied</value>
+  </data>
+  <data name="mk.nothing_to_apply" xml:space="preserve">
+    <value>Nothing to apply</value>
+  </data>
 </root>

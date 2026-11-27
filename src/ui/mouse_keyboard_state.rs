@@ -74,8 +74,6 @@ impl WinTuneApp {
     }
 
     /// The value this user had before WinTune first changed `id`.
-    // Used by the page (Task 5), which removes this allow.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn mk_original(&self, id: SettingId) -> Option<SettingValue> {
         self.mk_store
             .original(&self.env.user_label, id.key())
@@ -85,8 +83,6 @@ impl WinTuneApp {
     /// The value the page shows: the pending one (a pending toggle previewed
     /// as Apply would resolve it now), else the live one. `None` before the
     /// first scan and for a setting Windows could not read.
-    // Used by the page (Task 5), which removes this allow.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn mk_display(&self, id: SettingId) -> Option<SettingValue> {
         let live = self.mk_scan.as_ref()?.live(id)?;
         match self.mk_pending.get(&id) {
@@ -100,8 +96,6 @@ impl WinTuneApp {
     }
 
     /// Records a choice; one the live value already matches is dropped.
-    // Used by the page (Task 5), which removes this allow.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn set_mk_wanted(&mut self, id: SettingId, wanted: Wanted) {
         let live = self.mk_scan.as_ref().and_then(|s| s.live(id));
         if live.is_some_and(|live| wanted_matches(id, &wanted, &live)) {
@@ -128,23 +122,17 @@ impl WinTuneApp {
             .collect()
     }
 
-    // Used by the page (Task 5), which removes this allow.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn mk_pending_count(&self) -> usize {
         self.mk_changes().len()
     }
 
     /// "Discard": forgets the pending choices.
-    // Used by the page (Task 5), which removes this allow.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn discard_mk_changes(&mut self) {
         self.mk_pending.clear();
     }
 
     /// How the UI names a saved setting (as in History's saved originals):
     /// its title, else the raw key of a setting this version does not know.
-    // Used by the page and History (Tasks 5-6), which remove this allow.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn mk_slot_name(&self, key: &str) -> String {
         match SettingId::from_key(key) {
             Some(id) => messages::mk_title(self.tr, id),

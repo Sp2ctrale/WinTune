@@ -893,8 +893,6 @@ impl WinTuneApp {
     /// Writes the pending choices in one background job. A batch that swaps
     /// the mouse buttons (either way) asks first; otherwise History can undo
     /// it.
-    // Used by the page (Task 5), which removes this allow.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn start_mk_apply(&mut self, ctx: &egui::Context) {
         if self.refuse_if_busy() {
             return;

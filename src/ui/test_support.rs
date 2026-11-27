@@ -641,9 +641,22 @@ pub(super) fn row_widget(
     id: &str,
     size: egui::Vec2,
 ) -> Option<egui::Pos2> {
-    let out = frame(app, ctx, tall_input(vec![]));
     let description = crate::i18n::messages::tweak_description(app.tr, id);
-    let at = text_center(&out, &description).unwrap_or_else(|| panic!("row {id} not drawn"));
+    widget_right_of(app, ctx, &description, size)
+}
+
+/// Center of the widget of exactly `size` right of the drawn row text
+/// `text` (a title or a description), on the same row, or `None` when the
+/// row has none. Panics when `text` is not drawn.
+pub(super) fn widget_right_of(
+    app: &mut WinTuneApp,
+    ctx: &egui::Context,
+    text: &str,
+    size: egui::Vec2,
+) -> Option<egui::Pos2> {
+    let out = frame(app, ctx, tall_input(vec![]));
+    let at = text_center(&out, text)
+        .unwrap_or_else(|| panic!("{text:?} not drawn: {:?}", drawn_texts(&out)));
     ctx.viewport_for(ViewportId::ROOT, |v| {
         v.prev_pass
             .widgets

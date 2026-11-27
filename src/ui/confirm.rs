@@ -266,8 +266,6 @@ impl WinTuneApp {
 
     /// Asks before putting mouse and keyboard settings back to what they were
     /// before WinTune changed them, warning when the buttons swap back.
-    // Used by the page and History (Tasks 5-6), which remove this allow.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn request_restore_mouse_keyboard(&mut self, ids: Vec<String>) {
         if ids.is_empty() {
             return;

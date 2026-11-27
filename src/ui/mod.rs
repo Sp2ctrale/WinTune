@@ -21,6 +21,7 @@ mod jobs;
 pub mod kit;
 mod menu_existing_state;
 mod mouse_keyboard_state;
+mod mouse_keyboard_tab;
 mod originals;
 mod polish;
 #[cfg(test)]
@@ -186,12 +187,13 @@ pub(crate) enum ActiveTab {
     ContextMenu,
     Startup,
     Environment,
+    MouseKeyboard,
 }
 
 impl ActiveTab {
     /// Every page that can be opened, in navigation order (the tests walk it).
     #[cfg(test)]
-    pub(crate) const ALL: [ActiveTab; 10] = [
+    pub(crate) const ALL: [ActiveTab; 11] = [
         ActiveTab::Home,
         ActiveTab::Associations,
         ActiveTab::Tweaks,
@@ -199,6 +201,7 @@ impl ActiveTab {
         ActiveTab::ContextMenu,
         ActiveTab::Startup,
         ActiveTab::Environment,
+        ActiveTab::MouseKeyboard,
         ActiveTab::Gallery,
         ActiveTab::History,
         ActiveTab::Settings,
@@ -214,6 +217,7 @@ impl ActiveTab {
             ActiveTab::ContextMenu => Some("Context menu"),
             ActiveTab::Startup => Some("Startup apps"),
             ActiveTab::Environment => Some("Environment variables"),
+            ActiveTab::MouseKeyboard => Some("Mouse & keyboard"),
             ActiveTab::Home | ActiveTab::Gallery | ActiveTab::History | ActiveTab::Settings => None,
         }
     }
@@ -229,6 +233,7 @@ impl ActiveTab {
                 | ActiveTab::ContextMenu
                 | ActiveTab::Startup
                 | ActiveTab::Environment
+                | ActiveTab::MouseKeyboard
         )
     }
 }
@@ -357,9 +362,11 @@ pub struct WinTuneApp {
     /// Choices not applied yet, by setting.
     mk_pending: BTreeMap<SettingId, Wanted>,
     /// Filter typed in the Mouse & keyboard page (titles).
-    // Read by the page (Task 5), which removes this allow.
-    #[allow(dead_code)]
     mk_search: String,
+    /// The double-click test target of the Mouse & keyboard page.
+    mk_click_test: mouse_keyboard_tab::ClickTest,
+    /// The text typed in the key repeat test field.
+    mk_key_test: String,
     tr: Tr,
     /// The theme actually shown this frame (Light or Dark, never System):
     /// what the old palette helpers receive.
@@ -493,6 +500,8 @@ impl WinTuneApp {
             mk_scan_needed: false,
             mk_pending: BTreeMap::new(),
             mk_search: String::new(),
+            mk_click_test: Default::default(),
+            mk_key_test: String::new(),
             tr,
             ui_theme,
             focus_search: false,
@@ -543,6 +552,7 @@ impl WinTuneApp {
             ActiveTab::ContextMenu => self.show_context_menu_tab(ctx),
             ActiveTab::Startup => self.show_startup_tab(ctx),
             ActiveTab::Environment => self.show_environment_tab(ctx),
+            ActiveTab::MouseKeyboard => self.show_mouse_keyboard_tab(ctx),
         }
 
         self.toasts.show(ctx, &self.tr.t("toast.clear_all"));

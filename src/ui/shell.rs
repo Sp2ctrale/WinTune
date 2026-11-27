@@ -1724,7 +1724,7 @@ mod tests {
             app.tr.t("nav.environment"),
             app.tr.t_args("home.environment_status", &[&vars, &folders]),
             app.tr.t("nav.mouse_keyboard"),
-            app.tr.t_args("home.mouse_keyboard_status", &[&1]),
+            app.tr.t_args("home.mouse_keyboard_status_one", &[&1]),
         ] {
             assert!(
                 home.contains(&drawn),

@@ -1706,10 +1706,10 @@ Restoring the original puts the choice back, but Windows protects it with a hash
     <value>Restore original settings?</value>
   </data>
   <data name="mk.restore_message" xml:space="preserve">
-    <value>{0} will get back the value they had before WinTune changed them.</value>
+    <value>{0}: the values from before WinTune changed them will be restored.</value>
   </data>
   <data name="mk.restore_message_one" xml:space="preserve">
-    <value>{0} will get back the value it had before WinTune changed it.</value>
+    <value>{0}: the value from before WinTune changed it will be restored.</value>
   </data>
   <data name="mk.restore_many" xml:space="preserve">
     <value>{0} settings</value>
@@ -1926,5 +1926,8 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   </data>
   <data name="home.mouse_keyboard_status" xml:space="preserve">
     <value>{0} settings changed by WinTune</value>
+  </data>
+  <data name="home.mouse_keyboard_status_one" xml:space="preserve">
+    <value>{0} setting changed by WinTune</value>
   </data>
 </root>

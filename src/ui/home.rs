@@ -118,7 +118,14 @@ impl WinTuneApp {
             ModuleSummary {
                 page: ActiveTab::MouseKeyboard,
                 icon: kit::Icon::Mouse,
-                status: tr.t_args("home.mouse_keyboard_status", &[&mk_saved]),
+                status: tr.t_args(
+                    if mk_saved == 1 {
+                        "home.mouse_keyboard_status_one"
+                    } else {
+                        "home.mouse_keyboard_status"
+                    },
+                    &[&mk_saved],
+                ),
                 drift: 0,
             },
         ]
@@ -520,6 +527,16 @@ mod tests {
             app.mk_store
                 .record_first("TEST\\user", key, "2026-01-02 03:04:05", Number(1));
         }
+        app.mk_store.forget("TEST\\user", "swap_buttons");
+        let one = app.tr.t_args("home.mouse_keyboard_status_one", &[&1]);
+        assert_eq!(one, "1 setting changed by WinTune");
+        assert_eq!(status_of(&app, ActiveTab::MouseKeyboard), (one, 0));
+        app.mk_store.record_first(
+            "TEST\\user",
+            "swap_buttons",
+            "2026-01-02 03:04:05",
+            Number(1),
+        );
         let expected = app.tr.t_args("home.mouse_keyboard_status", &[&2]);
         assert_eq!(expected, "2 settings changed by WinTune");
         assert_eq!(

@@ -1705,10 +1705,10 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
     <value>Restaurer les réglages d'origine ?</value>
   </data>
   <data name="mk.restore_message" xml:space="preserve">
-    <value>{0} retrouveront la valeur qu'ils avaient avant que WinTune les modifie.</value>
+    <value>{0} : les valeurs d'avant les changements de WinTune seront rétablies.</value>
   </data>
   <data name="mk.restore_message_one" xml:space="preserve">
-    <value>{0} retrouvera la valeur qu'il avait avant que WinTune le modifie.</value>
+    <value>{0} : la valeur d'avant les changements de WinTune sera rétablie.</value>
   </data>
   <data name="mk.restore_many" xml:space="preserve">
     <value>{0} réglages</value>
@@ -1924,6 +1924,9 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
     <value>Valeur d'origine : {0}, enregistrée le {1}</value>
   </data>
   <data name="home.mouse_keyboard_status" xml:space="preserve">
-    <value>{0} réglage(s) modifié(s) par WinTune</value>
+    <value>{0} réglages modifiés par WinTune</value>
+  </data>
+  <data name="home.mouse_keyboard_status_one" xml:space="preserve">
+    <value>{0} réglage modifié par WinTune</value>
   </data>
 </root>

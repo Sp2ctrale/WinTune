@@ -1,7 +1,7 @@
 # WinTune
 
 WinTune is a Windows 10/11 desktop app for customizing the system. Every change it
-makes can be undone. It has six modules:
+makes can be undone. It has seven modules:
 
 - **File associations**: custom icons, the double-click action (open in your
   editor or run the script), right-click verbs, and Explorer preview metadata.

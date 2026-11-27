@@ -32,7 +32,8 @@ the library, so it can be tested without the GUI and without elevation.
   importing one restores the exact state.
 - **Engines**: `associations`, `tweaks`, `context_menu`, `startup` and `environment`. Each one works on
   an injectable target (`AssocTarget`, `TweakTarget`, `MenuTarget`, `StartupTarget`, `EnvTarget`). Production uses the real hives;
-  tests point the target at `HKCU\Software\WinTuneTest\<unique>`.
+  tests point the target at `HKCU\Software\WinTuneTest\<unique>`. `mouse_keyboard` is the exception: it
+  works on an injectable `InputApi` (the Windows settings API, not the registry), and tests use a fake.
 - **Stores**: small JSON files under `%ProgramData%\Wintune`.
 
 | File | Owner | Rule |
@@ -43,6 +44,7 @@ the library, so it can be tested without the GUI and without elevation.
 | `context-menu-backups.json` | `context_menu` | Same rule as `backups.json`. Snapshots are keyed by user, then by slot id: a key path (a `WinTune.<id>` verb key, or a verb's HKCU copy, snapshotted whole) or a `Blocked` CLSID value. Stores written by the first Context menu release (bare key snapshots) still load |
 | `startup-backups.json` | `startup` | Same rule as `backups.json`. Snapshots are keyed by user, then by slot id: one `StartupApproved` value of HKCU (a value path and name) |
 | `environment-backups.json` | `environment` | Same rule as `backups.json`. Snapshots are keyed by user, then by slot id: one value of HKCU `Environment` (the value path `Environment` and the variable name). Next to `users` it holds `renames`, per user: groups of slot ids (a rename's two slots) restored together. A store without `renames` loads |
+| `mouse-keyboard-backups.json` | `mouse_keyboard` | Same rule as `backups.json`: unreadable blocks Apply and Restore. Snapshots are keyed by user, then by setting id, as `{ timestamp, value }`, where `value` is what the setting's GET returned (`Number`, `Flag` or the precision array). No registry bytes: its type is parallel to `backups::UserBackups`, not that type |
 | `history.jsonl` | `history` | Append-only. A damaged line is skipped, never fatal |
 | `reg-backups\*.reg` | engines | A `.reg` safety net written before each apply |
 
@@ -311,6 +313,59 @@ HKCU only. `HKLM`, `Run` values and Startup folder files are never touched.
   `HKCU\Environment` shows a banner in place of the sections. Engine reasons
   are enums (`EnvProblem`, `EnvWarning`) translated in `i18n/messages.rs`.
 
+## Mouse & keyboard engine
+
+`mouse_keyboard` (`src/mouse_keyboard/`) reads and changes 18 settings of the
+signed-in user through `SystemParametersInfoW`. It never writes under
+`HKCU\Control Panel` (the registry is read for the `.reg` net only), never
+calls `SPI_SETTHREADLOCALINPUTSETTINGS`, and every SET runs on the job worker
+thread.
+
+- **Catalog** (`catalog.rs`): pure. `SettingId` (18 ids, `key()` is the join
+  key between row, pending choice, store and History), `Section` (five),
+  `SettingValue` (`Number`, `Flag` or `Mouse([i32; 3])`), the page ranges and
+  controls, the Windows defaults, and `resolve`/`check_change`, which turn a
+  wanted choice into a value. Precision and scroll-inactive stay a
+  `Wanted::Toggle` until Apply and are resolved from the GET made then.
+- **Backend** (`backend.rs`): the `InputApi` trait (`get`, `set`,
+  `filter_keys_on`). `SpiInput` is the real one: one static `Descriptor` per
+  setting (the GET call, the SET action and its family: value in `uiParam`,
+  value in `pvParam`, or an array in `pvParam`), always with
+  `SPIF_UPDATEINIFILE | SPIF_SENDCHANGE`. `FakeInput` is a map with a call
+  log and switches to fail a GET or SET or to keep another value than the one
+  set. `AppEnv` carries an `Arc<dyn InputApi>`: `SpiInput` only in
+  `AppEnv::system`. One test runs every real GET and never calls `set`.
+  `registry-reference.md` is checked against the descriptors by a drift test
+  (ids, Control Panel keys, SET actions in hex).
+- **Store** (`store.rs`): `MkBackupStore`, with the same shape as
+  `UserBackups` (`record_first`, `forget`, `backups_of`), saved through
+  `persist`. `export_control_panel` writes the `.reg` net: the values directly
+  in `Control Panel\Mouse`, `\Desktop` and `\Keyboard` (`CONTROL_PANEL_KEYS`),
+  read only, through `export_reg_full` with no keys. It is never imported by
+  WinTune: importing it by hand would also put back `UserPreferencesMask`.
+- **Scan** (`scan_mouse_keyboard`): one GET per setting, Filter Keys (an error
+  counts as off) and the account check. A setting whose GET fails is locked.
+- **Apply** (`apply_mouse_keyboard`): the account check first, in the engine
+  (`GetUserNameExW` against the session's user from
+  `WTSQuerySessionInformationW`; a difference or a failed check refuses the
+  whole Apply). Then validate every change (any problem refuses, nothing
+  written), read each touched setting now, snapshot on first touch and save the
+  store, write the `.reg` (if either fails, nothing is applied), then write in
+  table order with `swap_buttons` last. Each SET is followed by its GET; a
+  different value fails that setting and the next is still tried. Finally,
+  each snapshot whose live value is back at its original is forgotten and the
+  store saved again. `MkReport.issues` are enums (`MkProblem`, `MkFailure`) and
+  match `report.errors` one to one; `report.succeeded` holds setting keys.
+- **Restore** (`restore_mouse_keyboard`): SET the stored value exactly, GET it
+  back, forget the snapshot only if they match. No `.reg`. The page then drops
+  the pending choices of the restored settings.
+- **Page** (`ui/mouse_keyboard_tab.rs`, `ui/mouse_keyboard_state.rs`): the scan
+  runs as a background job at startup, when the page opens and after every
+  other job. Pending choices live in the state until Apply. Apply asks only
+  when it swaps the buttons; Restore always asks. A failed account check shows
+  a banner in place of the sections. Engine reasons are translated in
+  `i18n/messages.rs`.
+
 ## Safety model (every module that writes to the registry)
 
 1. **Validate.** Values that would hit the wrong place are refused: path
@@ -330,10 +385,11 @@ HKCU only. `HKLM`, `Run` values and Startup folder files are never touched.
 - **The frame** (`ui/shell.rs`). A grouped navigation on the left, one page
   in the middle, and two kinds of notice: toasts for results and a progress
   bar while a job runs. The pages are Home, File associations, Explorer &
-  Taskbar, Start & Privacy, Context menu, Startup apps, Environment variables, Icons, History and Settings. Home (`home.rs`) shows one tile per
+  Taskbar, Start & Privacy, Context menu, Startup apps, Environment variables, Mouse & keyboard, Icons, History and Settings. Home (`home.rs`) shows one tile per
   module (the Startup apps tile reads "{n} apps, {m} turned off", counting
   every item that is not On; the Environment variables tile reads "{n} variables, {m} folders in Path",
-  counting `Path` among the variables), a drift banner and the recent operations. Settings (`settings.rs`)
+  counting `Path` among the variables; the Mouse & keyboard tile reads "{n} settings changed by WinTune",
+  this user's snapshot count), a drift banner and the recent operations. Settings (`settings.rs`)
   and History (`history_panel.rs`) are pages too. `config.json` is saved by `autosave.rs`
   one second after the last edit, and always before the window closes.
 - **`open_page` is the single entry** for switching page. It reloads the
@@ -353,6 +409,11 @@ HKCU only. `HKLM`, `Run` values and Startup folder files are never touched.
   and restore jobs live in `jobs.rs`, and `history_panel.rs` and `originals.rs`
   add the History filter and the Saved originals group (a rename's two rows
   restore together).
+- **Mouse & keyboard modules.** `mouse_keyboard_tab.rs` draws the page,
+  `mouse_keyboard_state.rs` holds the scan job and the pending choices, the
+  apply and restore jobs live in `jobs.rs`, and `history_panel.rs` and
+  `originals.rs` add the History filter chip (the filter row scrolls
+  horizontally, as eight chips no longer fit) and the Saved originals group.
 - **One file per page.** The two tweak tabs share `tweaks_tab.rs`, and each
   shows its own `TweakGroup`s. They are kit pages: a section per group, a
   `SettingRow` per tweak with its state pill, and a `…` menu on rows that

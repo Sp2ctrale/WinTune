@@ -595,8 +595,185 @@ variable name such as `WINTUNE_TEST`.
 Record anything that differs, with the step and the Windows version, before
 merging.
 
+## Mouse & keyboard
+
+The Mouse & keyboard module shows and changes 18 settings of the signed-in
+user: pointer, buttons and clicks, wheel, keyboard repeat, and window and menu
+timing. It writes nothing to the registry. Every change goes through
+`SystemParametersInfoW`, which also tells running programs; the values Windows
+keeps under `HKCU\Control Panel` are read only, for a `.reg` safety net.
+
+### What WinTune reads
+
+| Source | Use |
+| --- | --- |
+| `SystemParametersInfoW` GET actions (the Get column of the table below) | The live value of every setting, at each scan, before each Apply (to snapshot it) and right after each SET (the readback) |
+| `GetSystemMetrics(SM_SWAPBUTTON)` | The swapped buttons: there is no `SystemParametersInfoW` GET for them |
+| `GetDoubleClickTime` | The double-click time: there is no `SystemParametersInfoW` GET for it |
+| `SPI_GETFILTERKEYS` | Whether Filter Keys is on, for the note on the Keyboard section. A failed read counts as off. Read only: WinTune never writes Filter Keys |
+| `GetUserNameExW` and `WTSQuerySessionInformationW` | The account check: the account WinTune runs as, read from the process token (not from `%USERNAME%`), against the user signed in to the current session. If they differ, or the check fails, the page is replaced by a banner and nothing is applied |
+| `HKCU\Control Panel\Mouse`, `HKCU\Control Panel\Desktop` and `HKCU\Control Panel\Keyboard` | The values directly in each key (not subkeys), read only, for the `.reg` net below |
+
+### What WinTune writes
+
+Nothing directly. WinTune never writes under `HKCU\Control Panel`, never writes
+`UserPreferencesMask`, and never calls `SPI_SETTHREADLOCALINPUTSETTINGS`.
+
+Each change is one `SystemParametersInfoW` SET from the table below, always
+with `SPIF_UPDATEINIFILE | SPIF_SENDCHANGE`: the first writes the setting to
+the user profile, the second broadcasts `WM_SETTINGCHANGE`. Every SET runs on
+the job worker thread (the call waits for the broadcast) and is followed at
+once by its GET. If Windows kept another value, that setting is reported as
+failed and the next one is still tried. `swap_buttons` is always written last.
+
+### The settings
+
+"ui" means the value goes in `uiParam`; "pv" means it goes in `pvParam`, cast
+to a pointer, with `uiParam` 0; "pv array" means `pvParam` points to three
+integers. Sending a value in the wrong place silently sets 0 or garbage, which
+is why each SET is read back. The default column is what the "Windows default"
+menu entry applies; DOCUMENTED, OBSERVED and FOLKLORE are explained under
+Evidence.
+
+| Id | Section | Get | Set (action, family) | Page control | Windows default |
+| --- | --- | --- | --- | --- | --- |
+| `pointer_speed` | Pointer | `SPI_GETMOUSESPEED` 0x0070 | 0x0071 pv | slider 1..20 | 10 (DOCUMENTED) |
+| `pointer_precision` | Pointer | `SPI_GETMOUSE` 0x0003 (array) | 0x0004 pv array | toggle | on, `{6, 10, 1}` (FOLKLORE) |
+| `pointer_trails` | Pointer | `SPI_GETMOUSETRAILS` 0x005E | 0x005D ui | toggle and length 2..7 | off (FOLKLORE) |
+| `pointer_sonar` | Pointer | `SPI_GETMOUSESONAR` 0x101C | 0x101D pv | toggle (show location with Ctrl) | off (FOLKLORE) |
+| `pointer_vanish` | Pointer | `SPI_GETMOUSEVANISH` 0x1020 | 0x1021 pv | toggle (hide while typing) | on (FOLKLORE) |
+| `snap_to_default` | Pointer | `SPI_GETSNAPTODEFBUTTON` 0x005F | 0x0060 ui | toggle | off (FOLKLORE) |
+| `swap_buttons` | Buttons and clicks | `GetSystemMetrics(SM_SWAPBUTTON)` | 0x0021 ui | toggle | off (FOLKLORE) |
+| `double_click_time` | Buttons and clicks | `GetDoubleClickTime` | 0x0020 ui | slider 200..900 ms, step 10 | 500 ms (DOCUMENTED) |
+| `click_lock` | Buttons and clicks | `SPI_GETMOUSECLICKLOCK` 0x101E | 0x101F pv | toggle | off (FOLKLORE) |
+| `click_lock_time` | Buttons and clicks | `SPI_GETMOUSECLICKLOCKTIME` 0x2008 | 0x2009 pv | slider 200..2,200 ms, step 100 | 1,200 ms (DOCUMENTED) |
+| `wheel_lines` | Wheel | `SPI_GETWHEELSCROLLLINES` 0x0068 | 0x0069 ui | 1..100 lines, or one screen (`WHEEL_PAGESCROLL`, `u32::MAX`) | 3 (DOCUMENTED) |
+| `wheel_chars` | Wheel | `SPI_GETWHEELSCROLLCHARS` 0x006C | 0x006D ui | slider 1..100 | 3 (DOCUMENTED) |
+| `scroll_inactive` | Wheel | `SPI_GETMOUSEWHEELROUTING` 0x201C | 0x201D pv | toggle (0 off, 2 on) | on, 2 (DOCUMENTED) |
+| `key_repeat_delay` | Keyboard | `SPI_GETKEYBOARDDELAY` 0x0016 | 0x0017 ui | slider 0..3, Short to Long | 1 (FOLKLORE) |
+| `key_repeat_rate` | Keyboard | `SPI_GETKEYBOARDSPEED` 0x000A | 0x000B ui | slider 0..31, Slow to Fast | 31 (FOLKLORE) |
+| `hover_time` | Windows and menus | `SPI_GETMOUSEHOVERTIME` 0x0066 | 0x0067 ui | slider 100..3,000 ms, step 50 | 400 ms (FOLKLORE) |
+| `menu_show_delay` | Windows and menus | `SPI_GETMENUSHOWDELAY` 0x006A | 0x006B ui | slider 0..2,000 ms, step 50 | 400 ms (FOLKLORE) |
+| `drag_full_windows` | Windows and menus | `SPI_GETDRAGFULLWINDOWS` 0x0026 | 0x0025 ui | toggle | on (FOLKLORE) |
+
+- Apply refuses a value outside the page range, with nothing written. Restore
+  original and Windows default are not checked against it. A live value
+  outside a range is shown as it is until the control is moved.
+- Precision off writes `{T1, T2, 0}` with the thresholds of that moment (the
+  whole array is always read and written). On writes the snapshot's original
+  array if its acceleration is not 0, else `{T1, T2, 1}` when both thresholds
+  are not 0, else `{6, 10, 1}`.
+- Scroll inactive windows off writes 0; on writes the snapshot's original when
+  not 0, else 2. A live 1 shows as on, and WinTune writes 1 only to restore an
+  original 1.
+- Pointer trails off writes 0; a live 1 is off too. ClickLock time is disabled
+  while ClickLock is off, because it has no effect then.
+
+### The `.reg` net
+
+Each Apply first writes `reg-backups\<stamp>-mouse-keyboard.reg`: the values
+directly in `HKCU\Control Panel\Mouse`, `HKCU\Control Panel\Desktop` and
+`HKCU\Control Panel\Keyboard`, as single values, never a key delete-and-recreate
+(`Desktop` also holds the wallpaper and `WindowMetrics`). It is a last-resort
+net, and **WinTune never imports it**. Importing it by hand also puts back
+`UserPreferencesMask`, the bitfield that holds ClickLock, Sonar, Vanish and
+many unrelated visual effects, so it reverts visual effects changed since; and
+the values take effect only at the next sign-in, not in the running session.
+Use **Restore original** in History instead.
+
+Before the first change to a setting, its value, read through its GET, is
+saved in `mouse-keyboard-backups.json` (in `%ProgramData%\Wintune`, per user
+then setting id, as `{ timestamp, value }`; no registry bytes). If saving it
+or the `.reg` fails, nothing is applied. **Restore original** sets that value
+through the same call, reads it back, and drops the snapshot only if they
+match. When an Apply brings a setting back to its original, its snapshot is
+dropped, so no Restore original is offered for a state that is already the
+original.
+
+### Evidence
+
+| Claim | Status | Source |
+| --- | --- | --- |
+| `SystemParametersInfoW` has a GET and a SET action for each setting above, except the swapped buttons and the double-click time, which have no GET action | DOCUMENTED | Microsoft Learn, *SystemParametersInfoW function* (https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-systemparametersinfow) |
+| `SPIF_UPDATEINIFILE` writes the new setting to the user profile; `SPIF_SENDCHANGE` broadcasts `WM_SETTINGCHANGE` after updating it | DOCUMENTED | Same page, the `fWinIni` parameter |
+| Pointer speed is 1 to 20, default 10 | DOCUMENTED | Same page; *mouse_event function* (https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-mouse_event) |
+| Pointer precision is the array `{threshold1, threshold2, acceleration}`: acceleration 0 is off, 1 doubles the speed above threshold 1, 2 doubles it again above threshold 2 | DOCUMENTED | *mouse_event function*, remarks; the array shape on the `SystemParametersInfoW` page |
+| The swapped buttons are read with `GetSystemMetrics(SM_SWAPBUTTON)`; `SwapMouseButton` affects all apps and is meant for Control Panel-type apps | DOCUMENTED | Microsoft Learn, *SwapMouseButton function* (https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-swapmousebutton) |
+| The double-click time is read with `GetDoubleClickTime`; a value above 5,000 ms is clamped to 5,000; `SetDoubleClickTime(0)` restores 500 | DOCUMENTED | Microsoft Learn, *SetDoubleClickTime function* (https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setdoubleclicktime) and *GetDoubleClickTime function* (https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getdoubleclicktime) |
+| Wheel lines default to 3; `WHEEL_PAGESCROLL` (`UINT_MAX`) means one screen at a time; programs must read the setting again on `WM_SETTINGCHANGE` | DOCUMENTED | Microsoft Learn, *About Mouse Input*, "Determining the Number of Scroll Lines" (https://learn.microsoft.com/windows/win32/inputdev/about-mouse-input) |
+| Keyboard delay is 0 (about 250 ms) to 3 (about 1 s) and rate is 0 (about 2.5 per second) to 31 (about 30 per second), both depending on the hardware; a rate above 31 is clamped | DOCUMENTED | `SystemParametersInfoW` page |
+| ClickLock time defaults to 1,200 ms and has an effect only while ClickLock is on; hover time is clamped to the timer limits | DOCUMENTED | `SystemParametersInfoW` page |
+| `SPI_[GS]ETMOUSEWHEELROUTING` exists: 0 focus, 1 hybrid, 2 mouse position, the default "starting with Windows 10" | DOCUMENTED | The `SystemParametersInfoA` page (https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-systemparametersinfoa). The `SystemParametersInfoW` page lists only 0 and 1, so the two pages disagree |
+| Filter Keys is on when `FKF_FILTERKEYSON` is set in the `FILTERKEYS` flags | DOCUMENTED | Microsoft Learn, *FILTERKEYS structure* (https://learn.microsoft.com/windows/win32/api/winuser/ns-winuser-filterkeys) |
+| The Settings toggle for "Scroll inactive windows" is 2 (on) and 0 (off) | FOLKLORE | The recon read 2 on its machine; no Learn page maps the toggle to a value. WinTune writes 0 or 2 and keeps a live 1 as on |
+| Windows' "Enhance pointer precision" toggle writes `{6, 10, 1}` and `{0, 0, 0}` | FOLKLORE | Commonly reported, not on Learn. WinTune keeps the current thresholds when turning it off, so a toggle that reads the thresholds could still show "on" (checklist item 1) |
+| `SmoothMouseXCurve` and `SmoothMouseYCurve` exist next to the precision values | OBSERVED | Present on the development PC; Learn does not describe them and WinTune never touches them |
+| A SET takes its value in `pvParam` cast to a pointer for the "pv" actions above, and in `uiParam` for the "ui" ones | FOLKLORE | Learn's wording is vague for several of them (the `SPI_SETMOUSEWHEELROUTING` text repeats the GET wording); this is Win32 practice, and the readback after each SET catches a wrong choice |
+| `HKCU\Control Panel\Mouse`, `\Desktop` and `\Keyboard` hold the values (`MouseSensitivity`, `DoubleClickSpeed`, `WheelScrollLines`, `KeyboardDelay`, `KeyboardSpeed` and so on), mostly `REG_SZ` numbers; `ActiveWindowTracking`, `ClickLockTime`, `MouseWheelRouting` and `CaretWidth` are `REG_DWORD` | OBSERVED | Seen on the development PC (Windows 11, build 26300), where they agreed with the live GETs wherever a named value exists. Learn never says the "user profile" is `HKCU` and names no value, so WinTune only reads them |
+| ClickLock, Sonar and Vanish have no value of their own: they live in `Desktop\UserPreferencesMask`, a shared `REG_BINARY` | FOLKLORE | No named value was found for them on the development PC (`UserPreferencesMask` is present); the bit positions are not on Learn. This is why the mask is never edited or restored by bytes |
+| Defaults marked FOLKLORE above are those of a new Windows 11 profile | FOLKLORE | Commonly reported. On the development PC "Hide pointer while typing" was on (the recon had guessed off). Optional checklist item 9 checks them on a fresh account |
+| A SET can wait on slow windows because of the broadcast | FOLKLORE | Not timed on Learn; this is why every SET runs on the job worker thread |
+| A policy could reset a value at the next sign-in, and Filter Keys, when on, can override the key repeat settings | FOLKLORE | Not on the `SystemParametersInfoW` page; this is why each SET is read back and why the Keyboard section shows a note when Filter Keys is on |
+
+Shapes seen on the development PC (Windows 11, build 26300, read-only probe)
+(OBSERVED): pointer speed 10, precision `{6, 10, 1}`, swap off, double-click
+500 ms, wheel 3 lines and 3 characters, scroll routing 2, repeat delay 1 and
+rate 31, snap off, trails 0, Sonar off, Vanish on, ClickLock off with a time
+of 1,200 ms, hover and menu delay 400 ms, drag full windows on, Filter Keys off.
+
+#### Pre-merge checklist (Mouse & keyboard)
+
+Not run by the developer: the engine is covered by tests with a fake
+`InputApi` and the `.reg` by tests in a registry sandbox, and no test calls a
+real SET. Nothing was changed through WinTune and then looked at in Settings
+or Notepad. The owner runs this before merging, on a real PC, with Windows
+Settings, Notepad and WinTune, and records each result next to its item. Note
+the starting values first (or use History's **Restore all** at the end).
+
+- [ ] 1. Change the pointer speed and turn **Enhance pointer precision** off,
+  then Apply. Settings, Bluetooth & devices, Mouse shows the same speed and
+  precision off. Turn precision back on in WinTune and Apply: Settings shows
+  it on. Result: ______
+- [ ] 2. Swap the primary button and Apply. The confirmation warns first.
+  After Apply the right button is the primary one. Put it back by clicking the
+  toggle with the other button. Result: ______
+- [ ] 3. Change the double-click speed and Apply. The "Double-click here to
+  test" target lights at the speed you set, and a folder in Explorer opens only
+  when you double-click within that time. Result: ______
+- [ ] 4. Set the repeat delay to Short and the rate to Slow, then Apply.
+  Holding a key repeats the same way in WinTune's test field and in Notepad.
+  Result: ______
+- [ ] 5. Turn **Scroll inactive windows** off and Apply: with Notepad behind
+  another window, the wheel no longer scrolls Notepad when the pointer is over
+  it. Turn it on again and Apply: it does. Result: ______
+- [ ] 6. Turn **Hide pointer while typing** off and **Show location with Ctrl**
+  on, then Apply. In Notepad the pointer stays while you type, and pressing Ctrl
+  shows the circles. Result: ______
+- [ ] 7. Open History, Saved originals, Mouse & keyboard, and use **Restore
+  all**. Settings and the WinTune page show the original values, and the group
+  is empty. Also look at the History filter row: with the new Mouse & keyboard
+  chip the eight chips no longer fit, so the row scrolls horizontally. Scroll
+  it with the mouse wheel or by dragging, and check that every chip, including
+  the last one, can be reached and clicked, and that none is cut off.
+  Result: ______
+- [ ] 8. Change two settings, Apply, then sign out and in. WinTune and Settings
+  still show them. Restore them afterwards. Result: ______
+- [ ] 9. (Optional) On a fresh local account, compare the page's values with the
+  Windows default column above and note any that differ (the FOLKLORE
+  defaults). Result: ______
+
+Record anything that differs, with the step and the Windows version, before
+merging.
+
 ## Sources
 
+- Microsoft Learn, *SystemParametersInfoW function* and *SystemParametersInfoA
+  function*, *mouse_event function*, *SwapMouseButton function*,
+  *SetDoubleClickTime function*, *GetDoubleClickTime function*, *About Mouse
+  Input* and *FILTERKEYS structure*: the actions, the flags, the ranges and
+  the defaults. Where the profile lives, the `HKCU\Control Panel` value names,
+  the bit positions of ClickLock, Sonar and Vanish, the precision toggle's
+  values and the default of several settings are not documented there.
 - Microsoft Learn, *Environment Variables*, *Changing Environment Variables*,
   *Win32_Environment class*, *WM_SETTINGCHANGE message*, *Registry value types*,
   *setx* and *Command-line string limitation*: where the variables live, the

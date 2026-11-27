@@ -7,6 +7,10 @@
 
 mod backend;
 mod catalog;
+mod engine;
+mod store;
 
 pub use backend::*;
 pub use catalog::*;
+pub use engine::*;
+pub use store::*;

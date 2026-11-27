@@ -1672,4 +1672,184 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="env.nothing_to_apply" xml:space="preserve">
     <value>Nothing to apply</value>
   </data>
+  <data name="job.apply_mouse_keyboard" xml:space="preserve">
+    <value>Applying mouse and keyboard changes…</value>
+  </data>
+  <data name="job.restore_mouse_keyboard" xml:space="preserve">
+    <value>Restoring mouse and keyboard settings…</value>
+  </data>
+  <data name="job.name.apply_mouse_keyboard" xml:space="preserve">
+    <value>Applying mouse and keyboard changes</value>
+  </data>
+  <data name="job.name.restore_mouse_keyboard" xml:space="preserve">
+    <value>Restoring mouse and keyboard settings</value>
+  </data>
+  <data name="report.applied_mouse_keyboard" xml:space="preserve">
+    <value>{0} setting(s) applied</value>
+  </data>
+  <data name="report.restored_mouse_keyboard" xml:space="preserve">
+    <value>{0} setting(s) restored</value>
+  </data>
+  <data name="history.module.mouse_keyboard" xml:space="preserve">
+    <value>Mouse &amp; keyboard</value>
+  </data>
+  <data name="mk.scan_failed" xml:space="preserve">
+    <value>Could not read the mouse and keyboard settings: {0}</value>
+  </data>
+  <data name="mk.apply_title" xml:space="preserve">
+    <value>Swap the mouse buttons?</value>
+  </data>
+  <data name="mk.swap_warning" xml:space="preserve">
+    <value>Your primary and secondary mouse buttons swap as soon as this is applied. To undo it, click with the other button.</value>
+  </data>
+  <data name="mk.restore_title" xml:space="preserve">
+    <value>Restore original settings?</value>
+  </data>
+  <data name="mk.restore_message" xml:space="preserve">
+    <value>{0} will get back the value they had before WinTune changed them.</value>
+  </data>
+  <data name="mk.restore_message_one" xml:space="preserve">
+    <value>{0} will get back the value it had before WinTune changed it.</value>
+  </data>
+  <data name="mk.restore_many" xml:space="preserve">
+    <value>{0} settings</value>
+  </data>
+  <data name="mk.section.pointer" xml:space="preserve">
+    <value>Pointer</value>
+  </data>
+  <data name="mk.section.buttons" xml:space="preserve">
+    <value>Buttons and clicks</value>
+  </data>
+  <data name="mk.section.wheel" xml:space="preserve">
+    <value>Wheel</value>
+  </data>
+  <data name="mk.section.keyboard" xml:space="preserve">
+    <value>Keyboard</value>
+  </data>
+  <data name="mk.section.windows" xml:space="preserve">
+    <value>Windows and menus</value>
+  </data>
+  <data name="mk.pointer_speed.title" xml:space="preserve">
+    <value>Pointer speed</value>
+  </data>
+  <data name="mk.pointer_precision.title" xml:space="preserve">
+    <value>Enhance pointer precision</value>
+  </data>
+  <data name="mk.pointer_precision.description" xml:space="preserve">
+    <value>The pointer goes farther when you move the mouse faster.</value>
+  </data>
+  <data name="mk.pointer_trails.title" xml:space="preserve">
+    <value>Pointer trails</value>
+  </data>
+  <data name="mk.pointer_sonar.title" xml:space="preserve">
+    <value>Show the pointer's location when I press Ctrl</value>
+  </data>
+  <data name="mk.pointer_vanish.title" xml:space="preserve">
+    <value>Hide the pointer while typing</value>
+  </data>
+  <data name="mk.snap_to_default.title" xml:space="preserve">
+    <value>Move the pointer to the default button in dialogs</value>
+  </data>
+  <data name="mk.swap_buttons.title" xml:space="preserve">
+    <value>Swap the primary and secondary buttons</value>
+  </data>
+  <data name="mk.double_click_time.title" xml:space="preserve">
+    <value>Double-click speed</value>
+  </data>
+  <data name="mk.click_lock.title" xml:space="preserve">
+    <value>ClickLock</value>
+  </data>
+  <data name="mk.click_lock.description" xml:space="preserve">
+    <value>Hold the button briefly to lock it; click again to release it.</value>
+  </data>
+  <data name="mk.click_lock_time.title" xml:space="preserve">
+    <value>ClickLock delay</value>
+  </data>
+  <data name="mk.click_lock_time.description" xml:space="preserve">
+    <value>How long to hold the button before it locks.</value>
+  </data>
+  <data name="mk.wheel_lines.title" xml:space="preserve">
+    <value>Lines to scroll at a time</value>
+  </data>
+  <data name="mk.wheel_chars.title" xml:space="preserve">
+    <value>Characters to scroll sideways at a time</value>
+  </data>
+  <data name="mk.scroll_inactive.title" xml:space="preserve">
+    <value>Scroll inactive windows when hovering over them</value>
+  </data>
+  <data name="mk.key_repeat_delay.title" xml:space="preserve">
+    <value>Repeat delay</value>
+  </data>
+  <data name="mk.key_repeat_delay.description" xml:space="preserve">
+    <value>From short (0, about 250 ms) to long (3, about 1 second).</value>
+  </data>
+  <data name="mk.key_repeat_rate.title" xml:space="preserve">
+    <value>Repeat rate</value>
+  </data>
+  <data name="mk.key_repeat_rate.description" xml:space="preserve">
+    <value>From slow (0) to fast (31).</value>
+  </data>
+  <data name="mk.hover_time.title" xml:space="preserve">
+    <value>Hover time</value>
+  </data>
+  <data name="mk.hover_time.description" xml:space="preserve">
+    <value>How long the pointer rests before a tooltip or hover effect shows.</value>
+  </data>
+  <data name="mk.menu_show_delay.title" xml:space="preserve">
+    <value>Menu delay</value>
+  </data>
+  <data name="mk.menu_show_delay.description" xml:space="preserve">
+    <value>How long before a submenu opens.</value>
+  </data>
+  <data name="mk.drag_full_windows.title" xml:space="preserve">
+    <value>Show window contents while dragging</value>
+  </data>
+  <data name="mk.value.on" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="mk.value.off" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="mk.value.ms" xml:space="preserve">
+    <value>{0} ms</value>
+  </data>
+  <data name="mk.value.one_screen" xml:space="preserve">
+    <value>One screen at a time</value>
+  </data>
+  <data name="mk.value.no_scroll" xml:space="preserve">
+    <value>0 (no scrolling)</value>
+  </data>
+  <data name="mk.problem.out_of_range" xml:space="preserve">
+    <value>{0}: this value is outside what WinTune allows.</value>
+  </data>
+  <data name="mk.problem.unknown" xml:space="preserve">
+    <value>{0} is a setting this version of WinTune does not know.</value>
+  </data>
+  <data name="mk.problem.unreadable" xml:space="preserve">
+    <value>{0}: Windows could not read this setting (error {1}).</value>
+  </data>
+  <data name="mk.problem.wrong_account" xml:space="preserve">
+    <value>WinTune runs as {0}, but {1} is signed in. Mouse and keyboard settings would be saved for the wrong account.</value>
+  </data>
+  <data name="mk.problem.account_unknown" xml:space="preserve">
+    <value>WinTune cannot tell which account is signed in ({0}), so it does not change mouse and keyboard settings.</value>
+  </data>
+  <data name="mk.problem.not_saved" xml:space="preserve">
+    <value>Nothing applied: the originals or the .reg backup could not be saved ({0}).</value>
+  </data>
+  <data name="mk.problem.no_original" xml:space="preserve">
+    <value>{0}: no original value is saved.</value>
+  </data>
+  <data name="mk.failure.set" xml:space="preserve">
+    <value>{0}: Windows refused the change (error {1}).</value>
+  </data>
+  <data name="mk.failure.mismatch" xml:space="preserve">
+    <value>{0}: Windows kept {1} instead of {2}.</value>
+  </data>
+  <data name="mk.failure.unverified" xml:space="preserve">
+    <value>{0}: WinTune could not read the setting back (error {1}).</value>
+  </data>
+  <data name="mk.failure.store" xml:space="preserve">
+    <value>The change was made, but the saved originals could not be updated: {0}</value>
+  </data>
 </root>

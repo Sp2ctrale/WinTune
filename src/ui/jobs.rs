@@ -14,7 +14,12 @@ use crate::environment::{
     EnvBackupStore, EnvChange, EnvOptions, EnvTarget, EnvWarning, PathBasis,
 };
 use crate::gallery::{build_compressed_pak, PakStats};
+use crate::i18n::messages;
 use crate::models::{BackupStore, ExtensionConfig};
+use crate::mouse_keyboard::{
+    apply_mouse_keyboard, restore_mouse_keyboard, InputApi, MkBackupStore, MkOptions, MkReport,
+    SettingId,
+};
 use crate::startup::{
     apply_startup, now_filetime, restore_startup, StartupBackupStore, StartupOptions,
 };
@@ -62,6 +67,16 @@ pub(super) struct EnvOutcome {
     pub(super) restored: bool,
 }
 
+/// Result of a mouse and keyboard job, with the snapshot store after it.
+pub(super) struct MkOutcome {
+    /// The English report (History) and the issues it was written from
+    /// (translated for the toast).
+    pub(super) report: MkReport,
+    pub(super) store: MkBackupStore,
+    /// True for "restore", false for "apply".
+    pub(super) restored: bool,
+}
+
 pub(super) enum RunningJob {
     Apply(BackgroundJob<StoreOutcome>),
     Rollback(BackgroundJob<StoreOutcome>),
@@ -89,6 +104,12 @@ pub(super) enum RunningJob {
         job: BackgroundJob<EnvOutcome>,
         restore: bool,
     },
+    /// A mouse and keyboard job: apply the pending choices, or restore
+    /// originals.
+    MouseKeyboard {
+        job: BackgroundJob<MkOutcome>,
+        restore: bool,
+    },
 }
 
 impl RunningJob {
@@ -101,6 +122,7 @@ impl RunningJob {
             RunningJob::ContextMenu { job, .. } => job.title(),
             RunningJob::Startup { job, .. } => job.title(),
             RunningJob::Environment { job, .. } => job.title(),
+            RunningJob::MouseKeyboard { job, .. } => job.title(),
         }
     }
 
@@ -118,6 +140,8 @@ impl RunningJob {
             RunningJob::Startup { .. } => "job.apply_startup",
             RunningJob::Environment { restore: true, .. } => "job.restore_environment",
             RunningJob::Environment { .. } => "job.apply_environment",
+            RunningJob::MouseKeyboard { restore: true, .. } => "job.restore_mouse_keyboard",
+            RunningJob::MouseKeyboard { .. } => "job.apply_mouse_keyboard",
         }
     }
 
@@ -135,6 +159,8 @@ impl RunningJob {
             "job.restore_startup" => "job.name.restore_startup",
             "job.apply_environment" => "job.name.apply_environment",
             "job.restore_environment" => "job.name.restore_environment",
+            "job.apply_mouse_keyboard" => "job.name.apply_mouse_keyboard",
+            "job.restore_mouse_keyboard" => "job.name.restore_mouse_keyboard",
             _ => "job.name.apply_tweaks",
         }
     }
@@ -158,6 +184,10 @@ impl RunningJob {
                 Some(("Environment variables", "Restore"))
             }
             RunningJob::Environment { .. } => Some(("Environment variables", "Apply")),
+            RunningJob::MouseKeyboard { restore: true, .. } => {
+                Some(("Mouse & keyboard", "Restore"))
+            }
+            RunningJob::MouseKeyboard { .. } => Some(("Mouse & keyboard", "Apply")),
             RunningJob::BuildPak(_) => None,
         }
     }
@@ -171,6 +201,7 @@ impl RunningJob {
             RunningJob::ContextMenu { job, .. } => job.progress(),
             RunningJob::Startup { job, .. } => job.progress(),
             RunningJob::Environment { job, .. } => job.progress(),
+            RunningJob::MouseKeyboard { job, .. } => job.progress(),
         }
     }
 }
@@ -564,6 +595,11 @@ impl WinTuneApp {
                 JobPoll::Finished(outcome) => Finished::Environment(outcome),
                 JobPoll::Panicked(msg) => Finished::Panicked(msg),
             },
+            RunningJob::MouseKeyboard { job, .. } => match job.poll() {
+                JobPoll::Running => return,
+                JobPoll::Finished(outcome) => Finished::MouseKeyboard(outcome),
+                JobPoll::Panicked(msg) => Finished::Panicked(msg),
+            },
         };
         let title = job.title().to_string();
         let title_text = self.tr.t(job.name_key());
@@ -611,6 +647,7 @@ impl WinTuneApp {
             Finished::Menu(outcome) => self.finish_menu_job(outcome),
             Finished::Startup(outcome) => self.finish_startup_job(outcome),
             Finished::Environment(outcome) => self.finish_env_job(outcome),
+            Finished::MouseKeyboard(outcome) => self.finish_mk_job(outcome),
             Finished::Panicked(msg) => {
                 if let Some((module, action)) = history_label {
                     // It may have written part of its changes: keep a trace.
@@ -630,12 +667,14 @@ impl WinTuneApp {
                 self.refresh_menu_statuses();
                 self.reload_startup_store();
                 self.reload_env_store();
+                self.reload_mk_store();
             }
         }
         // Any job may have changed the menu (or the snapshots behind it).
         self.request_menu_scan();
         self.request_startup_scan();
         self.request_env_scan();
+        self.request_mk_scan();
     }
 
     /// Why an environment change cannot start: the unreadable snapshot store
@@ -841,6 +880,156 @@ impl WinTuneApp {
         self.record_history("Environment variables", action, &outcome.report);
     }
 
+    /// Why a mouse and keyboard change cannot start: the unreadable snapshot
+    /// store (which the next save would overwrite). Shown as the toast and as
+    /// the hover of the disabled Apply button.
+    pub(super) fn mk_blocked_reason(&self) -> Option<String> {
+        self.mk_store_error.as_ref().map(|e| {
+            let detail = messages::load_error(self.tr, e);
+            self.tr.t_args("tweaks.blocked", &[&detail])
+        })
+    }
+
+    /// Writes the pending choices in one background job. A batch that swaps
+    /// the mouse buttons (either way) asks first; otherwise History can undo
+    /// it.
+    // Used by the page (Task 5), which removes this allow.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(super) fn start_mk_apply(&mut self, ctx: &egui::Context) {
+        if self.refuse_if_busy() {
+            return;
+        }
+        if let Some(reason) = self.mk_blocked_reason() {
+            self.notify(ToastKind::Error, reason);
+            return;
+        }
+        let changes = self.mk_changes();
+        if changes.is_empty() {
+            return;
+        }
+        if changes.iter().any(|c| c.id == SettingId::SwapButtons) {
+            self.request_apply_mouse_keyboard();
+            return;
+        }
+        self.run_mk_apply(ctx);
+    }
+
+    /// The write itself, once the swap question was answered yes. Re-checks
+    /// what may have changed while the question was open.
+    pub(super) fn run_mk_apply(&mut self, ctx: &egui::Context) {
+        if self.refuse_if_busy() {
+            return;
+        }
+        if let Some(reason) = self.mk_blocked_reason() {
+            self.notify(ToastKind::Error, reason);
+            return;
+        }
+        let changes = self.mk_changes();
+        if changes.is_empty() {
+            return;
+        }
+        self.spawn_mk_job(
+            ctx,
+            false,
+            "Applying mouse and keyboard changes",
+            move |api, store, opts| apply_mouse_keyboard(api, store, &changes, opts),
+        );
+    }
+
+    /// Puts the given settings (`SettingId::key` strings) back to their saved
+    /// originals. Only an unreadable store stops it here: the engine refuses
+    /// a wrong account itself, before any call.
+    pub(super) fn start_mk_restore(&mut self, ctx: &egui::Context, ids: Vec<String>) {
+        if self.refuse_if_busy() {
+            return;
+        }
+        if let Some(reason) = self.mk_blocked_reason() {
+            self.notify(ToastKind::Error, reason);
+            return;
+        }
+        self.spawn_mk_job(
+            ctx,
+            true,
+            "Restoring mouse and keyboard settings",
+            move |api, store, opts| restore_mouse_keyboard(api, store, &ids, opts),
+        );
+    }
+
+    /// Runs `run` on the job's worker thread: every GET and SET, the account
+    /// check, the store save and the `.reg` happen there, never on the UI
+    /// thread.
+    fn spawn_mk_job(
+        &mut self,
+        ctx: &egui::Context,
+        restored: bool,
+        title: &'static str,
+        run: impl FnOnce(&dyn InputApi, &mut MkBackupStore, &MkOptions) -> MkReport + Send + 'static,
+    ) {
+        let env = self.env.clone();
+        let mut store = self.mk_store.clone();
+        let user = self.env.user_label.clone();
+        let job = BackgroundJob::spawn(title, repaint(ctx), move |sink| {
+            let progress = |done: usize, total: usize, label: &str| sink.report(done, total, label);
+            let reg_source = (env.mk_reg_source)();
+            let opts = MkOptions {
+                user,
+                store_path: env.mk_store_path.clone(),
+                reg_backup_dir: env.reg_backup_dir.clone(),
+                reg_source: &reg_source,
+                account: &*env.input_account,
+                progress: &progress,
+            };
+            let report = run(&*env.input, &mut store, &opts);
+            MkOutcome {
+                report,
+                store,
+                restored,
+            }
+        });
+        self.job = Some(RunningJob::MouseKeyboard {
+            job,
+            restore: restored,
+        });
+    }
+
+    fn finish_mk_job(&mut self, outcome: MkOutcome) {
+        self.mk_store = outcome.store;
+        let MkReport { report, issues } = outcome.report;
+        // A clean apply did everything asked. After a refused or partial one
+        // the choices stay, so Apply can be tried again; the next scan drops
+        // those the live values already match.
+        if !outcome.restored && report.errors.is_empty() {
+            self.mk_pending.clear();
+        }
+        // A choice for a restored setting was made on the value the restore
+        // replaced: kept, Apply would undo the restore.
+        if outcome.restored {
+            for key in &report.succeeded {
+                if let Some(id) = SettingId::from_key(key) {
+                    self.mk_pending.remove(&id);
+                }
+            }
+        }
+        // The toast shows the issues in the UI language; History keeps the
+        // English lines.
+        let tr = self.tr;
+        let shown = OperationReport {
+            succeeded: report.succeeded.clone(),
+            removed: report.removed.clone(),
+            errors: issues.iter().map(|i| messages::mk_issue(tr, i)).collect(),
+            warnings: report.warnings.clone(),
+            reg_backup_file: report.reg_backup_file.clone(),
+        };
+        let kind = if outcome.restored {
+            ReportKind::RestoredMouseKeyboard
+        } else {
+            ReportKind::AppliedMouseKeyboard
+        };
+        self.show_report(kind, &shown);
+        let action = if outcome.restored { "Restore" } else { "Apply" };
+        self.record_history("Mouse & keyboard", action, &report);
+    }
+
     fn finish_startup_job(&mut self, outcome: StartupOutcome) {
         self.startup_store = outcome.store;
         // A clean apply did everything asked. After a refused or partial
@@ -887,6 +1076,7 @@ enum Finished {
     Menu(MenuOutcome),
     Startup(StartupOutcome),
     Environment(EnvOutcome),
+    MouseKeyboard(MkOutcome),
     Panicked(String),
 }
 
@@ -896,6 +1086,7 @@ mod tests {
     use super::*;
     use crate::environment::VarEdit;
     use crate::gallery::PakStats;
+    use crate::mouse_keyboard::{SettingId, SettingValue, Wanted};
     use egui::RawInput;
 
     #[test]
@@ -1788,6 +1979,344 @@ mod tests {
         assert!(app.last_notice().contains("failed unexpectedly"));
     }
 
+    fn scanned_mk_app(fx: &TempIcons, ctx: &egui::Context) -> WinTuneApp {
+        let mut app = fx.app(ctx);
+        app.request_mk_scan();
+        run_until_mk_scanned(&mut app, ctx);
+        assert!(app.mk_scan.as_ref().is_some_and(|s| s.account_ok()));
+        app
+    }
+
+    fn pend(app: &mut WinTuneApp, id: SettingId, n: u32) {
+        app.mk_pending
+            .insert(id, Wanted::Value(SettingValue::Number(n)));
+    }
+
+    fn reg_files(app: &WinTuneApp) -> Vec<std::path::PathBuf> {
+        std::fs::read_dir(&app.env.reg_backup_dir)
+            .map(|d| d.map(|e| e.unwrap().path()).collect())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn a_mouse_keyboard_apply_sets_logs_and_clears_pending() {
+        use crate::mouse_keyboard::SettingId::PointerSpeed;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_mk_app(&fx, &ctx);
+        pend(&mut app, PointerSpeed, 14);
+
+        app.start_mk_apply(&ctx);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+
+        assert_eq!(
+            fx.fake_input().value(PointerSpeed),
+            SettingValue::Number(14)
+        );
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Mouse & keyboard", "Apply")
+        );
+        assert!(last.errors.is_empty(), "{:?}", last.errors);
+        assert!(app.mk_pending.is_empty());
+        assert!(app.mk_store.has_backup("TEST\\user", "pointer_speed"));
+        let files = reg_files(&app);
+        assert_eq!(files.len(), 1, "{files:?}");
+        assert!(files[0].to_string_lossy().ends_with("-mouse-keyboard.reg"));
+        assert!(
+            app.last_notice().starts_with("1 setting(s) applied"),
+            "{}",
+            app.last_notice()
+        );
+    }
+
+    #[test]
+    fn a_partial_apply_keeps_the_choices_and_the_toast_is_translated() {
+        use crate::mouse_keyboard::SettingId::{DoubleClickTime, PointerSpeed};
+        use crate::mouse_keyboard::{MkFailure, SettingValue::Number};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_mk_app(&fx, &ctx);
+        app.set_language("fr");
+        fx.fake_input().keep(DoubleClickTime, Number(500));
+        pend(&mut app, DoubleClickTime, 700);
+        pend(&mut app, PointerSpeed, 14);
+
+        app.start_mk_apply(&ctx);
+        // A frame would run the follow-up scan, which prunes the speed.
+        finish_job_without_scanning(&mut app);
+
+        assert_eq!(app.mk_pending.len(), 2, "{:?}", app.mk_pending);
+        let mismatch = MkFailure::Mismatch {
+            id: DoubleClickTime,
+            wanted: Number(700),
+            read: Number(500),
+        };
+        let french = crate::i18n::messages::mk_failure(app.tr, &mismatch);
+        let english = crate::i18n::messages::mk_failure(crate::i18n::Tr::english(), &mismatch);
+        assert_ne!(french, english);
+        assert!(app.last_notice().contains(&french), "{}", app.last_notice());
+        let last = app.history.first().expect("history entry");
+        assert_eq!(last.errors.len(), 1, "{:?}", last.errors);
+        assert!(
+            last.errors[0].contains("Windows kept 500 instead of 700"),
+            "{:?}",
+            last.errors
+        );
+    }
+
+    #[test]
+    fn a_restore_drops_the_pending_choice_of_what_it_restored() {
+        use crate::mouse_keyboard::SettingId::{KeyRepeatDelay, KeyRepeatRate, PointerSpeed};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_mk_app(&fx, &ctx);
+        pend(&mut app, PointerSpeed, 14);
+        pend(&mut app, KeyRepeatRate, 20);
+        app.start_mk_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        run_until_mk_scanned(&mut app, &ctx);
+        assert_eq!(
+            fx.fake_input().value(PointerSpeed),
+            SettingValue::Number(14)
+        );
+
+        // New choices for the restored setting, and for another one.
+        pend(&mut app, PointerSpeed, 12);
+        pend(&mut app, KeyRepeatDelay, 3);
+        app.start_mk_restore(&ctx, vec!["pointer_speed".into()]);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+
+        assert_eq!(
+            fx.fake_input().value(PointerSpeed),
+            SettingValue::Number(10)
+        );
+        assert_eq!(
+            app.mk_pending,
+            std::collections::BTreeMap::from([(
+                KeyRepeatDelay,
+                Wanted::Value(SettingValue::Number(3))
+            )])
+        );
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Mouse & keyboard", "Restore")
+        );
+        assert!(
+            app.last_notice().starts_with("1 setting(s) restored"),
+            "{}",
+            app.last_notice()
+        );
+    }
+
+    #[test]
+    fn an_unreadable_mouse_keyboard_store_blocks_apply_and_restore() {
+        use crate::mouse_keyboard::SettingId::PointerSpeed;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_mk_app(&fx, &ctx);
+        pend(&mut app, PointerSpeed, 14);
+        assert_eq!(app.mk_pending_count(), 1);
+        app.mk_store_error = Some(corrupt("mouse-keyboard-backups.json", "bad json"));
+        assert!(app.mk_blocked_reason().is_some());
+        let calls = fx.fake_input().calls().len();
+
+        app.start_mk_apply(&ctx);
+        assert!(!app.is_busy());
+        assert!(
+            app.last_notice().starts_with("Changes are blocked"),
+            "{}",
+            app.last_notice()
+        );
+
+        // The confirmed path re-checks too.
+        app.notify(ToastKind::Info, "marker");
+        app.run_mk_apply(&ctx);
+        assert!(!app.is_busy());
+        assert!(app.last_notice().starts_with("Changes are blocked"));
+
+        app.notify(ToastKind::Info, "marker");
+        app.start_mk_restore(&ctx, vec!["pointer_speed".into()]);
+        assert!(!app.is_busy());
+        assert!(
+            app.last_notice().starts_with("Changes are blocked"),
+            "{}",
+            app.last_notice()
+        );
+        assert_eq!(
+            fx.fake_input().calls().len(),
+            calls,
+            "the backend was called"
+        );
+        assert_eq!(
+            fx.fake_input().value(PointerSpeed),
+            SettingValue::Number(10)
+        );
+        assert!(!app.env.mk_store_path.exists(), "store written");
+        assert!(reg_files(&app).is_empty(), ".reg written");
+
+        // The same restore runs once the store is readable again.
+        app.mk_store_error = None;
+        app.start_mk_restore(&ctx, vec!["pointer_speed".into()]);
+        assert!(app.is_busy());
+        run_until_idle(&mut app, &ctx);
+    }
+
+    #[test]
+    fn a_restore_from_history_as_the_wrong_account_is_refused() {
+        use crate::mouse_keyboard::{AccountCheck, SettingId::PointerSpeed};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_mk_app(&fx, &ctx);
+        pend(&mut app, PointerSpeed, 14);
+        app.start_mk_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(
+            fx.fake_input().value(PointerSpeed),
+            SettingValue::Number(14)
+        );
+        fx.set_account(AccountCheck::Different {
+            process: "PC\\Admin".into(),
+            session: "PC\\Ana".into(),
+        });
+        let sets = fx.fake_input().sets().len();
+
+        app.start_mk_restore(&ctx, vec!["pointer_speed".into()]);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+
+        assert_eq!(
+            fx.fake_input().value(PointerSpeed),
+            SettingValue::Number(14)
+        );
+        assert_eq!(fx.fake_input().sets().len(), sets, "a SET was made");
+        assert!(app.mk_store.has_backup("TEST\\user", "pointer_speed"));
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Mouse & keyboard", "Restore")
+        );
+        assert!(
+            last.errors.iter().any(|e| e.contains("runs as PC\\Admin")),
+            "{:?}",
+            last.errors
+        );
+    }
+
+    #[test]
+    fn a_panicking_mouse_keyboard_job_is_logged_and_reloads_the_store() {
+        use crate::mouse_keyboard::SettingId::PointerSpeed;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_mk_app(&fx, &ctx);
+        app.mk_store_error = Some(corrupt("mouse-keyboard-backups.json", "sentinel"));
+        pend(&mut app, PointerSpeed, 14);
+        let calls = fx.fake_input().calls().len();
+        app.job = Some(RunningJob::MouseKeyboard {
+            job: BackgroundJob::spawn(
+                "Applying mouse and keyboard changes",
+                || {},
+                |_| -> MkOutcome { panic!("boom") },
+            ),
+            restore: false,
+        });
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(app.mk_store_error, None);
+        // The values may have changed: they are read again.
+        run_until_mk_scanned(&mut app, &ctx);
+        assert!(fx.fake_input().calls().len() > calls, "no rescan");
+        assert_eq!(app.mk_pending_count(), 1);
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Mouse & keyboard", "Apply")
+        );
+        assert!(app.last_notice().contains("failed unexpectedly"));
+    }
+
+    /// Passes every call to its own fake and records the name of the thread
+    /// it ran on.
+    struct ThreadLog {
+        fake: crate::mouse_keyboard::FakeInput,
+        threads: std::sync::Mutex<Vec<String>>,
+    }
+
+    fn thread_name() -> String {
+        std::thread::current().name().unwrap_or("").to_string()
+    }
+
+    impl crate::mouse_keyboard::InputApi for ThreadLog {
+        fn get(&self, id: SettingId) -> Result<SettingValue, crate::mouse_keyboard::ApiError> {
+            self.threads.lock().unwrap().push(thread_name());
+            self.fake.get(id)
+        }
+
+        fn set(
+            &self,
+            id: SettingId,
+            value: &SettingValue,
+        ) -> Result<(), crate::mouse_keyboard::ApiError> {
+            self.threads.lock().unwrap().push(thread_name());
+            self.fake.set(id, value)
+        }
+
+        fn filter_keys_on(&self) -> Result<bool, crate::mouse_keyboard::ApiError> {
+            self.threads.lock().unwrap().push(thread_name());
+            self.fake.filter_keys_on()
+        }
+    }
+
+    #[test]
+    fn mouse_keyboard_reads_and_writes_run_on_job_threads() {
+        use crate::mouse_keyboard::{AccountCheck, FakeInput, SettingId::PointerSpeed};
+        use std::sync::{Arc, Mutex};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        let api = Arc::new(ThreadLog {
+            fake: FakeInput::new(),
+            threads: Mutex::new(Vec::new()),
+        });
+        app.env.input = api.clone();
+        let account_threads: Arc<Mutex<Vec<String>>> = Arc::default();
+        app.env.input_account = {
+            let log = account_threads.clone();
+            Arc::new(move || {
+                log.lock().unwrap().push(thread_name());
+                AccountCheck::Same
+            })
+        };
+
+        app.request_mk_scan();
+        run_until_mk_scanned(&mut app, &ctx);
+        pend(&mut app, PointerSpeed, 14);
+        app.start_mk_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(api.fake.value(PointerSpeed), SettingValue::Number(14));
+        app.start_mk_restore(&ctx, vec!["pointer_speed".into()]);
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(api.fake.value(PointerSpeed), SettingValue::Number(10));
+
+        let mut threads = api.threads.lock().unwrap().clone();
+        threads.extend(account_threads.lock().unwrap().iter().cloned());
+        let ui = thread_name();
+        assert!(threads.len() >= 19 + 3 + 2, "{threads:?}");
+        for t in &threads {
+            assert!(t.starts_with("job: ") && *t != ui, "called on {t:?}");
+        }
+        for title in [
+            "job: Reading the mouse and keyboard settings",
+            "job: Applying mouse and keyboard changes",
+            "job: Restoring mouse and keyboard settings",
+        ] {
+            assert!(threads.iter().any(|t| t == title), "{title}: {threads:?}");
+        }
+    }
+
     #[test]
     fn every_job_title_key_exists_in_english() {
         let tr = crate::i18n::Tr::english();
@@ -1815,6 +2344,10 @@ mod tests {
             "job.restore_environment",
             "job.name.apply_environment",
             "job.name.restore_environment",
+            "job.apply_mouse_keyboard",
+            "job.restore_mouse_keyboard",
+            "job.name.apply_mouse_keyboard",
+            "job.name.restore_mouse_keyboard",
         ] {
             assert_ne!(tr.t(key), key);
         }

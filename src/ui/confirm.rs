@@ -62,6 +62,12 @@ pub(super) enum ConfirmAction {
     /// Variable slot ids (a rename's partners included) whose original must
     /// be put back.
     RestoreEnvironment(Vec<String>),
+    /// Writes the pending mouse and keyboard choices, once the user read
+    /// that the buttons swap.
+    ApplyMouseKeyboard,
+    /// Mouse and keyboard settings (`SettingId::key` strings) whose original
+    /// must be put back.
+    RestoreMouseKeyboard(Vec<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -247,6 +253,53 @@ impl WinTuneApp {
         paragraphs
     }
 
+    /// Asks before a mouse and keyboard Apply that swaps the buttons.
+    pub(super) fn request_apply_mouse_keyboard(&mut self) {
+        let tr = self.tr;
+        self.pending_confirm = Some(Confirm {
+            title: tr.t("mk.apply_title"),
+            message: tr.t("mk.swap_warning"),
+            confirm_label: tr.t("tweaks.apply"),
+            action: ConfirmAction::ApplyMouseKeyboard,
+        });
+    }
+
+    /// Asks before putting mouse and keyboard settings back to what they were
+    /// before WinTune changed them, warning when the buttons swap back.
+    // Used by the page and History (Tasks 5-6), which remove this allow.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(super) fn request_restore_mouse_keyboard(&mut self, ids: Vec<String>) {
+        if ids.is_empty() {
+            return;
+        }
+        let tr = self.tr;
+        let named = named_list(
+            tr,
+            ids.iter().map(|key| self.mk_slot_name(key)),
+            "mk.restore_many",
+        );
+        let distinct: std::collections::BTreeSet<&String> = ids.iter().collect();
+        let message_key = if distinct.len() == 1 {
+            "mk.restore_message_one"
+        } else {
+            "mk.restore_message"
+        };
+        let mut message = tr.t_args(message_key, &[&named]);
+        if ids
+            .iter()
+            .any(|key| key == crate::mouse_keyboard::SettingId::SwapButtons.key())
+        {
+            message.push_str("\n\n");
+            message.push_str(&tr.t("mk.swap_warning"));
+        }
+        self.pending_confirm = Some(Confirm {
+            title: tr.t("mk.restore_title"),
+            message,
+            confirm_label: tr.t("confirm.restore"),
+            action: ConfirmAction::RestoreMouseKeyboard(ids),
+        });
+    }
+
     /// Asks before an Apply whose hides do more than remove a menu item:
     /// one line per side effect.
     pub(super) fn request_apply_menu(&mut self, warnings: &[String]) {
@@ -293,6 +346,8 @@ impl WinTuneApp {
             ConfirmAction::RestoreStartup(ids) => self.start_startup_restore(ctx, ids),
             ConfirmAction::ApplyEnvironment(basis) => self.run_env_apply(ctx, basis),
             ConfirmAction::RestoreEnvironment(ids) => self.start_env_restore(ctx, ids),
+            ConfirmAction::ApplyMouseKeyboard => self.run_mk_apply(ctx),
+            ConfirmAction::RestoreMouseKeyboard(ids) => self.start_mk_restore(ctx, ids),
         }
     }
 
@@ -365,6 +420,9 @@ mod tests {
     use super::*;
     use crate::environment::{EnvWarning, VarEdit};
     use crate::i18n::messages;
+    use crate::mouse_keyboard::SettingId::{PointerSpeed, SwapButtons};
+    use crate::mouse_keyboard::SettingValue::{Flag, Number};
+    use crate::mouse_keyboard::Wanted;
     use egui::RawInput;
 
     fn exts(app: &WinTuneApp) -> Vec<String> {
@@ -844,6 +902,132 @@ mod tests {
         let message = &app.pending_confirm.as_ref().unwrap().message;
         let many = app.tr.t_args("env.restore_message", &[&"A, B"]);
         assert_eq!(message, &many);
+    }
+
+    fn scanned_mk_app(fx: &TempIcons, ctx: &egui::Context) -> WinTuneApp {
+        let mut app = fx.app(ctx);
+        app.request_mk_scan();
+        run_until_mk_scanned(&mut app, ctx);
+        app
+    }
+
+    /// Asks for the swap, accepts and waits for the job.
+    fn apply_swap(app: &mut WinTuneApp, ctx: &egui::Context, on: bool) {
+        app.mk_pending.insert(SwapButtons, Wanted::Value(Flag(on)));
+        app.start_mk_apply(ctx);
+        let confirm = app.pending_confirm.as_ref().expect("asks first");
+        assert_eq!(confirm.action, ConfirmAction::ApplyMouseKeyboard);
+        assert!(!app.is_busy(), "applied before the answer");
+        app.resolve_confirm(ctx, true);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(app, ctx);
+    }
+
+    #[test]
+    fn applying_a_swap_asks_first_either_way() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_mk_app(&fx, &ctx);
+        app.mk_pending
+            .insert(SwapButtons, Wanted::Value(Flag(true)));
+
+        app.start_mk_apply(&ctx);
+
+        let confirm = app.pending_confirm.as_ref().expect("asks first");
+        assert_eq!(confirm.action, ConfirmAction::ApplyMouseKeyboard);
+        assert_eq!(confirm.title, app.tr.t("mk.apply_title"));
+        assert_eq!(confirm.message, app.tr.t("mk.swap_warning"));
+        assert_eq!(confirm.confirm_label, app.tr.t("tweaks.apply"));
+        assert!(!app.is_busy(), "applied before the answer");
+        assert_eq!(fx.fake_input().sets(), []);
+        app.resolve_confirm(&ctx, true);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(fx.fake_input().value(SwapButtons), Flag(true));
+
+        // Swapping back asks too; cancelled, nothing is written.
+        run_until_mk_scanned(&mut app, &ctx);
+        app.mk_pending
+            .insert(SwapButtons, Wanted::Value(Flag(false)));
+        app.start_mk_apply(&ctx);
+        let confirm = app.pending_confirm.as_ref().expect("asks again");
+        assert_eq!(confirm.action, ConfirmAction::ApplyMouseKeyboard);
+        app.resolve_confirm(&ctx, false);
+        assert!(!app.is_busy());
+        assert_eq!(fx.fake_input().value(SwapButtons), Flag(true));
+        assert_eq!(app.mk_pending.len(), 1, "the choice is kept");
+
+        // A batch without the swap applies at once.
+        app.discard_mk_changes();
+        app.mk_pending
+            .insert(PointerSpeed, Wanted::Value(Number(14)));
+        app.start_mk_apply(&ctx);
+        assert!(app.pending_confirm.is_none());
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(fx.fake_input().value(PointerSpeed), Number(14));
+    }
+
+    #[test]
+    fn restoring_the_swap_warns() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_mk_app(&fx, &ctx);
+        apply_swap(&mut app, &ctx, true);
+        assert_eq!(fx.fake_input().value(SwapButtons), Flag(true));
+        let warning = app.tr.t("mk.swap_warning");
+
+        app.request_restore_mouse_keyboard(vec!["swap_buttons".into()]);
+        let confirm = app.pending_confirm.as_ref().expect("asks first");
+        assert_eq!(
+            confirm.action,
+            ConfirmAction::RestoreMouseKeyboard(vec!["swap_buttons".into()])
+        );
+        assert_eq!(confirm.title, app.tr.t("mk.restore_title"));
+        assert_eq!(confirm.confirm_label, app.tr.t("confirm.restore"));
+        assert!(
+            confirm
+                .message
+                .contains("Swap the primary and secondary buttons"),
+            "{}",
+            confirm.message
+        );
+        assert!(confirm.message.contains(&warning), "{}", confirm.message);
+        assert!(!app.is_busy(), "restored without confirmation");
+        app.resolve_confirm(&ctx, true);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(fx.fake_input().value(SwapButtons), Flag(false));
+
+        app.request_restore_mouse_keyboard(vec!["pointer_speed".into()]);
+        let message = &app.pending_confirm.as_ref().unwrap().message;
+        assert!(!message.contains(&warning), "{message}");
+    }
+
+    #[test]
+    fn a_mouse_keyboard_restore_reads_singular_or_counts() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        app.request_restore_mouse_keyboard(Vec::new());
+        assert!(app.pending_confirm.is_none());
+
+        app.request_restore_mouse_keyboard(vec!["pointer_speed".into()]);
+        let message = &app.pending_confirm.as_ref().unwrap().message;
+        let one = app.tr.t_args("mk.restore_message_one", &[&"Pointer speed"]);
+        assert_eq!(message, &one);
+
+        app.request_restore_mouse_keyboard(vec!["pointer_speed".into(), "caret_blink".into()]);
+        let message = &app.pending_confirm.as_ref().unwrap().message;
+        let two = app
+            .tr
+            .t_args("mk.restore_message", &[&"Pointer speed, caret_blink"]);
+        assert_eq!(message, &two);
+
+        let keys = ["pointer_speed", "wheel_lines", "hover_time", "click_lock"];
+        app.request_restore_mouse_keyboard(keys.map(String::from).to_vec());
+        let message = &app.pending_confirm.as_ref().unwrap().message;
+        assert!(message.contains("4 settings"), "{message}");
     }
 
     #[test]

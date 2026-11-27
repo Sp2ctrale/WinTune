@@ -20,6 +20,7 @@ mod icon_picker;
 mod jobs;
 pub mod kit;
 mod menu_existing_state;
+mod mouse_keyboard_state;
 mod originals;
 mod polish;
 #[cfg(test)]
@@ -39,6 +40,7 @@ use crate::associations::{
     default_backup_store_path, default_reg_backup_dir, load_backup_store,
     notify_shell_associations, AssocTarget, OperationReport,
 };
+use crate::backups::RegTarget;
 use crate::context_menu::{
     default_menu_store_path, entry_status, fileinfo, load_menu_store, orphan_keys, EntryStatus,
     MenuBackupStore, MenuEntry, MenuTarget, Programs, Scan,
@@ -53,6 +55,10 @@ use crate::gallery::{IconCategory, IconGallery};
 use crate::i18n::{messages, Tr};
 use crate::models::ThemeMode;
 use crate::models::{app_data_dir, AppConfig, BackupStore};
+use crate::mouse_keyboard::{
+    default_mk_store_path, session_account_check, AccountCheck, InputApi, MkBackupStore, MkScan,
+    SettingId, SpiInput, Wanted,
+};
 use crate::persist::LoadError;
 use crate::startup::{
     default_startup_store_path, Source, StartupBackupStore, StartupScan, StartupTarget,
@@ -117,6 +123,13 @@ pub(crate) struct AppEnv {
     pub resolve_indirect: fn(&str) -> Option<String>,
     /// A program's product name (`fileinfo::product_name`).
     pub product_name: fn(&Path) -> Option<String>,
+    /// Reads and writes the mouse and keyboard settings.
+    pub input: Arc<dyn InputApi>,
+    /// Whether WinTune runs as the user signed in to this session.
+    pub input_account: Arc<dyn Fn() -> AccountCheck + Send + Sync>,
+    pub mk_store_path: PathBuf,
+    /// Where the `.reg` net reads `Control Panel` (read only).
+    pub mk_reg_source: Arc<dyn Fn() -> RegTarget + Send + Sync>,
 }
 
 impl AppEnv {
@@ -153,6 +166,10 @@ impl AppEnv {
                 .unwrap_or_else(|| PathBuf::from(r"C:\Windows")),
             resolve_indirect: fileinfo::resolve_indirect,
             product_name: fileinfo::product_name,
+            input: Arc::new(SpiInput),
+            input_account: Arc::new(session_account_check),
+            mk_store_path: default_mk_store_path(),
+            mk_reg_source: Arc::new(RegTarget::current_user),
         }
     }
 }
@@ -229,6 +246,8 @@ pub(super) enum ReportKind {
     RestoredStartup,
     AppliedEnvironment,
     RestoredEnvironment,
+    AppliedMouseKeyboard,
+    RestoredMouseKeyboard,
 }
 
 pub struct WinTuneApp {
@@ -326,6 +345,21 @@ pub struct WinTuneApp {
     env_dialog: Option<environment_state::EnvDialog>,
     /// The folder typed in the Path section's add box.
     env_new_entry: String,
+    /// Original mouse and keyboard settings (mouse-keyboard-backups.json).
+    mk_store: MkBackupStore,
+    /// Set when mouse-keyboard-backups.json cannot be read: changes are blocked.
+    mk_store_error: Option<LoadError>,
+    /// Settings as last read; `None` until the first scan ends. Kept while a
+    /// new scan runs.
+    mk_scan: Option<MkScan>,
+    mk_scan_job: Option<mouse_keyboard_state::MkScanJob>,
+    mk_scan_needed: bool,
+    /// Choices not applied yet, by setting.
+    mk_pending: BTreeMap<SettingId, Wanted>,
+    /// Filter typed in the Mouse & keyboard page (titles).
+    // Read by the page (Task 5), which removes this allow.
+    #[allow(dead_code)]
+    mk_search: String,
     tr: Tr,
     /// The theme actually shown this frame (Light or Dark, never System):
     /// what the old palette helpers receive.
@@ -376,6 +410,8 @@ impl WinTuneApp {
         app.request_startup_scan();
         app.reload_env_store();
         app.request_env_scan();
+        app.reload_mk_store();
+        app.request_mk_scan();
         app
     }
 
@@ -450,6 +486,13 @@ impl WinTuneApp {
             env_search: String::new(),
             env_dialog: None,
             env_new_entry: String::new(),
+            mk_store: MkBackupStore::default(),
+            mk_store_error: None,
+            mk_scan: None,
+            mk_scan_job: None,
+            mk_scan_needed: false,
+            mk_pending: BTreeMap::new(),
+            mk_search: String::new(),
             tr,
             ui_theme,
             focus_search: false,
@@ -474,6 +517,7 @@ impl WinTuneApp {
         self.pump_menu_scan(ctx);
         self.pump_startup_scan(ctx);
         self.pump_env_scan(ctx);
+        self.pump_mk_scan(ctx);
         self.guard_close_while_busy(ctx);
 
         // Before the nav: the dialog claims the keyboard first (it is an Area,
@@ -637,6 +681,12 @@ impl WinTuneApp {
             ReportKind::RestoredStartup => tr.t_args("report.restored_startup", &[&count]),
             ReportKind::AppliedEnvironment => tr.t_args("report.applied_environment", &[&count]),
             ReportKind::RestoredEnvironment => tr.t_args("report.restored_environment", &[&count]),
+            ReportKind::AppliedMouseKeyboard => {
+                tr.t_args("report.applied_mouse_keyboard", &[&count])
+            }
+            ReportKind::RestoredMouseKeyboard => {
+                tr.t_args("report.restored_mouse_keyboard", &[&count])
+            }
         };
         if let Some(first) = report.errors.first() {
             msg.push_str(&tr.t_args("report.errors", &[&report.errors.len(), first]));

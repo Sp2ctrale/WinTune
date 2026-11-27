@@ -1920,4 +1920,10 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="mk.nothing_to_apply" xml:space="preserve">
     <value>Rien à appliquer</value>
   </data>
+  <data name="mk.original_desc" xml:space="preserve">
+    <value>Valeur d'origine : {0}, enregistrée le {1}</value>
+  </data>
+  <data name="home.mouse_keyboard_status" xml:space="preserve">
+    <value>{0} réglage(s) modifié(s) par WinTune</value>
+  </data>
 </root>

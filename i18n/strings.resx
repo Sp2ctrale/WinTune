@@ -1921,4 +1921,10 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="mk.nothing_to_apply" xml:space="preserve">
     <value>Nothing to apply</value>
   </data>
+  <data name="mk.original_desc" xml:space="preserve">
+    <value>Original: {0}, saved on {1}</value>
+  </data>
+  <data name="home.mouse_keyboard_status" xml:space="preserve">
+    <value>{0} settings changed by WinTune</value>
+  </data>
 </root>

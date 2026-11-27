@@ -83,6 +83,11 @@ impl WinTuneApp {
         let (env_vars, env_path) = self.env_scan.as_ref().map_or((0, 0), |scan| {
             (scan.user.len(), scan.user_path_entries().len())
         });
+        // From the store, so it is right before the first scan.
+        let mk_saved = self
+            .mk_store
+            .backups_of(&self.env.user_label)
+            .map_or(0, |b| b.len());
         vec![
             ModuleSummary {
                 page: ActiveTab::Associations,
@@ -108,6 +113,12 @@ impl WinTuneApp {
                 page: ActiveTab::Environment,
                 icon: kit::Icon::Environment,
                 status: tr.t_args("home.environment_status", &[&env_vars, &env_path]),
+                drift: 0,
+            },
+            ModuleSummary {
+                page: ActiveTab::MouseKeyboard,
+                icon: kit::Icon::Mouse,
+                status: tr.t_args("home.mouse_keyboard_status", &[&mk_saved]),
                 drift: 0,
             },
         ]
@@ -491,6 +502,34 @@ mod tests {
         app.active_tab = ActiveTab::Home;
         click_text(&mut app, &ctx, &expected);
         assert_eq!(app.active_tab, ActiveTab::Environment);
+    }
+
+    #[test]
+    fn the_mouse_keyboard_tile_counts_saved_originals() {
+        use crate::mouse_keyboard::SettingValue::Number;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        app.rule_statuses.clear();
+        app.tweak_statuses.clear();
+        assert!(app.mk_scan.is_none());
+        let none = app.tr.t_args("home.mouse_keyboard_status", &[&0]);
+        assert_eq!(status_of(&app, ActiveTab::MouseKeyboard), (none, 0));
+
+        for key in ["pointer_speed", "swap_buttons"] {
+            app.mk_store
+                .record_first("TEST\\user", key, "2026-01-02 03:04:05", Number(1));
+        }
+        let expected = app.tr.t_args("home.mouse_keyboard_status", &[&2]);
+        assert_eq!(expected, "2 settings changed by WinTune");
+        assert_eq!(
+            status_of(&app, ActiveTab::MouseKeyboard),
+            (expected.clone(), 0)
+        );
+
+        app.active_tab = ActiveTab::Home;
+        click_text(&mut app, &ctx, &expected);
+        assert_eq!(app.active_tab, ActiveTab::MouseKeyboard);
     }
 
     #[test]

@@ -82,6 +82,7 @@ impl WinTuneApp {
             self.reload_menu_store();
             self.reload_startup_store();
             self.reload_env_store();
+            self.reload_mk_store();
         }
         if page == ActiveTab::Associations && self.active_tab != page {
             self.request_status_refresh();
@@ -1537,8 +1538,25 @@ mod tests {
             },
         );
         env_entry.time = "2000-01-03 00:00:00".into();
-        app.history = vec![entry, menu_entry, startup_entry, env_entry];
+        let mut mk_entry = crate::history::HistoryEntry::from_report(
+            "Mouse & keyboard",
+            "Apply",
+            &crate::associations::OperationReport {
+                succeeded: vec!["Pointer speed".into()],
+                ..Default::default()
+            },
+        );
+        mk_entry.time = "2000-01-04 00:00:00".into();
+        app.history = vec![entry, menu_entry, startup_entry, env_entry, mk_entry];
         app.open_page(ActiveTab::History);
+        // A changed mouse setting's original (`open_page` reloaded the
+        // store from disk).
+        app.mk_store.record_first(
+            "TEST\\user",
+            "pointer_speed",
+            "2026-01-02 03:04:05",
+            crate::mouse_keyboard::SettingValue::Number(10),
+        );
         // Same for an environment variable's original.
         app.env_store
             .snapshots
@@ -1628,6 +1646,8 @@ mod tests {
             "Off app".to_string(),
             // A changed environment variable.
             "FRVAR".to_string(),
+            // A changed mouse setting, by its French title.
+            crate::i18n::messages::mk_title(app.tr, crate::mouse_keyboard::SettingId::PointerSpeed),
         ];
         rows.extend(
             applied_tweaks
@@ -1663,6 +1683,24 @@ mod tests {
             "no Environment variables operation: {texts:?}"
         );
 
+        // The Mouse & keyboard operation, by its French module name.
+        let module = app.tr.t("history.module.mouse_keyboard");
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.starts_with("2000-01-04") && t.contains(&module)),
+            "no Mouse & keyboard operation: {texts:?}"
+        );
+        let original = crate::i18n::messages::mk_value(
+            app.tr,
+            Some(crate::mouse_keyboard::SettingId::PointerSpeed),
+            &crate::mouse_keyboard::SettingValue::Number(10),
+        );
+        let desc = app
+            .tr
+            .t_args("mk.original_desc", &[&original, &"2026-01-02 03:04:05"]);
+        assert!(texts.contains(&desc), "{desc:?} not drawn on History");
+
         // Home: the Startup apps tile, with the counts of the last scan.
         app.active_tab = ActiveTab::Home;
         let mut home = Vec::new();
@@ -1685,6 +1723,8 @@ mod tests {
             app.tr.t_args("home.startup_status", &[&items, &off]),
             app.tr.t("nav.environment"),
             app.tr.t_args("home.environment_status", &[&vars, &folders]),
+            app.tr.t("nav.mouse_keyboard"),
+            app.tr.t_args("home.mouse_keyboard_status", &[&1]),
         ] {
             assert!(
                 home.contains(&drawn),

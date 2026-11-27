@@ -437,8 +437,159 @@ the result next to each item.
 Record anything that differs, with the item, its source and the Windows
 version, before merging.
 
+## Environment variables
+
+The Environment variables module lists the current user's variables, edits the
+user's `Path` as a list, and shows the machine's variables read-only. It reads
+the keys below and writes only values of the user's `Environment` key.
+
+### What WinTune reads
+
+| Source | Key | Use |
+| --- | --- | --- |
+| User variables | `HKCU\Environment` | Every value, raw (references such as `%USERPROFILE%` stay unexpanded), with its registry type. Values that are not `REG_SZ` or `REG_EXPAND_SZ` are listed read-only and never changed; the empty-named default value is skipped |
+| System variables | `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment` | Read only, for the "For every account" section and to flag a user `Path` entry that repeats a system one |
+| Per-sign-in variables | `HKCU\Volatile Environment` | Never read, never written, never backed up. Windows rebuilds it at each sign-in (`USERPROFILE`, `APPDATA`, ...) |
+| The process environment | WinTune's own | Display only: the last place a `%name%` is looked up when a `Path` entry is shown expanded |
+
+A `%name%` in an entry is looked up in the user variables (with the pending
+edits), then the system variables, then the process environment, at most 8
+levels deep, by a small expander in WinTune (`Resolver`), not by
+`ExpandEnvironmentStringsW`. The expansion is used only to show an entry and
+to check that its folder exists, never for what is written. Only absolute
+local paths (`X:\...`) are checked for existence; UNC and relative entries, and
+entries with a `%name%` that cannot be resolved, are never flagged "Folder not
+found".
+
+### What WinTune writes
+
+Only values of `HKCU\Environment`, one slot per value name.
+
+| Action | Written |
+| --- | --- |
+| Add a variable | The value, `REG_EXPAND_SZ` if its text holds a `%name%` reference, else `REG_SZ`. A new `Path` is always `REG_EXPAND_SZ` |
+| Edit a variable or the `Path` list | The value, in the type it already had, except that a `REG_SZ` value whose new text holds a `%name%` reference becomes `REG_EXPAND_SZ`. This applies to `Path` like any value |
+| Delete a variable | The value deleted. Removing every `Path` entry counts as deleting `Path` |
+| Rename a variable | The new name is written, then the old one is deleted |
+| Rename that changes only letter case | The old spelling is deleted, then the new one written. The registry keeps the first spelling of a value name, so this is the only way to change it |
+| Restore original | The exact original bytes and type, or the value deleted if it did not exist. A value stored under another spelling since is deleted first, so the original spelling comes back |
+
+A `%name%` reference is a `%`, one or more characters other than `%` and `=`,
+then a `%`. After the writes, WinTune sends one `WM_SETTINGCHANGE` with the
+string "Environment" to every top-level window, through `SendMessageTimeoutW`
+with `SMTO_ABORTIFHUNG` and a 5 second timeout, if anything was written (and
+after a restore). New programs started from Explorer see the change; windows
+that are already open, such as terminals, keep their old values until they are
+restarted.
+
+WinTune never writes under `HKLM`, never writes `HKCU\Volatile Environment`,
+and never runs `setx`: `setx` stops a value at 1,024 characters and writes a
+reference already expanded, so it would lose entries and references.
+`SetEnvironmentVariable` changes only WinTune's own process, so it is not used
+either.
+
+Validation (any problem refuses the whole Apply, with nothing written):
+
+- A name is trimmed and cannot be empty, contain `=` or a NUL character, or
+  exceed 255 characters. Names are unique ignoring case after the change. The
+  variable dialog also refuses the name `Path`, which is edited in its own
+  section.
+- A value cannot be empty (Delete removes a variable), contain a NUL character
+  or exceed 32,767 UTF-16 units.
+- A `Path` entry cannot contain `;`. Empty entries are dropped when the list is
+  joined with `;`, with no trailing `;`.
+- A variable changed more than once in one Apply, a text change to a variable
+  that is not text, and a change to a variable that vanished since the last
+  scan (`Gone`) are refused.
+
+Warnings (asked in a confirmation before Apply, never a refusal): deleting or
+renaming `Path`, `TEMP`, `TMP` or a variable whose name starts with `OneDrive`;
+a `Path` whose expanded system part, a `;` and the expanded new user part make
+more than 8,191 UTF-16 units (measured only when Apply writes `Path`); and a
+`Path` that another program changed since the edit started (the Apply writes
+the list the user built). A plain add or edit applies without asking: History
+undoes it.
+
+Before the first change to a value, its original state is saved in
+`environment-backups.json` (in `%ProgramData%\Wintune`, per user, by slot id:
+the value path `Environment` and the value name) and a `.reg` export is
+written, as for the other modules. A rename's two slots are stored as a group in
+the same file (`renames`, next to `users`): **Restore original** on either one,
+or on either History row, restores both together, the old name coming back
+before the new one goes. When an Apply brings a value back to its original
+(same presence, type, bytes and spelling), its snapshot is dropped and the
+store saved again, so no Restore original is offered for a state that is
+already the original.
+
+Restoring `Path` is exact, but its confirmation compares the original list
+with the current one, entry by entry as written, and names the entries the
+restore will **remove** (added since, by WinTune or by another program) and
+those it will **add back**.
+
+### Evidence
+
+| Claim | Status | Source |
+| --- | --- | --- |
+| User variables live in `HKEY_USERS\<user>\Environment`, that is `HKCU\Environment` | DOCUMENTED | Microsoft Learn, *Win32_Environment class* (https://learn.microsoft.com/windows/win32/cimwin32prov/win32-environment) |
+| System variables live in `HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment`; after writing them, broadcast `WM_SETTINGCHANGE` with `lParam` "Environment"; a user-defined variable holds at most 32,767 characters | DOCUMENTED | Microsoft Learn, *Environment Variables* (https://learn.microsoft.com/windows/win32/procthread/environment-variables) |
+| The broadcast is a `SendMessageTimeout` to `HWND_BROADCAST` with `wParam` NULL and `lParam` pointing to the string "Environment" | DOCUMENTED | Microsoft Learn, *WM_SETTINGCHANGE message* (https://learn.microsoft.com/windows/win32/winmsg/wm-settingchange) |
+| A name cannot contain `=`; a process cannot change the environment of a process it did not start (children get a copy) | DOCUMENTED | Microsoft Learn, *Changing Environment Variables* (https://learn.microsoft.com/windows/win32/procthread/changing-environment-variables) |
+| `REG_EXPAND_SZ` holds unexpanded references such as `%PATH%` that are expanded with `ExpandEnvironmentStrings`; `REG_SZ` is a plain string | DOCUMENTED | Microsoft Learn, *Registry value types* (https://learn.microsoft.com/windows/win32/sysinfo/registry-value-types) |
+| `setx` stops at 1,024 characters when it assigns a value, and expands the references of an existing variable; the values it sets are for future command windows only | DOCUMENTED | Microsoft Learn, *setx* (https://learn.microsoft.com/windows-server/administration/windows-commands/setx) |
+| A command line passed to `cmd.exe` is limited to 8,191 characters, so a longer `Path` can break programs that rely on it | DOCUMENTED | Microsoft Learn, *Command-line string limitation* (https://learn.microsoft.com/troubleshoot/windows-client/shell-experience/command-line-string-limitation) |
+| `SMTO_ABORTIFHUNG` and a timeout of about 5,000 ms in the broadcast; Explorer rereads the environment on it, so programs started from Explorer afterwards see the change | FOLKLORE | The usual recipe; the pages above do not give the flag or the timeout |
+| A new process gets the system variables, then the user ones; the user `Path` is appended to the system `Path`; a user variable with the name of a system one wins | FOLKLORE | Matches observed behaviour, but the pages above do not state the merge order. WinTune shows the user `Path` and the system `Path` as two lists and does not rely on the order |
+| Variable names are case-insensitive | FOLKLORE | Registry value names are case-insensitive, so WinTune compares names ignoring case and keeps the stored spelling |
+| Some installers write `Path` as `REG_SZ`, which leaves its `%name%` entries unexpanded; Windows' own dialog writes `REG_EXPAND_SZ` when the text holds a reference | FOLKLORE | Reported by users; this is why WinTune upgrades a `REG_SZ` value to `REG_EXPAND_SZ` when its new text holds a reference |
+| The 2,047 figure of old dialogs is not an operating-system limit | FOLKLORE | The 32,767 figure is the documented cap |
+| Windows' Environment Variables dialog edits `Path` as a list (one entry per row, split on `;`) | FOLKLORE | Not on the Learn pages read; WinTune mirrors the split and join, not the dialog |
+
+Shapes seen on the development PC (Windows 11, build 26300, read-only probe)
+(OBSERVED): 7 user variables (`Path`, `TEMP`, `TMP`, `OneDrive`,
+`OneDriveCommercial`, and two tool variables, both `REG_SZ`); `TEMP`, `TMP`,
+`OneDrive` and `OneDriveCommercial` are `REG_EXPAND_SZ`. The user `Path` is `REG_EXPAND_SZ`, 1,080 characters, 21
+entries, 5 of them with a `%VAR%`, 1 entry whose folder is missing, 1 duplicate
+(the same folder written once with `%LOCALAPPDATA%` and once literally) and 1
+with a trailing backslash. The system `Path` is `REG_EXPAND_SZ`, 578
+characters, 17 entries, with no entry repeated in the user `Path`. No value has
+an empty name or a `=` in its name. `HKCU\Volatile Environment` holds
+`USERNAME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA` and the logon variables.
+
+#### Pre-merge checklist (Environment variables)
+
+Not run by the developer: the engine is covered by tests in a sandbox and the
+broadcast is never sent from a test, but no variable was changed in WinTune and
+then looked at in a new terminal or in Windows' dialog. The owner runs this
+before merging, and records each result next to its item. Use a throw-away
+variable name such as `WINTUNE_TEST`.
+
+- [ ] 1. Add a variable in WinTune and Apply. Open a new terminal from Start:
+  `echo %WINTUNE_TEST%` shows it. Windows' Environment Variables dialog
+  (`sysdm.cpl`, Advanced) shows it too. Result: ______
+- [ ] 2. Add a folder to `Path` and Apply. A new terminal finds a program in
+  that folder (`where <program>`). The entries that hold a `%VAR%` are still
+  unexpanded in Windows' dialog, and `Path` is still `REG_EXPAND_SZ`
+  (`reg query HKCU\Environment /v Path`). Result: ______
+- [ ] 3. Move an entry up and remove another, then Apply. Windows' dialog shows
+  the new order. Result: ______
+- [ ] 4. In History, Saved originals, Environment variables: **Restore
+  original** for `Path`. The confirmation names the entries that will be
+  removed and added back, and Windows' dialog then shows the original list.
+  Result: ______
+- [ ] 5. Delete the test variable in WinTune and Apply. It is gone in a new
+  terminal. Result: ______
+
+Record anything that differs, with the step and the Windows version, before
+merging.
+
 ## Sources
 
+- Microsoft Learn, *Environment Variables*, *Changing Environment Variables*,
+  *Win32_Environment class*, *WM_SETTINGCHANGE message*, *Registry value types*,
+  *setx* and *Command-line string limitation*: where the variables live, the
+  types, the broadcast, the limits and why `setx` is not used. The merge
+  order, case-insensitive names and the broadcast flags are not documented
+  there.
 - Microsoft Learn, *Startup apps* and *Run and RunOnce registry keys*: the
   Run keys, the Startup folders and Task Manager's role. The `StartupApproved`
   switch is undocumented (flagged "Unofficial" in the app).

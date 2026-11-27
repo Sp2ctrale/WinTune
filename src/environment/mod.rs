@@ -65,3 +65,30 @@ pub fn encode_text(text: &str) -> Vec<u8> {
 pub fn process_var(name: &str) -> Option<String> {
     std::env::var(name).ok()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The reference page must name each location in its terminated form (the
+    /// key text followed by a closing backtick), so `HKCU\Environment` cannot
+    /// be satisfied by a longer path or by the word "Environment" alone.
+    #[test]
+    fn the_registry_reference_names_every_environment_location() {
+        let doc = include_str!("../../docs/registry-reference.md");
+        let wanted = [
+            format!("`HKCU\\{USER_ENV_KEY}`"),
+            format!("`HKLM\\{SYSTEM_ENV_KEY}`"),
+            format!("`HKCU\\{VOLATILE_ENV_KEY}`"),
+            "`environment-backups.json`".to_string(),
+            "`WM_SETTINGCHANGE`".to_string(),
+            "Pre-merge checklist (Environment variables)".to_string(),
+        ];
+        for text in &wanted {
+            assert!(
+                doc.contains(text.as_str()),
+                "registry-reference.md lacks {text}"
+            );
+        }
+    }
+}

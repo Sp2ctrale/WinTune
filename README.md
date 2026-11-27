@@ -1,7 +1,7 @@
 # WinTune
 
 WinTune is a Windows 10/11 desktop app for customizing the system. Every change it
-makes can be undone. It has five modules:
+makes can be undone. It has six modules:
 
 - **File associations**: custom icons, the double-click action (open in your
   editor or run the script), right-click verbs, and Explorer preview metadata.
@@ -20,6 +20,10 @@ makes can be undone. It has five modules:
 - **Startup apps**: the programs that start when you sign in (Run keys and
   Startup folders), each with a toggle to turn it off or on for your account,
   using the same switch as Task Manager.
+- **Environment variables**: your user variables and your `Path` as a list
+  (add, edit, remove, reorder, with missing and duplicate folders flagged),
+  with the system variables shown read-only. Writes only `HKCU\Environment`
+  and tells running programs about the change.
 
 Built with Rust and [egui](https://github.com/emilk/egui). The interface is
 available in English and Français, and the theme follows Windows (or can be
@@ -225,6 +229,72 @@ scheduled tasks and services are not listed.
   none. Every apply and restore is logged under "Startup apps". The Home tile
   reads "{n} apps, {m} turned off".
 
+## Environment variables
+
+The **Environment variables** page edits the variables of your account, the
+ones Windows' own Environment Variables dialog calls "User variables". It has
+three sections.
+
+- **Your Path.** The user `Path` as a list, one row per entry, as written
+  (`%USERPROFILE%\...` stays unexpanded; hover a row to see it expanded). Each
+  row has a `...` menu with Move up, Move down, Edit and Remove, and an **Add a
+  folder** field with a Browse button. A **Folder not found** pill marks an
+  entry whose local folder is missing, and a **Duplicate** pill marks a later
+  copy of a folder already listed earlier in your `Path` or anywhere in the
+  system `Path` (case and a trailing backslash are ignored). **Remove missing
+  and duplicates** turns those entries into pending removals. Removed entries
+  stay listed as "Will be removed" until you Apply or Discard.
+- **Your variables.** Every other user variable, by name, with a **Uses %...%**
+  pill when it holds references. Add, Edit (name and value in one dialog),
+  Delete and Restore original. `Path` cannot be added or renamed here: it has
+  its own section.
+- **For every account (read only).** The system variables, collapsed by
+  default, with the system `Path` as a list. WinTune never writes them: they
+  are in `HKLM`.
+
+Ctrl+F filters both sections by name, value or entry.
+
+- **Pending changes.** Changes stay pending until you press Apply (Discard
+  drops them), and the action bar counts them ("N changes not applied"; a
+  `Path` list edit counts as one). Apply asks first only when it deletes a
+  variable, removes a `Path` entry, or carries a warning (deleting or renaming
+  `Path`, `TEMP`, `TMP` or a `OneDrive*` variable, a `Path` over 8,191
+  characters, or a `Path` another program changed since you started editing). A
+  plain add or edit applies at once, since History can undo it. If anything is
+  refused or fails, the changes stay pending.
+- **Types and references are kept.** WinTune writes the registry directly, so
+  an entry with `%VAR%` stays unexpanded and a value keeps its type
+  (`REG_SZ` or `REG_EXPAND_SZ`). A `REG_SZ` value whose new text holds a
+  `%VAR%` becomes `REG_EXPAND_SZ`, so the reference is expanded when Windows
+  builds the environment. A new `Path` is always `REG_EXPAND_SZ`.
+- **Why not `setx`.** `setx` stops a value at 1,024 characters and writes the
+  references already expanded, so editing a long `Path` with it loses entries.
+  WinTune never runs it.
+- **Checks.** A name cannot be empty, contain `=` or exceed 255 characters, and
+  is unique ignoring case; a value cannot be empty or exceed 32,767 characters
+  (Delete removes a variable); a `Path` entry cannot contain `;`. A problem
+  refuses the whole Apply, with nothing written. Values that are not text are
+  shown read-only.
+- **New programs see the change, open terminals do not.** After a write,
+  WinTune broadcasts `WM_SETTINGCHANGE` ("Environment"), so programs you start
+  from Explorer afterwards see the new values. A terminal, an editor or a
+  service that is already running keeps its old environment until it is
+  restarted. The page says so.
+- **Undo.** In **History**, **Saved originals** has an **Environment
+  variables** group, with a row per variable. **Restore original** puts back
+  the exact original value and type, or removes the variable if it did not
+  exist, then broadcasts again. A rename is restored as one: the old name comes
+  back and the new one goes, from either row. Restoring `Path` asks first and
+  lists the entries it will remove (added since) and add back. Every apply and
+  restore is logged under "Environment variables". The Home tile reads "{n}
+  variables, {m} folders in Path".
+- **Not covered.** System variables, `HKCU\Volatile Environment` (Windows
+  rebuilds it at each sign-in), and the environment of programs that are
+  already running.
+
+Details and the evidence for each claim are in
+[docs/registry-reference.md](docs/registry-reference.md#environment-variables).
+
 ## Safety and undo
 
 Before anything is written:
@@ -271,8 +341,9 @@ leave that key alone.
 
 The **History** page lists every operation and, under **Saved originals**,
 every snapshot WinTune holds. You can restore one item, or a whole group
-(File associations, Explorer & Taskbar, Start & Privacy, Context menu, Startup apps). Each restore asks
-first. Restoring an extension puts it back to its exact pre-WinTune state. It
+(File associations, Explorer & Taskbar, Start & Privacy, Context menu, Startup apps, Environment variables). Each restore asks
+first. Restoring a renamed environment variable brings back both names
+together. Restoring an extension puts it back to its exact pre-WinTune state. It
 also removes every ProgID that WinTune created, including ones you renamed
 since. A snapshot is deleted only once it has been fully restored; if the
 restore partly fails, the snapshot is kept so you can retry.
@@ -288,6 +359,7 @@ Everything lives in `%ProgramData%\Wintune`:
 | `tweaks-backups.json` | Original state of each Explorer & Taskbar tweak, per user |
 | `context-menu-backups.json` | Original state of each Context menu key, hidden entry and name, per user |
 | `startup-backups.json` | Original state of each Startup apps switch, per user |
+| `environment-backups.json` | Original state of each environment variable WinTune changed, per user, plus the pairs of names a rename restores together |
 | `history.jsonl` | One line per operation (apply, rollback, restore), shown by the **History** page |
 | `reg-backups\*.reg` | `.reg` safety net written before each apply |
 | `gallery.pak` | Optional compressed icon pack, built from the icon folder |
@@ -301,9 +373,10 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `regsnap` | Generic snapshot, restore, delete-tree and `.reg` export. Every module that writes to the registry builds on it |
 | `associations` | File-association engine on an injectable `AssocTarget`, split into `target`, `validate`, `store`, `apply`, `rollback`, `status` and `tests` |
 | `tweaks` | Explorer & Taskbar tweaks engine (catalog, status, apply, restore) on an injectable `TweakTarget` |
-| `backups` | Snapshot store shared by tweaks, the Context menu and Startup apps (per user, per slot), with save-then-export and restore |
+| `backups` | Snapshot store shared by tweaks, the Context menu, Startup apps and Environment variables (per user, per slot), with save-then-export and restore |
 | `context_menu` | Context menu engine (entries, programs, catalog of Windows entries, scan of existing entries, apply, status, restore) on an injectable `MenuTarget` |
 | `startup` | Startup apps engine (scan of the Run keys and Startup folders, `StartupApproved` switch, apply, restore) on an injectable `StartupTarget` |
+| `environment` | Environment variables engine (`path` and `rules` are pure; `scan` reads `HKCU\Environment` and the system key; `engine` applies, restores and broadcasts) on an injectable `EnvTarget` |
 | `persist` | JSON stores: a missing file is empty, a corrupt or unreadable file is a `LoadError` (a code the UI translates), saves are atomic |
 | `history` | Operation log (`history.jsonl`): append one line per operation, read the most recent |
 | `models` | Config and backup data types, `ThemeMode`, plus the default rules |
@@ -312,7 +385,7 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `detector` | VS Code, WSL and user-hive detection |
 | `clock` | Local timestamps |
 | `i18n` | Translations: `.resx` catalogs in `i18n/`, the `Tr` handle, and engine message codes turned into text |
-| `ui` | egui interface, one file per page (`home`, `associations_tab`, `tweaks_tab` for both tweak pages, `context_menu_tab`, `startup_tab`, `gallery_tab` for Icons, `history_panel`, `settings`), `originals` (History's saved originals), `icon_grid` (the shared icon grid) and `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation and action bars), `autosave`, `confirm`, `rule_status`, `jobs`, and `kit/`, the design kit that holds the theme and every control |
+| `ui` | egui interface, one file per page (`home`, `associations_tab`, `tweaks_tab` for both tweak pages, `context_menu_tab`, `startup_tab`, `environment_tab`, `gallery_tab` for Icons, `history_panel`, `settings`), `originals` (History's saved originals), `icon_grid` (the shared icon grid) and `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation and action bars), `autosave`, `confirm`, `rule_status`, `jobs`, and `kit/`, the design kit that holds the theme and every control |
 | `main.rs` | Window setup only |
 
 Apply, rollback and pack building run on a background thread, a progress bar
@@ -367,7 +440,7 @@ The binary is not code-signed yet, so SmartScreen may warn on first launch.
   validation in the UI, confirmations for destructive actions and the
   operation history. Still to do: a diff preview before applying, and config
   import/export.
-- **Customization modules**: Explorer & Taskbar, Start & Privacy and Context
-  menu are built on the snapshot engine. More can follow, built on the same
+- **Customization modules**: Explorer & Taskbar, Start & Privacy, Context
+  menu, Startup apps and Environment variables are built on the snapshot engine. More can follow, built on the same
   snapshot and rollback engine.
 - **Phase 4**: the release workflow (draft releases from tags) is done. Still to do: an installer and code signing.

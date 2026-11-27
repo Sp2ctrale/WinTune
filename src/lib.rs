@@ -11,6 +11,7 @@ pub mod gallery;
 pub mod history;
 pub mod i18n;
 pub mod models;
+pub mod mouse_keyboard;
 pub mod persist;
 pub mod regsnap;
 pub mod startup;

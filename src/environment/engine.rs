@@ -15,7 +15,7 @@ use winreg::enums::KEY_READ;
 
 use super::{
     encode_text, env_slot, kind_to_write, read_vars, validate_changes, EnvChange, EnvProblem,
-    EnvTarget, EnvVar, USER_ENV_KEY,
+    EnvTarget, EnvVar, PathBasis, USER_ENV_KEY,
 };
 use crate::associations::OperationReport;
 use crate::backups::{self, RegTarget, Slot, Snapshot, UserBackups};
@@ -192,6 +192,20 @@ fn restore_exact(t: &RegTarget, slot: &Slot, snapshot: &Snapshot) -> Result<(), 
     }
 }
 
+/// The slot of a stored id, refused unless it is a value of
+/// `HKCU\Environment` (key path matched ignoring ASCII case): a store edited
+/// by hand must not make Restore write or delete anywhere else.
+fn env_slot_of(id: &str) -> Result<Slot, String> {
+    match Slot::from_id(id) {
+        Slot::Value { path, name } if path.eq_ignore_ascii_case(USER_ENV_KEY) => {
+            Ok(Slot::Value { path, name })
+        }
+        _ => Err(format!(
+            "not a value of HKCU\\{USER_ENV_KEY}, left alone (snapshot kept)"
+        )),
+    }
+}
+
 fn value_name(id: &str) -> String {
     match Slot::from_id(id) {
         Slot::Value { name, .. } => name,
@@ -217,6 +231,9 @@ fn english(problem: &EnvProblem) -> String {
         }
         EnvProblem::NotText(name) => format!("{name} is not a text value, WinTune leaves it alone"),
         EnvProblem::Twice(name) => format!("{name} is changed more than once"),
+        EnvProblem::ChangedSinceScan(name) => format!(
+            "{name} was changed by another program since the last scan; nothing was written"
+        ),
     }
 }
 
@@ -235,11 +252,13 @@ fn write_change(t: &RegTarget, vars: &[EnvVar], change: &EnvChange) -> Result<()
             encode_text(value),
         ),
         EnvChange::Edit { name, value } => {
-            let kind = existing(vars, name).map(|v| v.kind);
+            // Only a rename changes the spelling the registry stores.
+            let current = existing(vars, name);
+            let spelled = current.map_or(name.as_str(), |v| v.name.as_str());
             write_exact(
                 t,
-                name,
-                kind_to_write(kind, name, value),
+                spelled,
+                kind_to_write(current.map(|v| v.kind), name, value),
                 encode_text(value),
             )
         }
@@ -283,11 +302,13 @@ fn back_at_original(t: &RegTarget, store: &EnvBackupStore, user: &str, id: &str)
 /// Applies every change to the current user's variables in one pass. The
 /// original of each touched value stays recorded until it is restored or
 /// found back at its original. Any problem refuses the whole Apply with
-/// nothing written.
+/// nothing written, a `Path` that is no longer `path_basis` (what the changes
+/// and their confirmation were computed from) included.
 pub fn apply_environment(
     target: &EnvTarget,
     store: &mut EnvBackupStore,
     changes: &[EnvChange],
+    path_basis: &PathBasis,
     opts: &EnvOptions,
 ) -> OperationReport {
     let mut report = OperationReport::default();
@@ -304,7 +325,7 @@ pub fn apply_environment(
             return report;
         }
     };
-    for (name, problem) in validate_changes(&current, changes) {
+    for (name, problem) in validate_changes(&current, changes, path_basis) {
         report.errors.push(format!("{name}: {}", english(&problem)));
     }
     if !report.errors.is_empty() || changes.is_empty() {
@@ -447,7 +468,7 @@ pub fn restore_environment(
         &all,
         &opts.store_path,
         opts.progress,
-        &|id| Ok(Slot::from_id(id)),
+        &env_slot_of,
         &value_name,
     );
     if !report.succeeded.is_empty() {
@@ -524,6 +545,12 @@ mod tests {
             std::fs::read_dir(self.reg_dir()).map_or(0, |d| d.count())
         }
 
+        /// The `Path` as a scan would read it now.
+        fn basis(&self) -> PathBasis {
+            let vars = read_vars(&self.target.user, USER_ENV_KEY).unwrap();
+            PathBasis::of(vars.iter().find(|v| v.is_path()))
+        }
+
         fn opts<'a>(&self, broadcast: &'a dyn Fn()) -> EnvOptions<'a> {
             EnvOptions {
                 user: USER.into(),
@@ -590,7 +617,7 @@ mod tests {
         let bc = || count.set(count.get() + 1);
         let mut store = EnvBackupStore::default();
         let before = e.names();
-        let report = apply_environment(&e.target, &mut store, changes, &e.opts(&bc));
+        let report = apply_environment(&e.target, &mut store, changes, &e.basis(), &e.opts(&bc));
         assert!(!report.errors.is_empty(), "{changes:?}");
         assert!(report.succeeded.is_empty(), "{changes:?}");
         assert_eq!(e.names(), before, "{changes:?}");
@@ -610,6 +637,7 @@ mod tests {
             &e.target,
             &mut store,
             &[add("FOO", "bar"), add("BAR", r"%FOO%\x")],
+            &e.basis(),
             &e.opts(&bc),
         );
         assert!(report.errors.is_empty(), "{:?}", report.errors);
@@ -647,6 +675,7 @@ mod tests {
                 edit("Y", "60% done"),
                 edit("Z", r"%TEMP%\z"),
             ],
+            &e.basis(),
             &e.opts(&bc),
         );
         assert!(report.errors.is_empty(), "{:?}", report.errors);
@@ -670,6 +699,7 @@ mod tests {
             &e.target,
             &mut store,
             &[EnvChange::Delete { name: "Odd".into() }],
+            &e.basis(),
             &e.opts(&bc),
         );
         assert!(report.errors.is_empty(), "{:?}", report.errors);
@@ -695,6 +725,7 @@ mod tests {
             &e.target,
             &mut store,
             &[rename("OLD", "NEW", "v2")],
+            &e.basis(),
             &e.opts(&bc),
         );
         assert!(report.errors.is_empty(), "{:?}", report.errors);
@@ -729,6 +760,7 @@ mod tests {
             &e.target,
             &mut store,
             &[rename("foo", "Foo", "1")],
+            &e.basis(),
             &e.opts(&bc),
         );
         assert!(report.errors.is_empty(), "{:?}", report.errors);
@@ -754,6 +786,7 @@ mod tests {
             &e.target,
             &mut store,
             &[edit("PATH", r"C:\a;C:\b")],
+            &e.basis(),
             &e.opts(&bc),
         );
         assert!(report.errors.is_empty(), "{:?}", report.errors);
@@ -773,9 +806,21 @@ mod tests {
         let count = Cell::new(0);
         let bc = || count.set(count.get() + 1);
         let mut store = EnvBackupStore::default();
-        apply_environment(&e.target, &mut store, &[edit("X", "b")], &e.opts(&bc));
+        apply_environment(
+            &e.target,
+            &mut store,
+            &[edit("X", "b")],
+            &e.basis(),
+            &e.opts(&bc),
+        );
         assert!(!store.snapshots.users.is_empty());
-        let report = apply_environment(&e.target, &mut store, &[edit("X", "a")], &e.opts(&bc));
+        let report = apply_environment(
+            &e.target,
+            &mut store,
+            &[edit("X", "a")],
+            &e.basis(),
+            &e.opts(&bc),
+        );
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         assert!(store.snapshots.users.is_empty());
         assert_eq!(
@@ -789,6 +834,50 @@ mod tests {
         let e = env();
         assert_refused(&e, &[edit("GONE", "1"), add("NEW", "1")]);
         assert_eq!(e.get("NEW"), None);
+    }
+
+    #[test]
+    fn a_path_edit_is_refused_when_path_changed_since_the_scan() {
+        let e = env();
+        e.put_text("Path", REG_EXPAND_SZ, r"C:\a;C:\b");
+        e.put_text("X", REG_SZ, "1");
+        let scanned = e.basis();
+        // An installer appends its folder after the scan.
+        e.put_text("Path", REG_EXPAND_SZ, r"C:\a;C:\b;C:\new");
+        let count = Cell::new(0);
+        let bc = || count.set(count.get() + 1);
+        let mut store = EnvBackupStore::default();
+        let report = apply_environment(
+            &e.target,
+            &mut store,
+            &[edit("X", "2"), edit("Path", r"C:\b;C:\a")],
+            &scanned,
+            &e.opts(&bc),
+        );
+        assert_eq!(report.errors.len(), 1, "{:?}", report.errors);
+        assert!(
+            report.errors[0].contains("changed by another program"),
+            "{:?}",
+            report.errors
+        );
+        assert!(report.succeeded.is_empty());
+        assert_eq!(e.get("Path"), Some((2, encode_text(r"C:\a;C:\b;C:\new"))));
+        assert_eq!(e.get("X"), Some((1, encode_text("1"))));
+        assert!(!e.store_path().exists());
+        assert_eq!(e.reg_files(), 0);
+        assert_eq!(count.get(), 0);
+        assert_eq!(store, EnvBackupStore::default());
+
+        // Computed from what the registry holds now, it applies.
+        let report = apply_environment(
+            &e.target,
+            &mut store,
+            &[edit("Path", r"C:\b;C:\a")],
+            &e.basis(),
+            &e.opts(&bc),
+        );
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(e.get("Path"), Some((2, encode_text(r"C:\b;C:\a"))));
     }
 
     #[test]
@@ -841,6 +930,7 @@ mod tests {
                 EnvChange::Delete { name: "D".into() },
                 rename("R", "R2", "44"),
             ],
+            &e.basis(),
             &e.opts(&bc),
         );
         assert!(report.errors.is_empty(), "{:?}", report.errors);
@@ -935,6 +1025,82 @@ mod tests {
         assert!(!store.prune(USER));
         let backup: &Backup = &store.snapshots.backups_of(USER).unwrap()["c"];
         assert_eq!(backup.timestamp, "t");
+    }
+
+    #[test]
+    fn an_edit_keeps_the_spelling_the_registry_stores() {
+        let e = env();
+        e.put_text("FOO", REG_SZ, "1");
+        let count = Cell::new(0);
+        let bc = || count.set(count.get() + 1);
+        let mut store = EnvBackupStore::default();
+        let report = apply_environment(
+            &e.target,
+            &mut store,
+            &[edit("foo", "2")],
+            &e.basis(),
+            &e.opts(&bc),
+        );
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(e.names(), ["FOO"]);
+        assert_eq!(e.get("FOO"), Some((1, encode_text("2"))));
+    }
+
+    #[test]
+    fn restore_refuses_a_slot_outside_the_environment_key() {
+        use crate::regsnap::RegistryKeySnapshot;
+        let e = env();
+        let t = &e.target.user;
+        let (other, _) = t.root.create_subkey(t.path(r"Software\X")).unwrap();
+        other.set_value("v", &"keep").unwrap();
+        e.put_text("FOO", REG_SZ, "1");
+        let mut store = EnvBackupStore::default();
+        let absent = || Snapshot::Value(ValueSnapshot::default());
+        let value_id = Slot::Value {
+            path: r"Software\X".into(),
+            name: "v".into(),
+        }
+        .id();
+        let key_id = Slot::Key(r"Software\X".into()).id();
+        let upper_id = Slot::Value {
+            path: "ENVIRONMENT".into(),
+            name: "FOO".into(),
+        }
+        .id();
+        store.snapshots.record_first(USER, &value_id, "t", absent());
+        store.snapshots.record_first(
+            USER,
+            &key_id,
+            "t",
+            Snapshot::Key(RegistryKeySnapshot::default()),
+        );
+        store.snapshots.record_first(USER, &upper_id, "t", absent());
+        let count = Cell::new(0);
+        let bc = || count.set(count.get() + 1);
+
+        let report = restore_environment(
+            &e.target,
+            &mut store,
+            &[value_id.clone(), key_id.clone()],
+            &e.opts(&bc),
+        );
+        assert_eq!(report.errors.len(), 2, "{:?}", report.errors);
+        assert!(report.succeeded.is_empty());
+        assert_eq!(count.get(), 0);
+        let kept: String = t
+            .root
+            .open_subkey(t.path(r"Software\X"))
+            .unwrap()
+            .get_value("v")
+            .unwrap();
+        assert_eq!(kept, "keep");
+        assert!(store.snapshots.has_backup(USER, &value_id));
+        assert!(store.snapshots.has_backup(USER, &key_id));
+
+        // The key path is matched ignoring ASCII case, like the registry.
+        let report = restore_environment(&e.target, &mut store, &[upper_id], &e.opts(&bc));
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(e.get("FOO"), None);
     }
 
     #[test]

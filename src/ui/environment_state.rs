@@ -10,8 +10,8 @@ use super::{kit, WinTuneApp};
 use crate::backups::Slot;
 use crate::environment::{
     analyze_entries, kind_to_write, load_env_store, path_change, resolver_vars, scan_environment,
-    unquote, var_change, EntryInfo, EnvBackupStore, EnvChange, EnvScan, PathEdit, Resolver,
-    VarEdit, REG_EXPAND_SZ_KIND,
+    unquote, var_change, EntryInfo, EnvBackupStore, EnvChange, EnvScan, PathBasis, PathEdit,
+    Resolver, VarEdit, REG_EXPAND_SZ_KIND,
 };
 use crate::i18n::messages;
 use crate::tasks::{BackgroundJob, JobPoll};
@@ -19,8 +19,9 @@ use eframe::egui;
 
 pub(super) type EnvScanJob = BackgroundJob<EnvScan>;
 
-/// A variable being edited, by its lowercase name: the name it has now, or
-/// the name chosen for a new variable.
+/// A variable being edited, by its name in ASCII lower case (the registry's
+/// own case rule, used by every lookup): the name it has now, or the name
+/// chosen for a new variable.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum VarKey {
     Existing(String),
@@ -165,6 +166,12 @@ impl WinTuneApp {
             changes.extend(var_change(edit, current));
         }
         changes
+    }
+
+    /// The scanned `Path` that `env_changes` and the Apply question are
+    /// computed from; the engine refuses a `Path` write if it changed since.
+    pub(super) fn env_path_basis(&self) -> PathBasis {
+        PathBasis::of(self.env_scan.as_ref().and_then(EnvScan::user_path))
     }
 
     pub(super) fn env_pending_count(&self) -> usize {

@@ -1460,6 +1460,9 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="env.restore_message" xml:space="preserve">
     <value>{0} will get back the value they had before WinTune changed them.</value>
   </data>
+  <data name="env.restore_message_one" xml:space="preserve">
+    <value>{0} will get back the value it had before WinTune changed it.</value>
+  </data>
   <data name="env.restore_many" xml:space="preserve">
     <value>{0} variables</value>
   </data>
@@ -1524,6 +1527,9 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   </data>
   <data name="env.problem.twice" xml:space="preserve">
     <value>{0} is changed twice in one Apply.</value>
+  </data>
+  <data name="env.problem.changed_since_scan" xml:space="preserve">
+    <value>{0} was changed by another program since the page last read it. Nothing was written: check the list and apply again.</value>
   </data>
   <data name="nav.environment" xml:space="preserve">
     <value>Environment variables</value>
@@ -1656,6 +1662,9 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   </data>
   <data name="env.pending" xml:space="preserve">
     <value>{0} changes not applied</value>
+  </data>
+  <data name="env.pending_one" xml:space="preserve">
+    <value>1 change not applied</value>
   </data>
   <data name="env.up_to_date" xml:space="preserve">
     <value>All changes applied</value>

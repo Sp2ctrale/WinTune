@@ -1459,6 +1459,9 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="env.restore_message" xml:space="preserve">
     <value>{0} retrouveront la valeur qu'elles avaient avant que WinTune les modifie.</value>
   </data>
+  <data name="env.restore_message_one" xml:space="preserve">
+    <value>{0} retrouvera la valeur qu'elle avait avant que WinTune la modifie.</value>
+  </data>
   <data name="env.restore_many" xml:space="preserve">
     <value>{0} variables</value>
   </data>
@@ -1523,6 +1526,9 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   </data>
   <data name="env.problem.twice" xml:space="preserve">
     <value>{0} est modifiée deux fois dans la même application.</value>
+  </data>
+  <data name="env.problem.changed_since_scan" xml:space="preserve">
+    <value>{0} a été modifié par un autre programme depuis la dernière lecture de la page. Rien n'a été écrit : vérifiez la liste et appliquez à nouveau.</value>
   </data>
   <data name="nav.environment" xml:space="preserve">
     <value>Variables d'environnement</value>
@@ -1654,7 +1660,10 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
     <value>OK</value>
   </data>
   <data name="env.pending" xml:space="preserve">
-    <value>{0} changement(s) non appliqué(s)</value>
+    <value>{0} changements non appliqués</value>
+  </data>
+  <data name="env.pending_one" xml:space="preserve">
+    <value>1 changement non appliqué</value>
   </data>
   <data name="env.up_to_date" xml:space="preserve">
     <value>Tous les changements sont appliqués</value>

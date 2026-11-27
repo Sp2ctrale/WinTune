@@ -454,6 +454,7 @@ fn every_environment_message_translates_in_every_shipped_language() {
             named(EnvProblem::Gone),
             named(EnvProblem::NotText),
             named(EnvProblem::Twice),
+            named(EnvProblem::ChangedSinceScan),
         ] {
             let text = env_problem(tr, &problem);
             assert!(text.contains('X'), "{code}: {text:?}");

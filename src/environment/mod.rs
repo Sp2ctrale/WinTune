@@ -17,7 +17,8 @@ pub use scan::*;
 
 pub const USER_ENV_KEY: &str = "Environment";
 pub const SYSTEM_ENV_KEY: &str = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment";
-/// Never read, never written; named only for the guard test.
+/// Never read, never written; named only for the tests: the guards that it
+/// stays untouched, and the drift test of the registry reference.
 pub const VOLATILE_ENV_KEY: &str = "Volatile Environment";
 
 pub const PATH_NAME: &str = "Path";

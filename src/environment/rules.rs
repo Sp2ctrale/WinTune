@@ -105,6 +105,22 @@ pub enum EnvProblem {
     Gone(String),
     NotText(String),
     Twice(String),
+    /// `Path` is not what the batch (and its confirmation) was computed from.
+    ChangedSinceScan(String),
+}
+
+/// The user `Path` a batch was computed from, as the scan read it: its
+/// registry type and text (`None` when not text), or nothing when there was
+/// no `Path`. Apply refuses a batch that writes `Path` if the registry no
+/// longer holds this, so an entry another program added is never dropped
+/// without a confirmation that names it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PathBasis(Option<(u32, Option<String>)>);
+
+impl PathBasis {
+    pub fn of(path: Option<&EnvVar>) -> Self {
+        Self(path.map(|v| (v.kind, v.value.clone())))
+    }
 }
 
 fn utf16_len(text: &str) -> usize {
@@ -188,8 +204,13 @@ fn source_problem(current: &[EnvVar], name: &str) -> Option<EnvProblem> {
 }
 
 /// Everything that makes the batch unacceptable, each with the variable it is
-/// about. Empty means the batch may be applied.
-pub fn validate_changes(current: &[EnvVar], changes: &[EnvChange]) -> Vec<(String, EnvProblem)> {
+/// about. Empty means the batch may be applied. `path_basis` is the `Path`
+/// the batch was computed from; it matters only when the batch writes `Path`.
+pub fn validate_changes(
+    current: &[EnvVar],
+    changes: &[EnvChange],
+    path_basis: &PathBasis,
+) -> Vec<(String, EnvProblem)> {
     let mut found: Vec<(String, EnvProblem)> = Vec::new();
     let mut push = |name: &str, problem: Option<EnvProblem>| {
         if let Some(p) = problem {
@@ -199,6 +220,15 @@ pub fn validate_changes(current: &[EnvVar], changes: &[EnvChange]) -> Vec<(Strin
             }
         }
     };
+    let path_written = changes
+        .iter()
+        .flat_map(EnvChange::slot_names)
+        .find(|n| is_path_name(n));
+    if let Some(name) = path_written {
+        if PathBasis::of(find(current, PATH_NAME)) != *path_basis {
+            push(name, Some(EnvProblem::ChangedSinceScan(name.to_string())));
+        }
+    }
     for change in changes {
         match change {
             EnvChange::Add { name, value } => {
@@ -383,8 +413,12 @@ mod tests {
         }
     }
 
+    fn scanned_path() -> PathBasis {
+        PathBasis::of(find(&current(), PATH_NAME))
+    }
+
     fn problems(changes: &[EnvChange]) -> Vec<EnvProblem> {
-        validate_changes(&current(), changes)
+        validate_changes(&current(), changes, &scanned_path())
             .into_iter()
             .map(|(_, p)| p)
             .collect()
@@ -552,8 +586,30 @@ mod tests {
         let freed = problems(&[del("x"), add("X", "1")]);
         assert!(freed.contains(&EnvProblem::Twice("x".into())));
         assert_eq!(problems(&[edit("x", "2"), add("N", "1")]), []);
-        let about = validate_changes(&current(), &[edit("GONE", "1")]);
+        let about = validate_changes(&current(), &[edit("GONE", "1")], &scanned_path());
         assert_eq!(about[0].0, "GONE");
+    }
+
+    #[test]
+    fn a_path_write_is_refused_unless_path_is_what_it_was_computed_from() {
+        let stale = PathBasis::of(Some(&var("Path", 2, Some(r"C:\old"))));
+        let changed = EnvProblem::ChangedSinceScan("Path".into());
+        assert_eq!(
+            validate_changes(&current(), &[edit("Path", r"C:\b")], &stale),
+            [("Path".to_string(), changed.clone())]
+        );
+        assert_eq!(problems(&[edit("Path", r"C:\b")]), []);
+        // The type counts too, and so does a Path that was not there.
+        let other_kind = PathBasis::of(Some(&var("Path", 1, Some(r"C:\a"))));
+        let refused = |basis: &PathBasis, change: EnvChange| {
+            validate_changes(&current(), &[change], basis)
+                .iter()
+                .any(|(_, p)| *p == changed)
+        };
+        assert!(refused(&other_kind, del("Path")));
+        assert!(refused(&PathBasis::default(), del("Path")));
+        // A batch that leaves Path alone does not care what it holds.
+        assert_eq!(validate_changes(&current(), &[edit("x", "2")], &stale), []);
     }
 
     #[test]

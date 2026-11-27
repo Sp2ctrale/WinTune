@@ -1,7 +1,7 @@
 //! Glue between the UI and [`crate::tasks`]: starts the long operations on a
 //! worker thread and applies their outcome once they finish.
 
-use super::environment_state::EnvPending;
+use super::environment_state::{EnvPending, VarKey};
 use super::{kit::ToastKind, ReportKind, WinTuneApp};
 use crate::associations::{
     apply_extensions, find_rule_problems, rollback_extensions, save_backup_store, ApplyOptions,
@@ -11,7 +11,7 @@ use crate::context_menu::{apply_menu, entry_problems, restore_keys, MenuBackupSt
 use crate::detector::{build_editor_command, editor_display_name};
 use crate::environment::{
     apply_environment, change_warnings, is_path_name, removed_entries, restore_environment,
-    EnvBackupStore, EnvChange, EnvOptions, EnvTarget, EnvWarning,
+    EnvBackupStore, EnvChange, EnvOptions, EnvTarget, EnvWarning, PathBasis,
 };
 use crate::gallery::{build_compressed_pak, PakStats};
 use crate::models::{BackupStore, ExtensionConfig};
@@ -664,10 +664,11 @@ impl WinTuneApp {
             return;
         }
         let lines = self.env_apply_lines(&changes);
+        let basis = self.env_path_basis();
         if lines.is_empty() {
-            self.run_env_apply(ctx);
+            self.run_env_apply(ctx, basis);
         } else {
-            self.request_apply_environment(&lines);
+            self.request_apply_environment(&lines, basis);
         }
     }
 
@@ -732,8 +733,11 @@ impl WinTuneApp {
         })
     }
 
-    /// The write itself, once any question was answered yes.
-    pub(super) fn run_env_apply(&mut self, ctx: &egui::Context) {
+    /// The write itself, once any question was answered yes. `path_basis` is
+    /// the `Path` the question was computed from: if the registry no longer
+    /// holds it, the engine refuses a `Path` write, and the rescan after the
+    /// job makes the next Apply ask again with what changed.
+    pub(super) fn run_env_apply(&mut self, ctx: &egui::Context, path_basis: PathBasis) {
         if self.refuse_if_busy() {
             return;
         }
@@ -749,7 +753,9 @@ impl WinTuneApp {
             ctx,
             false,
             "Applying environment changes",
-            move |target, store, opts| apply_environment(target, store, &changes, opts),
+            move |target, store, opts| {
+                apply_environment(target, store, &changes, &path_basis, opts)
+            },
         );
     }
 
@@ -812,6 +818,19 @@ impl WinTuneApp {
         if !outcome.restored && outcome.report.errors.is_empty() {
             self.env_pending = EnvPending::default();
         }
+        // An edit of a restored variable was made on the value the restore
+        // replaced: kept, Apply would undo the restore.
+        if outcome.restored {
+            for name in &outcome.report.succeeded {
+                if is_path_name(name) {
+                    self.env_pending.path = None;
+                } else {
+                    self.env_pending
+                        .vars
+                        .remove(&VarKey::Existing(name.to_ascii_lowercase()));
+                }
+            }
+        }
         let kind = if outcome.restored {
             ReportKind::RestoredEnvironment
         } else {
@@ -873,7 +892,6 @@ enum Finished {
 
 #[cfg(test)]
 mod tests {
-    use super::super::environment_state::VarKey;
     use super::super::test_support::*;
     use super::*;
     use crate::environment::VarEdit;
@@ -1493,8 +1511,8 @@ mod tests {
 
     fn set_var(app: &mut WinTuneApp, original: Option<&str>, name: &str, value: &str) {
         let key = match original {
-            Some(o) => VarKey::Existing(o.to_lowercase()),
-            None => VarKey::New(name.to_lowercase()),
+            Some(o) => VarKey::Existing(o.to_ascii_lowercase()),
+            None => VarKey::New(name.to_ascii_lowercase()),
         };
         app.env_pending.vars.insert(
             key,
@@ -1549,6 +1567,84 @@ mod tests {
         assert_eq!(fx.user_env("Path"), Some((1, "A;;B;".to_string())));
     }
 
+    /// Polls only the job, never a frame: a frame would also run the scan
+    /// the job requests when it ends.
+    fn finish_job_without_scanning(app: &mut WinTuneApp) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while app.is_busy() && std::time::Instant::now() < deadline {
+            app.poll_job();
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(!app.is_busy(), "job did not finish");
+    }
+
+    #[test]
+    fn a_path_edit_on_a_stale_scan_is_refused_and_the_rescan_names_the_new_folder() {
+        use crate::environment::EnvWarning;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "Path", 2, "A;B");
+        let mut app = scanned_env_app(&fx, &ctx);
+        app.env_path_edit_mut().unwrap().move_down(0);
+        // An installer appends its folder; the page has not read it again.
+        fx.seed_env(false, "Path", 2, "A;B;C");
+
+        // A move only: nothing to ask, as far as the stale scan shows.
+        app.start_env_apply(&ctx);
+        assert!(app.pending_confirm.is_none());
+        finish_job_without_scanning(&mut app);
+
+        assert_eq!(fx.user_env("Path"), Some((2, "A;B;C".to_string())));
+        assert_eq!(fx.broadcast_count(), 0);
+        assert!(!app.env.env_store_path.exists(), "store written");
+        let reg_files = std::fs::read_dir(&app.env.reg_backup_dir).map_or(0, |d| d.count());
+        assert_eq!(reg_files, 0, ".reg written");
+        assert!(app.env_pending.path.is_some(), "the choice was dropped");
+        let last = app.history.first().expect("history entry");
+        assert_eq!(last.errors.len(), 1, "{:?}", last.errors);
+        assert!(
+            last.errors[0].contains("changed by another program"),
+            "{:?}",
+            last.errors
+        );
+
+        // The rescan the job asked for makes the next Apply ask, naming C.
+        run_until_env_scanned(&mut app, &ctx);
+        app.start_env_apply(&ctx);
+        let confirm = app.pending_confirm.as_ref().expect("asks first");
+        let elsewhere =
+            crate::i18n::messages::env_warning(app.tr, &EnvWarning::PathChangedElsewhere);
+        assert!(confirm.message.contains(&elsewhere), "{}", confirm.message);
+        let removed = app.tr.t_args("env.confirm.path_removed", &[&"C"]);
+        assert!(confirm.message.contains(&removed), "{}", confirm.message);
+        app.resolve_confirm(&ctx, true);
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(fx.user_env("Path"), Some((2, "B;A".to_string())));
+    }
+
+    #[test]
+    fn a_path_changed_while_the_question_is_open_is_refused() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "Path", 2, "A;B");
+        let mut app = scanned_env_app(&fx, &ctx);
+        app.env_path_edit_mut().unwrap().remove(1);
+        app.start_env_apply(&ctx);
+        // The question names B only.
+        assert!(app.pending_confirm.is_some());
+        // An installer adds C, and a scan reads it before the answer.
+        fx.seed_env(false, "Path", 2, "A;B;C");
+        app.request_env_scan();
+        run_until_env_scanned(&mut app, &ctx);
+
+        app.resolve_confirm(&ctx, true);
+        finish_job_without_scanning(&mut app);
+
+        assert_eq!(fx.user_env("Path"), Some((2, "A;B;C".to_string())));
+        assert_eq!(fx.broadcast_count(), 0);
+        assert!(app.env_pending.path.is_some(), "the choice was dropped");
+    }
+
     #[test]
     fn a_refused_environment_apply_keeps_the_choices() {
         let fx = TempIcons::new(&[]);
@@ -1568,14 +1664,8 @@ mod tests {
         key.delete_value("X").unwrap();
 
         app.start_env_apply(&ctx);
-        // Only the job is polled, never a frame: a frame would also run the
-        // scan this job requests, and that scan prunes the choice.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while app.is_busy() && std::time::Instant::now() < deadline {
-            app.poll_job();
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
-        assert!(!app.is_busy(), "job did not finish");
+        // The scan a frame would run prunes the choice.
+        finish_job_without_scanning(&mut app);
 
         assert!(app.last_notice().contains("error"), "{}", app.last_notice());
         assert!(app
@@ -1586,6 +1676,43 @@ mod tests {
         assert!(!app.env.env_store_path.exists(), "store written");
         let last = app.history.first().expect("history entry");
         assert_eq!(last.errors.len(), 1, "{:?}", last.errors);
+    }
+
+    #[test]
+    fn a_restore_drops_the_pending_edits_of_what_it_restored() {
+        use crate::environment::{env_slot, PATH_NAME};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "Path", 2, "A;B");
+        fx.seed_env(false, "X", 1, "1");
+        fx.seed_env(false, "Y", 1, "1");
+        let mut app = scanned_env_app(&fx, &ctx);
+        app.env_path_edit_mut().unwrap().add("C".into());
+        set_var(&mut app, Some("X"), "X", "2");
+        app.start_env_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        run_until_env_scanned(&mut app, &ctx);
+        assert_eq!(fx.user_env("Path"), Some((2, "A;B;C".to_string())));
+
+        // New edits of the restored slots, and of another variable.
+        app.env_path_edit_mut().unwrap().add("D".into());
+        set_var(&mut app, Some("X"), "X", "3");
+        set_var(&mut app, Some("Y"), "Y", "2");
+        app.start_env_restore(&ctx, vec![env_slot(PATH_NAME).id(), env_slot("X").id()]);
+        run_until_idle(&mut app, &ctx);
+        run_until_env_scanned(&mut app, &ctx);
+
+        assert_eq!(fx.user_env("Path"), Some((2, "A;B".to_string())));
+        assert_eq!(fx.user_env("X"), Some((1, "1".to_string())));
+        assert_eq!(app.env_pending.path, None, "Apply would undo the restore");
+        assert!(!app
+            .env_pending
+            .vars
+            .contains_key(&VarKey::Existing("x".into())));
+        assert!(app
+            .env_pending
+            .vars
+            .contains_key(&VarKey::Existing("y".into())));
     }
 
     #[test]

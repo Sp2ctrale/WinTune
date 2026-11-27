@@ -545,7 +545,7 @@ mod tests {
         app.request_env_scan();
         run_until_env_scanned(&mut app, ctx);
         app.env_pending.vars.insert(
-            VarKey::Existing(name.to_lowercase()),
+            VarKey::Existing(name.to_ascii_lowercase()),
             VarEdit {
                 original: Some(name.to_string()),
                 wanted: Some((wanted.0.to_string(), wanted.1.to_string())),

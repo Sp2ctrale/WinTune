@@ -126,6 +126,7 @@ pub fn env_problem(tr: Tr, p: &EnvProblem) -> String {
         EnvProblem::Gone(name) => tr.t_args("env.problem.gone", &[name]),
         EnvProblem::NotText(name) => tr.t_args("env.problem.not_text", &[name]),
         EnvProblem::Twice(name) => tr.t_args("env.problem.twice", &[name]),
+        EnvProblem::ChangedSinceScan(name) => tr.t_args("env.problem.changed_since_scan", &[name]),
     }
 }
 

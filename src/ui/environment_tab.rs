@@ -123,11 +123,10 @@ impl WinTuneApp {
     /// job's progress while one runs.
     fn env_action_bar(&mut self, ctx: &egui::Context) {
         let tr = self.tr;
-        let pending = self.env_pending_count();
-        let status = if pending > 0 {
-            tr.t_args("env.pending", &[&pending])
-        } else {
-            tr.t("env.up_to_date")
+        let status = match self.env_pending_count() {
+            0 => tr.t("env.up_to_date"),
+            1 => tr.t("env.pending_one"),
+            pending => tr.t_args("env.pending", &[&pending]),
         };
         let disabled_reason = self.env_apply_disabled_reason();
         let p = kit::current_palette(ctx);
@@ -453,7 +452,7 @@ impl WinTuneApp {
     fn env_var_rows(&self, scan: &EnvScan) -> Vec<VarRow> {
         let mut rows = Vec::new();
         for var in scan.user.iter().filter(|v| !v.is_path()) {
-            let key = VarKey::Existing(var.name.to_lowercase());
+            let key = VarKey::Existing(var.name.to_ascii_lowercase());
             let edit = self.env_pending.vars.get(&key);
             let change = edit.and_then(|e| var_change(e, Some(var)));
             let pending = change.as_ref().map(|c| match c {
@@ -868,7 +867,7 @@ impl WinTuneApp {
         match dialog {
             EnvDialog::Variable { key, name, value } => {
                 let name = name.trim().to_string();
-                let new_key = VarKey::New(name.to_lowercase());
+                let new_key = VarKey::New(name.to_ascii_lowercase());
                 let wanted = Some((name, value));
                 match key {
                     Some(key @ VarKey::Existing(_)) => {
@@ -1142,7 +1141,7 @@ mod tests {
 
         let shown = texts(&mut app, &ctx);
         assert!(shown.contains(&app.tr.t("env.pill.moved")), "{shown:?}");
-        assert!(shown.contains(&app.tr.t_args("env.pending", &[&1])));
+        assert!(shown.contains(&app.tr.t("env.pending_one")));
         apply_and_accept(&mut app, &ctx);
 
         assert_eq!(
@@ -1194,7 +1193,7 @@ mod tests {
             2,
             "{shown:?}"
         );
-        assert!(shown.contains(&app.tr.t_args("env.pending", &[&1])));
+        assert!(shown.contains(&app.tr.t("env.pending_one")));
         click_key(&mut app, &ctx, "tweaks.apply");
         assert!(app.pending_confirm.is_some(), "removals were not confirmed");
         app.resolve_confirm(&ctx, true);
@@ -1673,6 +1672,61 @@ mod tests {
 
         click_key(&mut app, &ctx, "tweaks.discard");
         assert_eq!(app.env_pending, Default::default());
+    }
+
+    #[test]
+    fn a_name_with_non_ascii_letters_can_be_edited_and_deleted() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "RÉPERTOIRE", 1, "1");
+        let mut app = page_app(&fx, &ctx);
+
+        open_menu(&mut app, &ctx, "RÉPERTOIRE");
+        click_menu_item(&mut app, &ctx, "env.edit");
+        set_variable_dialog(&mut app, "RÉPERTOIRE", "2");
+        click_key(&mut app, &ctx, "env.dialog_ok");
+        assert_eq!(app.env_dialog, None, "its own name was refused");
+        assert_eq!(app.env_pending_count(), 1);
+        apply_and_accept(&mut app, &ctx);
+        assert_eq!(
+            fx.user_env("RÉPERTOIRE"),
+            Some((1, "2".to_string())),
+            "{}",
+            app.last_notice()
+        );
+        run_until_env_scanned(&mut app, &ctx);
+
+        open_menu(&mut app, &ctx, "RÉPERTOIRE");
+        click_menu_item(&mut app, &ctx, "env.delete");
+        assert_eq!(app.env_pending_count(), 1);
+        apply_and_accept(&mut app, &ctx);
+        assert_eq!(fx.user_env("RÉPERTOIRE"), None, "{}", app.last_notice());
+    }
+
+    #[test]
+    fn the_pending_count_reads_singular_for_one_change() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "A", 1, "1");
+        fx.seed_env(false, "B", 1, "1");
+        let mut app = page_app(&fx, &ctx);
+        let edit = |name: &str| VarEdit {
+            original: Some(name.into()),
+            wanted: Some((name.into(), "2".into())),
+        };
+        app.env_pending
+            .vars
+            .insert(VarKey::Existing("a".into()), edit("A"));
+        let shown = texts(&mut app, &ctx);
+        let one = app.tr.t("env.pending_one");
+        assert!(shown.contains(&one), "{one:?} not drawn: {shown:?}");
+
+        app.env_pending
+            .vars
+            .insert(VarKey::Existing("b".into()), edit("B"));
+        let shown = texts(&mut app, &ctx);
+        let two = app.tr.t_args("env.pending", &[&2]);
+        assert!(shown.contains(&two), "{two:?} not drawn: {shown:?}");
     }
 
     #[test]

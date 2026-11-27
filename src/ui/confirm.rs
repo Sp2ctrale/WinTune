@@ -5,7 +5,10 @@
 use super::{kit, WinTuneApp};
 use crate::backups::Snapshot;
 use crate::context_menu::fileinfo::decode_utf16le;
-use crate::environment::{is_path_name, removed_entries, split_entries, EnvScan};
+use crate::environment::{
+    is_path_name, removed_entries, split_entries, EnvScan, PathBasis, REG_EXPAND_SZ_KIND,
+    REG_SZ_KIND,
+};
 use crate::i18n::Tr;
 use eframe::egui;
 
@@ -53,8 +56,9 @@ pub(super) enum ConfirmAction {
     /// Startup switch slot ids whose original must be put back.
     RestoreStartup(Vec<String>),
     /// Writes the pending environment changes, once the user saw what they
-    /// do beyond the plain edit.
-    ApplyEnvironment,
+    /// do beyond the plain edit. Carries the `Path` the question was computed
+    /// from, so a `Path` changed before the answer is refused, not written.
+    ApplyEnvironment(PathBasis),
     /// Variable slot ids (a rename's partners included) whose original must
     /// be put back.
     RestoreEnvironment(Vec<String>),
@@ -161,13 +165,13 @@ impl WinTuneApp {
     }
 
     /// Asks before an environment Apply, with one paragraph per warning.
-    pub(super) fn request_apply_environment(&mut self, lines: &[String]) {
+    pub(super) fn request_apply_environment(&mut self, lines: &[String], path_basis: PathBasis) {
         let tr = self.tr;
         self.pending_confirm = Some(Confirm {
             title: tr.t("env.apply_title"),
             message: tr.t_args("env.apply_message", &[&lines.join("\n\n")]),
             confirm_label: tr.t("tweaks.apply"),
-            action: ConfirmAction::ApplyEnvironment,
+            action: ConfirmAction::ApplyEnvironment(path_basis),
         });
     }
 
@@ -186,7 +190,12 @@ impl WinTuneApp {
             all.iter().map(|id| self.env_slot_name(id)),
             "env.restore_many",
         );
-        let mut paragraphs = vec![tr.t_args("env.restore_message", &[&named])];
+        let message_key = if all.len() == 1 {
+            "env.restore_message_one"
+        } else {
+            "env.restore_message"
+        };
+        let mut paragraphs = vec![tr.t_args(message_key, &[&named])];
         if let Some(path_id) = all.iter().find(|id| is_path_name(&self.env_slot_name(id))) {
             paragraphs.extend(self.restore_path_diff(&user, path_id));
         }
@@ -207,7 +216,9 @@ impl WinTuneApp {
             .find_id(user, path_id)
             .and_then(|id| self.env_store.snapshots.backups_of(user)?.get(id))
             .and_then(|backup| match &backup.snapshot {
-                Snapshot::Value(v) if v.exists && matches!(v.kind, 1 | 2) => {
+                Snapshot::Value(v)
+                    if v.exists && matches!(v.kind, REG_SZ_KIND | REG_EXPAND_SZ_KIND) =>
+                {
                     Some(split_entries(&decode_utf16le(&v.data)))
                 }
                 _ => None,
@@ -280,7 +291,7 @@ impl WinTuneApp {
             ConfirmAction::RemoveMenuEntry { id } => self.remove_menu_entry(&id),
             ConfirmAction::ApplyMenu => self.run_menu_apply(ctx),
             ConfirmAction::RestoreStartup(ids) => self.start_startup_restore(ctx, ids),
-            ConfirmAction::ApplyEnvironment => self.run_env_apply(ctx),
+            ConfirmAction::ApplyEnvironment(basis) => self.run_env_apply(ctx, basis),
             ConfirmAction::RestoreEnvironment(ids) => self.start_env_restore(ctx, ids),
         }
     }
@@ -655,7 +666,7 @@ mod tests {
 
     fn pending_edit(app: &mut WinTuneApp, original: &str, wanted: Option<(&str, &str)>) {
         app.env_pending.vars.insert(
-            VarKey::Existing(original.to_lowercase()),
+            VarKey::Existing(original.to_ascii_lowercase()),
             VarEdit {
                 original: Some(original.to_string()),
                 wanted: wanted.map(|(n, v)| (n.to_string(), v.to_string())),
@@ -674,7 +685,7 @@ mod tests {
         app.start_env_apply(&ctx);
 
         let confirm = app.pending_confirm.as_ref().expect("asks first");
-        assert_eq!(confirm.action, ConfirmAction::ApplyEnvironment);
+        assert!(matches!(confirm.action, ConfirmAction::ApplyEnvironment(_)));
         let warning = messages::env_warning(app.tr, &EnvWarning::Removes("TEMP".into()));
         assert!(confirm.message.contains(&warning), "{}", confirm.message);
         let deleted = app.tr.t_args("env.confirm.deleted", &[&"TEMP"]);
@@ -816,6 +827,23 @@ mod tests {
         app.request_restore_environment(ids.to_vec());
         let message = &app.pending_confirm.as_ref().unwrap().message;
         assert!(message.contains("4 variables"), "{message}");
+    }
+
+    #[test]
+    fn restoring_one_variable_reads_singular() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        app.request_restore_environment(vec![crate::environment::env_slot("FOO").id()]);
+        let message = &app.pending_confirm.as_ref().unwrap().message;
+        let one = app.tr.t_args("env.restore_message_one", &[&"FOO"]);
+        assert_eq!(message, &one);
+
+        let ids = ["A", "B"].map(|n| crate::environment::env_slot(n).id());
+        app.request_restore_environment(ids.to_vec());
+        let message = &app.pending_confirm.as_ref().unwrap().message;
+        let many = app.tr.t_args("env.restore_message", &[&"A, B"]);
+        assert_eq!(message, &many);
     }
 
     #[test]

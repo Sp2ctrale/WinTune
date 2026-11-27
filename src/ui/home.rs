@@ -79,6 +79,10 @@ impl WinTuneApp {
                 .count();
             (scan.items.len(), off)
         });
+        // 0 until the first scan ends.
+        let (env_vars, env_path) = self.env_scan.as_ref().map_or((0, 0), |scan| {
+            (scan.user.len(), scan.user_path_entries().len())
+        });
         vec![
             ModuleSummary {
                 page: ActiveTab::Associations,
@@ -98,6 +102,12 @@ impl WinTuneApp {
                 page: ActiveTab::Startup,
                 icon: kit::Icon::Startup,
                 status: tr.t_args("home.startup_status", &[&startup_count, &startup_off]),
+                drift: 0,
+            },
+            ModuleSummary {
+                page: ActiveTab::Environment,
+                icon: kit::Icon::Environment,
+                status: tr.t_args("home.environment_status", &[&env_vars, &env_path]),
                 drift: 0,
             },
         ]
@@ -129,6 +139,7 @@ impl WinTuneApp {
             ActiveTab::Tweaks => tr.t("nav.explorer"),
             ActiveTab::StartPrivacy => tr.t("nav.start"),
             ActiveTab::Startup => tr.t("nav.startup"),
+            ActiveTab::Environment => tr.t("nav.environment"),
             _ => tr.t("nav.context_menu"),
         };
         let history = &self.history;
@@ -451,6 +462,34 @@ mod tests {
         assert!(texts.contains(&app.tr.t("nav.startup")), "{texts:?}");
         click_text(&mut app, &ctx, &expected);
         assert_eq!(app.active_tab, ActiveTab::Startup);
+    }
+
+    #[test]
+    fn the_environment_tile_counts_variables_and_path_folders() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        app.rule_statuses.clear();
+        app.tweak_statuses.clear();
+        // Both counts are 0 until the first scan.
+        let before = app.tr.t_args("home.environment_status", &[&0, &0]);
+        assert_eq!(status_of(&app, ActiveTab::Environment), (before, 0));
+
+        fx.seed_env(false, "FOO", 1, "1");
+        fx.seed_env(false, "BAR", 1, "2");
+        fx.seed_env(false, "Path", 2, "A;B");
+        app.request_env_scan();
+        run_until_env_scanned(&mut app, &ctx);
+        let expected = app.tr.t_args("home.environment_status", &[&3, &2]);
+        assert_eq!(expected, "3 variables, 2 folders in Path");
+        assert_eq!(
+            status_of(&app, ActiveTab::Environment),
+            (expected.clone(), 0)
+        );
+
+        app.active_tab = ActiveTab::Home;
+        click_text(&mut app, &ctx, &expected);
+        assert_eq!(app.active_tab, ActiveTab::Environment);
     }
 
     #[test]

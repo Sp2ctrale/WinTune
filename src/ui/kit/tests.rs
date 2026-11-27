@@ -335,12 +335,13 @@ fn icon_ordinal(i: Icon) -> usize {
         More => 18,
         Folder => 19,
         Startup => 20,
+        Environment => 21,
     }
 }
 
 #[test]
 fn icon_all_lists_every_variant_once() {
-    assert_eq!(Icon::ALL.len(), 21);
+    assert_eq!(Icon::ALL.len(), 22);
     for (n, i) in Icon::ALL.iter().enumerate() {
         assert_eq!(icon_ordinal(*i), n);
     }

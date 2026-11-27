@@ -1,6 +1,7 @@
 //! Glue between the UI and [`crate::tasks`]: starts the long operations on a
 //! worker thread and applies their outcome once they finish.
 
+use super::environment_state::{EnvPending, VarKey};
 use super::{kit::ToastKind, ReportKind, WinTuneApp};
 use crate::associations::{
     apply_extensions, find_rule_problems, rollback_extensions, save_backup_store, ApplyOptions,
@@ -8,6 +9,10 @@ use crate::associations::{
 };
 use crate::context_menu::{apply_menu, entry_problems, restore_keys, MenuBackupStore, MenuOptions};
 use crate::detector::{build_editor_command, editor_display_name};
+use crate::environment::{
+    apply_environment, change_warnings, is_path_name, removed_entries, restore_environment,
+    EnvBackupStore, EnvChange, EnvOptions, EnvTarget, EnvWarning, PathBasis,
+};
 use crate::gallery::{build_compressed_pak, PakStats};
 use crate::models::{BackupStore, ExtensionConfig};
 use crate::startup::{
@@ -49,6 +54,14 @@ pub(super) struct StartupOutcome {
     pub(super) restored: bool,
 }
 
+/// Result of an environment variables job, with the snapshot store after it.
+pub(super) struct EnvOutcome {
+    pub(super) report: OperationReport,
+    pub(super) store: EnvBackupStore,
+    /// True for "restore", false for "apply".
+    pub(super) restored: bool,
+}
+
 pub(super) enum RunningJob {
     Apply(BackgroundJob<StoreOutcome>),
     Rollback(BackgroundJob<StoreOutcome>),
@@ -70,6 +83,12 @@ pub(super) enum RunningJob {
         job: BackgroundJob<StartupOutcome>,
         restore: bool,
     },
+    /// An environment variables job: apply the pending changes, or restore
+    /// originals.
+    Environment {
+        job: BackgroundJob<EnvOutcome>,
+        restore: bool,
+    },
 }
 
 impl RunningJob {
@@ -81,6 +100,7 @@ impl RunningJob {
             RunningJob::Tweaks { job, .. } => job.title(),
             RunningJob::ContextMenu { job, .. } => job.title(),
             RunningJob::Startup { job, .. } => job.title(),
+            RunningJob::Environment { job, .. } => job.title(),
         }
     }
 
@@ -96,6 +116,8 @@ impl RunningJob {
             RunningJob::ContextMenu { .. } => "job.apply_menu",
             RunningJob::Startup { restore: true, .. } => "job.restore_startup",
             RunningJob::Startup { .. } => "job.apply_startup",
+            RunningJob::Environment { restore: true, .. } => "job.restore_environment",
+            RunningJob::Environment { .. } => "job.apply_environment",
         }
     }
 
@@ -111,6 +133,8 @@ impl RunningJob {
             "job.restore_menu" => "job.name.restore_menu",
             "job.apply_startup" => "job.name.apply_startup",
             "job.restore_startup" => "job.name.restore_startup",
+            "job.apply_environment" => "job.name.apply_environment",
+            "job.restore_environment" => "job.name.restore_environment",
             _ => "job.name.apply_tweaks",
         }
     }
@@ -130,6 +154,10 @@ impl RunningJob {
             RunningJob::ContextMenu { .. } => Some(("Context menu", "Apply")),
             RunningJob::Startup { restore: true, .. } => Some(("Startup apps", "Restore")),
             RunningJob::Startup { .. } => Some(("Startup apps", "Apply")),
+            RunningJob::Environment { restore: true, .. } => {
+                Some(("Environment variables", "Restore"))
+            }
+            RunningJob::Environment { .. } => Some(("Environment variables", "Apply")),
             RunningJob::BuildPak(_) => None,
         }
     }
@@ -142,6 +170,7 @@ impl RunningJob {
             RunningJob::Tweaks { job, .. } => job.progress(),
             RunningJob::ContextMenu { job, .. } => job.progress(),
             RunningJob::Startup { job, .. } => job.progress(),
+            RunningJob::Environment { job, .. } => job.progress(),
         }
     }
 }
@@ -530,6 +559,11 @@ impl WinTuneApp {
                 JobPoll::Finished(outcome) => Finished::Startup(outcome),
                 JobPoll::Panicked(msg) => Finished::Panicked(msg),
             },
+            RunningJob::Environment { job, .. } => match job.poll() {
+                JobPoll::Running => return,
+                JobPoll::Finished(outcome) => Finished::Environment(outcome),
+                JobPoll::Panicked(msg) => Finished::Panicked(msg),
+            },
         };
         let title = job.title().to_string();
         let title_text = self.tr.t(job.name_key());
@@ -576,6 +610,7 @@ impl WinTuneApp {
             Finished::Tweaks(outcome) => self.finish_tweaks_job(outcome),
             Finished::Menu(outcome) => self.finish_menu_job(outcome),
             Finished::Startup(outcome) => self.finish_startup_job(outcome),
+            Finished::Environment(outcome) => self.finish_env_job(outcome),
             Finished::Panicked(msg) => {
                 if let Some((module, action)) = history_label {
                     // It may have written part of its changes: keep a trace.
@@ -594,11 +629,216 @@ impl WinTuneApp {
                 self.reload_menu_store();
                 self.refresh_menu_statuses();
                 self.reload_startup_store();
+                self.reload_env_store();
             }
         }
         // Any job may have changed the menu (or the snapshots behind it).
         self.request_menu_scan();
         self.request_startup_scan();
+        self.request_env_scan();
+    }
+
+    /// Why an environment change cannot start: the unreadable snapshot store
+    /// (which the next save would overwrite). Shown as the toast and as the
+    /// hover of the disabled Apply button.
+    pub(super) fn env_blocked_reason(&self) -> Option<String> {
+        self.env_store_error.as_ref().map(|e| {
+            let detail = crate::i18n::messages::load_error(self.tr, e);
+            self.tr.t_args("tweaks.blocked", &[&detail])
+        })
+    }
+
+    /// Writes the pending changes in one background job. It asks first when
+    /// the changes could surprise (`env_apply_lines`); otherwise History can
+    /// undo it.
+    pub(super) fn start_env_apply(&mut self, ctx: &egui::Context) {
+        if self.refuse_if_busy() {
+            return;
+        }
+        if let Some(reason) = self.env_blocked_reason() {
+            self.notify(ToastKind::Error, reason);
+            return;
+        }
+        let changes = self.env_changes();
+        if changes.is_empty() {
+            return;
+        }
+        let lines = self.env_apply_lines(&changes);
+        let basis = self.env_path_basis();
+        if lines.is_empty() {
+            self.run_env_apply(ctx, basis);
+        } else {
+            self.request_apply_environment(&lines, basis);
+        }
+    }
+
+    /// What the user should know before `changes` are written: warnings,
+    /// deleted variables, and the `Path` folders that will go.
+    pub(super) fn env_apply_lines(&self, changes: &[EnvChange]) -> Vec<String> {
+        let tr = self.tr;
+        let touches_path = changes
+            .iter()
+            .any(|c| c.slot_names().into_iter().any(is_path_name));
+        let mut warnings = change_warnings(changes, self.merged_path_len(changes));
+        if touches_path && self.env_path_changed_elsewhere() {
+            warnings.push(EnvWarning::PathChangedElsewhere);
+        }
+        let mut lines: Vec<String> = warnings
+            .iter()
+            .map(|w| crate::i18n::messages::env_warning(tr, w))
+            .collect();
+        for change in changes {
+            if let EnvChange::Delete { name } = change {
+                if !is_path_name(name) {
+                    lines.push(tr.t_args("env.confirm.deleted", &[name]));
+                }
+            }
+        }
+        if let (true, Some(edit), Some(scan)) =
+            (touches_path, &self.env_pending.path, &self.env_scan)
+        {
+            let removed = removed_entries(&scan.user_path_entries(), &edit.texts());
+            if !removed.is_empty() {
+                lines.push(tr.t_args("env.confirm.path_removed", &[&removed.join("\n")]));
+            }
+        }
+        lines
+    }
+
+    /// Length (UTF-16 units) of the `Path` programs will see once the user
+    /// `Path` of `changes` is written: the system one, `;`, then the user
+    /// one, both expanded. `None` when no change writes the `Path`.
+    fn merged_path_len(&self, changes: &[EnvChange]) -> Option<usize> {
+        let wanted = changes.iter().find_map(|c| match c {
+            EnvChange::Add { name, value } | EnvChange::Edit { name, value }
+                if is_path_name(name) =>
+            {
+                Some(value)
+            }
+            _ => None,
+        })?;
+        let resolver = self.env_resolver();
+        let units = |text: &str| resolver.expand(text).text.encode_utf16().count();
+        let system = self
+            .env_scan
+            .as_ref()
+            .and_then(|s| s.system.iter().find(|v| v.is_path()))
+            .and_then(|v| v.value.as_deref())
+            .unwrap_or("");
+        let user = units(wanted);
+        Some(if system.is_empty() {
+            user
+        } else {
+            units(system) + 1 + user
+        })
+    }
+
+    /// The write itself, once any question was answered yes. `path_basis` is
+    /// the `Path` the question was computed from: if the registry no longer
+    /// holds it, the engine refuses a `Path` write, and the rescan after the
+    /// job makes the next Apply ask again with what changed.
+    pub(super) fn run_env_apply(&mut self, ctx: &egui::Context, path_basis: PathBasis) {
+        if self.refuse_if_busy() {
+            return;
+        }
+        if let Some(reason) = self.env_blocked_reason() {
+            self.notify(ToastKind::Error, reason);
+            return;
+        }
+        let changes = self.env_changes();
+        if changes.is_empty() {
+            return;
+        }
+        self.spawn_env_job(
+            ctx,
+            false,
+            "Applying environment changes",
+            move |target, store, opts| {
+                apply_environment(target, store, &changes, &path_basis, opts)
+            },
+        );
+    }
+
+    /// Puts the given variables (slot ids) back to their saved originals.
+    pub(super) fn start_env_restore(&mut self, ctx: &egui::Context, ids: Vec<String>) {
+        if self.refuse_if_busy() {
+            return;
+        }
+        if let Some(reason) = self.env_blocked_reason() {
+            self.notify(ToastKind::Error, reason);
+            return;
+        }
+        self.spawn_env_job(
+            ctx,
+            true,
+            "Restoring environment variables",
+            move |target, store, opts| restore_environment(target, store, &ids, opts),
+        );
+    }
+
+    fn spawn_env_job(
+        &mut self,
+        ctx: &egui::Context,
+        restored: bool,
+        title: &'static str,
+        run: impl FnOnce(&EnvTarget, &mut EnvBackupStore, &EnvOptions) -> OperationReport
+            + Send
+            + 'static,
+    ) {
+        let env = self.env.clone();
+        let mut store = self.env_store.clone();
+        let user = self.env.user_label.clone();
+        let job = BackgroundJob::spawn(title, repaint(ctx), move |sink| {
+            let progress = |done: usize, total: usize, label: &str| sink.report(done, total, label);
+            let opts = EnvOptions {
+                user,
+                store_path: env.env_store_path.clone(),
+                reg_backup_dir: env.reg_backup_dir.clone(),
+                progress: &progress,
+                broadcast: &*env.notify_environment,
+            };
+            let report = run(&(env.env_target)(), &mut store, &opts);
+            EnvOutcome {
+                report,
+                store,
+                restored,
+            }
+        });
+        self.job = Some(RunningJob::Environment {
+            job,
+            restore: restored,
+        });
+    }
+
+    fn finish_env_job(&mut self, outcome: EnvOutcome) {
+        self.env_store = outcome.store;
+        // A clean apply did everything asked. After a refused or partial
+        // one the choices stay, so Apply can be tried again; the next scan
+        // drops those the registry already matches.
+        if !outcome.restored && outcome.report.errors.is_empty() {
+            self.env_pending = EnvPending::default();
+        }
+        // An edit of a restored variable was made on the value the restore
+        // replaced: kept, Apply would undo the restore.
+        if outcome.restored {
+            for name in &outcome.report.succeeded {
+                if is_path_name(name) {
+                    self.env_pending.path = None;
+                } else {
+                    self.env_pending
+                        .vars
+                        .remove(&VarKey::Existing(name.to_ascii_lowercase()));
+                }
+            }
+        }
+        let kind = if outcome.restored {
+            ReportKind::RestoredEnvironment
+        } else {
+            ReportKind::AppliedEnvironment
+        };
+        self.show_report(kind, &outcome.report);
+        let action = if outcome.restored { "Restore" } else { "Apply" };
+        self.record_history("Environment variables", action, &outcome.report);
     }
 
     fn finish_startup_job(&mut self, outcome: StartupOutcome) {
@@ -646,6 +886,7 @@ enum Finished {
     Tweaks(TweakOutcome),
     Menu(MenuOutcome),
     Startup(StartupOutcome),
+    Environment(EnvOutcome),
     Panicked(String),
 }
 
@@ -653,6 +894,7 @@ enum Finished {
 mod tests {
     use super::super::test_support::*;
     use super::*;
+    use crate::environment::VarEdit;
     use crate::gallery::PakStats;
     use egui::RawInput;
 
@@ -1259,6 +1501,292 @@ mod tests {
         assert!(app.last_notice().contains("failed unexpectedly"));
     }
 
+    fn scanned_env_app(fx: &TempIcons, ctx: &egui::Context) -> WinTuneApp {
+        let mut app = fx.app(ctx);
+        app.request_env_scan();
+        run_until_env_scanned(&mut app, ctx);
+        assert!(app.env_scan.is_some());
+        app
+    }
+
+    fn set_var(app: &mut WinTuneApp, original: Option<&str>, name: &str, value: &str) {
+        let key = match original {
+            Some(o) => VarKey::Existing(o.to_ascii_lowercase()),
+            None => VarKey::New(name.to_ascii_lowercase()),
+        };
+        app.env_pending.vars.insert(
+            key,
+            VarEdit {
+                original: original.map(str::to_string),
+                wanted: Some((name.to_string(), value.to_string())),
+            },
+        );
+    }
+
+    #[test]
+    fn an_environment_apply_writes_broadcasts_once_logs_and_clears_pending() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_env_app(&fx, &ctx);
+        set_var(&mut app, None, "FOO", "1");
+
+        app.start_env_apply(&ctx);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+
+        assert_eq!(fx.user_env("FOO"), Some((1, "1".to_string())));
+        assert_eq!(fx.broadcast_count(), 1);
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Environment variables", "Apply")
+        );
+        assert!(last.errors.is_empty(), "{:?}", last.errors);
+        assert_eq!(app.env_pending, EnvPending::default());
+        assert!(
+            app.last_notice()
+                .starts_with("1 environment change(s) applied"),
+            "{}",
+            app.last_notice()
+        );
+    }
+
+    #[test]
+    fn an_untouched_path_is_never_written() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "Path", 1, "A;;B;");
+        fx.seed_env(false, "X", 1, "1");
+        let mut app = scanned_env_app(&fx, &ctx);
+        set_var(&mut app, Some("X"), "X", "2");
+
+        app.start_env_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+
+        assert_eq!(fx.user_env("X"), Some((1, "2".to_string())));
+        assert_eq!(fx.user_env("Path"), Some((1, "A;;B;".to_string())));
+    }
+
+    /// Polls only the job, never a frame: a frame would also run the scan
+    /// the job requests when it ends.
+    fn finish_job_without_scanning(app: &mut WinTuneApp) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while app.is_busy() && std::time::Instant::now() < deadline {
+            app.poll_job();
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(!app.is_busy(), "job did not finish");
+    }
+
+    #[test]
+    fn a_path_edit_on_a_stale_scan_is_refused_and_the_rescan_names_the_new_folder() {
+        use crate::environment::EnvWarning;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "Path", 2, "A;B");
+        let mut app = scanned_env_app(&fx, &ctx);
+        app.env_path_edit_mut().unwrap().move_down(0);
+        // An installer appends its folder; the page has not read it again.
+        fx.seed_env(false, "Path", 2, "A;B;C");
+
+        // A move only: nothing to ask, as far as the stale scan shows.
+        app.start_env_apply(&ctx);
+        assert!(app.pending_confirm.is_none());
+        finish_job_without_scanning(&mut app);
+
+        assert_eq!(fx.user_env("Path"), Some((2, "A;B;C".to_string())));
+        assert_eq!(fx.broadcast_count(), 0);
+        assert!(!app.env.env_store_path.exists(), "store written");
+        let reg_files = std::fs::read_dir(&app.env.reg_backup_dir).map_or(0, |d| d.count());
+        assert_eq!(reg_files, 0, ".reg written");
+        assert!(app.env_pending.path.is_some(), "the choice was dropped");
+        let last = app.history.first().expect("history entry");
+        assert_eq!(last.errors.len(), 1, "{:?}", last.errors);
+        assert!(
+            last.errors[0].contains("changed by another program"),
+            "{:?}",
+            last.errors
+        );
+
+        // The rescan the job asked for makes the next Apply ask, naming C.
+        run_until_env_scanned(&mut app, &ctx);
+        app.start_env_apply(&ctx);
+        let confirm = app.pending_confirm.as_ref().expect("asks first");
+        let elsewhere =
+            crate::i18n::messages::env_warning(app.tr, &EnvWarning::PathChangedElsewhere);
+        assert!(confirm.message.contains(&elsewhere), "{}", confirm.message);
+        let removed = app.tr.t_args("env.confirm.path_removed", &[&"C"]);
+        assert!(confirm.message.contains(&removed), "{}", confirm.message);
+        app.resolve_confirm(&ctx, true);
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(fx.user_env("Path"), Some((2, "B;A".to_string())));
+    }
+
+    #[test]
+    fn a_path_changed_while_the_question_is_open_is_refused() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "Path", 2, "A;B");
+        let mut app = scanned_env_app(&fx, &ctx);
+        app.env_path_edit_mut().unwrap().remove(1);
+        app.start_env_apply(&ctx);
+        // The question names B only.
+        assert!(app.pending_confirm.is_some());
+        // An installer adds C, and a scan reads it before the answer.
+        fx.seed_env(false, "Path", 2, "A;B;C");
+        app.request_env_scan();
+        run_until_env_scanned(&mut app, &ctx);
+
+        app.resolve_confirm(&ctx, true);
+        finish_job_without_scanning(&mut app);
+
+        assert_eq!(fx.user_env("Path"), Some((2, "A;B;C".to_string())));
+        assert_eq!(fx.broadcast_count(), 0);
+        assert!(app.env_pending.path.is_some(), "the choice was dropped");
+    }
+
+    #[test]
+    fn a_refused_environment_apply_keeps_the_choices() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "X", 1, "1");
+        let mut app = scanned_env_app(&fx, &ctx);
+        set_var(&mut app, Some("X"), "X", "2");
+        // The variable vanished after the scan.
+        let key = fx
+            .sandbox
+            .root
+            .open_subkey_with_flags(
+                fx.hkcu(crate::environment::USER_ENV_KEY),
+                winreg::enums::KEY_SET_VALUE,
+            )
+            .unwrap();
+        key.delete_value("X").unwrap();
+
+        app.start_env_apply(&ctx);
+        // The scan a frame would run prunes the choice.
+        finish_job_without_scanning(&mut app);
+
+        assert!(app.last_notice().contains("error"), "{}", app.last_notice());
+        assert!(app
+            .env_pending
+            .vars
+            .contains_key(&VarKey::Existing("x".into())));
+        assert_eq!(fx.broadcast_count(), 0);
+        assert!(!app.env.env_store_path.exists(), "store written");
+        let last = app.history.first().expect("history entry");
+        assert_eq!(last.errors.len(), 1, "{:?}", last.errors);
+    }
+
+    #[test]
+    fn a_restore_drops_the_pending_edits_of_what_it_restored() {
+        use crate::environment::{env_slot, PATH_NAME};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "Path", 2, "A;B");
+        fx.seed_env(false, "X", 1, "1");
+        fx.seed_env(false, "Y", 1, "1");
+        let mut app = scanned_env_app(&fx, &ctx);
+        app.env_path_edit_mut().unwrap().add("C".into());
+        set_var(&mut app, Some("X"), "X", "2");
+        app.start_env_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        run_until_env_scanned(&mut app, &ctx);
+        assert_eq!(fx.user_env("Path"), Some((2, "A;B;C".to_string())));
+
+        // New edits of the restored slots, and of another variable.
+        app.env_path_edit_mut().unwrap().add("D".into());
+        set_var(&mut app, Some("X"), "X", "3");
+        set_var(&mut app, Some("Y"), "Y", "2");
+        app.start_env_restore(&ctx, vec![env_slot(PATH_NAME).id(), env_slot("X").id()]);
+        run_until_idle(&mut app, &ctx);
+        run_until_env_scanned(&mut app, &ctx);
+
+        assert_eq!(fx.user_env("Path"), Some((2, "A;B".to_string())));
+        assert_eq!(fx.user_env("X"), Some((1, "1".to_string())));
+        assert_eq!(app.env_pending.path, None, "Apply would undo the restore");
+        assert!(!app
+            .env_pending
+            .vars
+            .contains_key(&VarKey::Existing("x".into())));
+        assert!(app
+            .env_pending
+            .vars
+            .contains_key(&VarKey::Existing("y".into())));
+    }
+
+    #[test]
+    fn an_unreadable_environment_store_blocks_apply_and_restore() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "X", 1, "1");
+        let mut app = scanned_env_app(&fx, &ctx);
+        set_var(&mut app, Some("X"), "X", "2");
+        assert_eq!(app.env_pending_count(), 1);
+        app.env_store_error = Some(corrupt("environment-backups.json", "bad json"));
+
+        app.start_env_apply(&ctx);
+        assert!(!app.is_busy());
+        assert!(
+            app.last_notice().starts_with("Changes are blocked"),
+            "{}",
+            app.last_notice()
+        );
+        assert_eq!(fx.user_env("X"), Some((1, "1".to_string())));
+
+        app.notify(ToastKind::Info, "marker");
+        let id = crate::environment::env_slot("X").id();
+        app.start_env_restore(&ctx, vec![id.clone()]);
+        assert!(!app.is_busy());
+        assert!(
+            app.last_notice().starts_with("Changes are blocked"),
+            "{}",
+            app.last_notice()
+        );
+
+        // The same restore runs once the store is readable again.
+        app.env_store_error = None;
+        app.start_env_restore(&ctx, vec![id]);
+        assert!(app.is_busy());
+        run_until_idle(&mut app, &ctx);
+    }
+
+    #[test]
+    fn an_environment_apply_with_nothing_pending_starts_nothing() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_env_app(&fx, &ctx);
+        app.start_env_apply(&ctx);
+        assert!(!app.is_busy());
+        assert_eq!(fx.broadcast_count(), 0);
+    }
+
+    #[test]
+    fn a_panicking_environment_job_is_logged_and_reloads_the_store() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_env_app(&fx, &ctx);
+        app.env_store_error = Some(corrupt("environment-backups.json", "sentinel"));
+        set_var(&mut app, None, "FOO", "1");
+        app.job = Some(RunningJob::Environment {
+            job: BackgroundJob::spawn(
+                "Applying environment changes",
+                || {},
+                |_| -> EnvOutcome { panic!("boom") },
+            ),
+            restore: false,
+        });
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(app.env_store_error, None);
+        assert_eq!(app.env_pending_count(), 1);
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Environment variables", "Apply")
+        );
+        assert!(app.last_notice().contains("failed unexpectedly"));
+    }
+
     #[test]
     fn every_job_title_key_exists_in_english() {
         let tr = crate::i18n::Tr::english();
@@ -1282,6 +1810,10 @@ mod tests {
             "job.restore_startup",
             "job.name.apply_startup",
             "job.name.restore_startup",
+            "job.apply_environment",
+            "job.restore_environment",
+            "job.name.apply_environment",
+            "job.name.restore_environment",
         ] {
             assert_ne!(tr.t(key), key);
         }

@@ -3,6 +3,12 @@
 //! user accepts it in the dialog.
 
 use super::{kit, WinTuneApp};
+use crate::backups::Snapshot;
+use crate::context_menu::fileinfo::decode_utf16le;
+use crate::environment::{
+    is_path_name, removed_entries, split_entries, EnvScan, PathBasis, REG_EXPAND_SZ_KIND,
+    REG_SZ_KIND,
+};
 use crate::i18n::Tr;
 use eframe::egui;
 
@@ -49,6 +55,13 @@ pub(super) enum ConfirmAction {
     ApplyMenu,
     /// Startup switch slot ids whose original must be put back.
     RestoreStartup(Vec<String>),
+    /// Writes the pending environment changes, once the user saw what they
+    /// do beyond the plain edit. Carries the `Path` the question was computed
+    /// from, so a `Path` changed before the answer is refused, not written.
+    ApplyEnvironment(PathBasis),
+    /// Variable slot ids (a rename's partners included) whose original must
+    /// be put back.
+    RestoreEnvironment(Vec<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -151,6 +164,89 @@ impl WinTuneApp {
         });
     }
 
+    /// Asks before an environment Apply, with one paragraph per warning.
+    pub(super) fn request_apply_environment(&mut self, lines: &[String], path_basis: PathBasis) {
+        let tr = self.tr;
+        self.pending_confirm = Some(Confirm {
+            title: tr.t("env.apply_title"),
+            message: tr.t_args("env.apply_message", &[&lines.join("\n\n")]),
+            confirm_label: tr.t("tweaks.apply"),
+            action: ConfirmAction::ApplyEnvironment(path_basis),
+        });
+    }
+
+    /// Asks before putting variables (slot ids) back to what they were before
+    /// WinTune changed them. The partners of a rename come with them; a
+    /// restored `Path` names the folders that go and come back.
+    pub(super) fn request_restore_environment(&mut self, ids: Vec<String>) {
+        if ids.is_empty() {
+            return;
+        }
+        let tr = self.tr;
+        let user = self.env.user_label.clone();
+        let all = self.env_store.with_partners(&user, &ids);
+        let named = named_list(
+            tr,
+            all.iter().map(|id| self.env_slot_name(id)),
+            "env.restore_many",
+        );
+        let message_key = if all.len() == 1 {
+            "env.restore_message_one"
+        } else {
+            "env.restore_message"
+        };
+        let mut paragraphs = vec![tr.t_args(message_key, &[&named])];
+        if let Some(path_id) = all.iter().find(|id| is_path_name(&self.env_slot_name(id))) {
+            paragraphs.extend(self.restore_path_diff(&user, path_id));
+        }
+        self.pending_confirm = Some(Confirm {
+            title: tr.t("env.restore_title"),
+            message: paragraphs.join("\n\n"),
+            confirm_label: tr.t("confirm.restore"),
+            action: ConfirmAction::RestoreEnvironment(all),
+        });
+    }
+
+    /// The `Path` folders a restore removes and puts back, as paragraphs.
+    fn restore_path_diff(&self, user: &str, path_id: &str) -> Vec<String> {
+        let tr = self.tr;
+        let original = self
+            .env_store
+            .snapshots
+            .find_id(user, path_id)
+            .and_then(|id| self.env_store.snapshots.backups_of(user)?.get(id))
+            .and_then(|backup| match &backup.snapshot {
+                Snapshot::Value(v)
+                    if v.exists && matches!(v.kind, REG_SZ_KIND | REG_EXPAND_SZ_KIND) =>
+                {
+                    Some(split_entries(&decode_utf16le(&v.data)))
+                }
+                _ => None,
+            })
+            .unwrap_or_default();
+        let current = self
+            .env_scan
+            .as_ref()
+            .map(EnvScan::user_path_entries)
+            .unwrap_or_default();
+        let mut paragraphs = Vec::new();
+        for (key, entries) in [
+            (
+                "env.confirm.path_removed",
+                removed_entries(&current, &original),
+            ),
+            (
+                "env.confirm.path_added",
+                removed_entries(&original, &current),
+            ),
+        ] {
+            if !entries.is_empty() {
+                paragraphs.push(tr.t_args(key, &[&entries.join("\n")]));
+            }
+        }
+        paragraphs
+    }
+
     /// Asks before an Apply whose hides do more than remove a menu item:
     /// one line per side effect.
     pub(super) fn request_apply_menu(&mut self, warnings: &[String]) {
@@ -195,6 +291,8 @@ impl WinTuneApp {
             ConfirmAction::RemoveMenuEntry { id } => self.remove_menu_entry(&id),
             ConfirmAction::ApplyMenu => self.run_menu_apply(ctx),
             ConfirmAction::RestoreStartup(ids) => self.start_startup_restore(ctx, ids),
+            ConfirmAction::ApplyEnvironment(basis) => self.run_env_apply(ctx, basis),
+            ConfirmAction::RestoreEnvironment(ids) => self.start_env_restore(ctx, ids),
         }
     }
 
@@ -262,8 +360,11 @@ impl WinTuneApp {
 
 #[cfg(test)]
 mod tests {
+    use super::super::environment_state::VarKey;
     use super::super::test_support::*;
     use super::*;
+    use crate::environment::{EnvWarning, VarEdit};
+    use crate::i18n::messages;
     use egui::RawInput;
 
     fn exts(app: &WinTuneApp) -> Vec<String> {
@@ -554,6 +655,195 @@ mod tests {
         app.pending_confirm = None;
         app.request_restore_startup(Vec::new());
         assert!(app.pending_confirm.is_none());
+    }
+
+    fn scanned_env_app(fx: &TempIcons, ctx: &egui::Context) -> WinTuneApp {
+        let mut app = fx.app(ctx);
+        app.request_env_scan();
+        run_until_env_scanned(&mut app, ctx);
+        app
+    }
+
+    fn pending_edit(app: &mut WinTuneApp, original: &str, wanted: Option<(&str, &str)>) {
+        app.env_pending.vars.insert(
+            VarKey::Existing(original.to_ascii_lowercase()),
+            VarEdit {
+                original: Some(original.to_string()),
+                wanted: wanted.map(|(n, v)| (n.to_string(), v.to_string())),
+            },
+        );
+    }
+
+    #[test]
+    fn deleting_a_protected_variable_asks_first() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "TEMP", 1, r"C:\t");
+        let mut app = scanned_env_app(&fx, &ctx);
+        pending_edit(&mut app, "TEMP", None);
+
+        app.start_env_apply(&ctx);
+
+        let confirm = app.pending_confirm.as_ref().expect("asks first");
+        assert!(matches!(confirm.action, ConfirmAction::ApplyEnvironment(_)));
+        let warning = messages::env_warning(app.tr, &EnvWarning::Removes("TEMP".into()));
+        assert!(confirm.message.contains(&warning), "{}", confirm.message);
+        let deleted = app.tr.t_args("env.confirm.deleted", &[&"TEMP"]);
+        assert!(confirm.message.contains(&deleted), "{}", confirm.message);
+        assert_eq!(confirm.confirm_label, app.tr.t("tweaks.apply"));
+        assert!(!app.is_busy(), "applied before the answer");
+        assert!(fx.user_env("TEMP").is_some());
+
+        app.resolve_confirm(&ctx, true);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(fx.user_env("TEMP"), None, "{}", app.last_notice());
+    }
+
+    #[test]
+    fn a_plain_edit_applies_without_asking() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "FOO", 1, "1");
+        let mut app = scanned_env_app(&fx, &ctx);
+        pending_edit(&mut app, "FOO", Some(("FOO", "2")));
+
+        app.start_env_apply(&ctx);
+
+        assert!(app.pending_confirm.is_none());
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(fx.user_env("FOO"), Some((1, "2".to_string())));
+    }
+
+    #[test]
+    fn a_path_changed_elsewhere_is_named_in_the_confirmation() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "Path", 2, "A;B");
+        let mut app = scanned_env_app(&fx, &ctx);
+        app.env_path_edit_mut().unwrap().move_down(0);
+        // An installer added a folder after the edit started.
+        fx.seed_env(false, "Path", 2, "A;B;C");
+        app.request_env_scan();
+        run_until_env_scanned(&mut app, &ctx);
+
+        app.start_env_apply(&ctx);
+
+        let confirm = app.pending_confirm.as_ref().expect("asks first");
+        let elsewhere = messages::env_warning(app.tr, &EnvWarning::PathChangedElsewhere);
+        assert!(confirm.message.contains(&elsewhere), "{}", confirm.message);
+        let removed = app.tr.t_args("env.confirm.path_removed", &[&"C"]);
+        assert!(confirm.message.contains(&removed), "{}", confirm.message);
+        assert!(!app.is_busy());
+        assert_eq!(fx.user_env("Path"), Some((2, "A;B;C".to_string())));
+    }
+
+    #[test]
+    fn restoring_path_names_removed_and_added_back_entries() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "Path", 2, "A;B");
+        let mut app = scanned_env_app(&fx, &ctx);
+        {
+            let edit = app.env_path_edit_mut().unwrap();
+            edit.remove(1);
+            edit.add("C".into());
+        }
+        app.start_env_apply(&ctx);
+        // Dropping B asks first.
+        assert!(app.pending_confirm.is_some(), "{}", app.last_notice());
+        app.resolve_confirm(&ctx, true);
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(fx.user_env("Path"), Some((2, "A;C".to_string())));
+
+        // A program then added D.
+        fx.seed_env(false, "Path", 2, "A;C;D");
+        app.request_env_scan();
+        run_until_env_scanned(&mut app, &ctx);
+
+        let id = crate::environment::env_slot(crate::environment::PATH_NAME).id();
+        app.request_restore_environment(vec![id]);
+        let confirm = app.pending_confirm.as_ref().expect("asks first");
+        let removed = app.tr.t_args("env.confirm.path_removed", &[&"C\nD"]);
+        let added = app.tr.t_args("env.confirm.path_added", &[&"B"]);
+        assert!(confirm.message.contains(&removed), "{}", confirm.message);
+        assert!(confirm.message.contains(&added), "{}", confirm.message);
+        assert_eq!(confirm.confirm_label, app.tr.t("confirm.restore"));
+        assert!(!app.is_busy(), "restored without confirmation");
+
+        app.resolve_confirm(&ctx, true);
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(
+            fx.user_env("Path"),
+            Some((2, "A;B".to_string())),
+            "{}",
+            app.last_notice()
+        );
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Environment variables", "Restore")
+        );
+    }
+
+    #[test]
+    fn restoring_one_half_of_a_rename_restores_both() {
+        use crate::environment::env_slot;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        fx.seed_env(false, "OLD", 1, "1");
+        let mut app = scanned_env_app(&fx, &ctx);
+        pending_edit(&mut app, "OLD", Some(("NEW", "1")));
+        app.start_env_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(fx.user_env("NEW"), Some((1, "1".to_string())));
+        assert_eq!(fx.user_env("OLD"), None);
+
+        let (old, new) = (env_slot("OLD").id(), env_slot("NEW").id());
+        app.request_restore_environment(vec![new.clone()]);
+        let confirm = app.pending_confirm.as_ref().expect("asks first");
+        assert_eq!(
+            confirm.action,
+            ConfirmAction::RestoreEnvironment(vec![new, old])
+        );
+        assert!(confirm.message.contains("OLD"), "{}", confirm.message);
+        assert!(confirm.message.contains("NEW"), "{}", confirm.message);
+
+        app.resolve_confirm(&ctx, true);
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(fx.user_env("OLD"), Some((1, "1".to_string())));
+        assert_eq!(fx.user_env("NEW"), None);
+    }
+
+    #[test]
+    fn restoring_nothing_asks_nothing_and_many_variables_are_counted() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        app.request_restore_environment(Vec::new());
+        assert!(app.pending_confirm.is_none());
+        let ids = ["A", "B", "C", "D"].map(|n| crate::environment::env_slot(n).id());
+        app.request_restore_environment(ids.to_vec());
+        let message = &app.pending_confirm.as_ref().unwrap().message;
+        assert!(message.contains("4 variables"), "{message}");
+    }
+
+    #[test]
+    fn restoring_one_variable_reads_singular() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        app.request_restore_environment(vec![crate::environment::env_slot("FOO").id()]);
+        let message = &app.pending_confirm.as_ref().unwrap().message;
+        let one = app.tr.t_args("env.restore_message_one", &[&"FOO"]);
+        assert_eq!(message, &one);
+
+        let ids = ["A", "B"].map(|n| crate::environment::env_slot(n).id());
+        app.request_restore_environment(ids.to_vec());
+        let message = &app.pending_confirm.as_ref().unwrap().message;
+        let many = app.tr.t_args("env.restore_message", &[&"A, B"]);
+        assert_eq!(message, &many);
     }
 
     #[test]

@@ -6,6 +6,7 @@
 use super::Tr;
 use crate::associations::{DriftField, DriftReason, RuleProblem};
 use crate::context_menu::{EntryProblem, EntryStatus, ExistingState, Locked, Place, RenameProblem};
+use crate::environment::{EnvProblem, EnvWarning};
 use crate::persist::LoadError;
 use crate::startup::{Source, StartupLock, StartupState};
 use crate::tweaks::{CustomReason, TweakGroup};
@@ -108,6 +109,36 @@ pub fn startup_source(tr: Tr, s: Source) -> String {
     }
 }
 
+/// Why an environment variable edit is refused.
+pub fn env_problem(tr: Tr, p: &EnvProblem) -> String {
+    match p {
+        EnvProblem::EmptyName => tr.t("env.problem.empty_name"),
+        EnvProblem::NameHasEquals => tr.t("env.problem.name_equals"),
+        EnvProblem::NameHasNul => tr.t("env.problem.name_nul"),
+        EnvProblem::NameTooLong => tr.t("env.problem.name_too_long"),
+        EnvProblem::NameTaken(name) => tr.t_args("env.problem.name_taken", &[name]),
+        EnvProblem::PathName => tr.t("env.problem.path_name"),
+        EnvProblem::EmptyValue => tr.t("env.problem.empty_value"),
+        EnvProblem::ValueTooLong => tr.t("env.problem.value_too_long"),
+        EnvProblem::ValueHasNul => tr.t("env.problem.value_nul"),
+        EnvProblem::EmptyEntry => tr.t("env.problem.empty_entry"),
+        EnvProblem::EntryHasSemicolon => tr.t("env.problem.entry_semicolon"),
+        EnvProblem::Gone(name) => tr.t_args("env.problem.gone", &[name]),
+        EnvProblem::NotText(name) => tr.t_args("env.problem.not_text", &[name]),
+        EnvProblem::Twice(name) => tr.t_args("env.problem.twice", &[name]),
+        EnvProblem::ChangedSinceScan(name) => tr.t_args("env.problem.changed_since_scan", &[name]),
+    }
+}
+
+/// What an environment Apply asks the user to confirm first.
+pub fn env_warning(tr: Tr, w: &EnvWarning) -> String {
+    match w {
+        EnvWarning::Removes(name) => tr.t_args("env.warning.removes", &[name]),
+        EnvWarning::PathTooLong(len) => tr.t_args("env.warning.path_too_long", &[len]),
+        EnvWarning::PathChangedElsewhere => tr.t("env.warning.path_changed"),
+    }
+}
+
 /// The pill of an entry: its state in the registry.
 pub fn entry_status(tr: Tr, s: &EntryStatus) -> String {
     match s {
@@ -196,6 +227,7 @@ pub fn history_module(tr: Tr, stored: &str) -> String {
         "Start & Privacy" => tr.t("history.module.start"),
         "Context menu" => tr.t("history.module.context_menu"),
         "Startup apps" => tr.t("history.module.startup"),
+        "Environment variables" => tr.t("history.module.environment"),
         other => other.to_string(),
     }
 }

@@ -14,6 +14,7 @@ pub(super) fn search_box_id(tab: ActiveTab) -> Option<egui::Id> {
         ActiveTab::Gallery => Some(egui::Id::new("search_gallery")),
         ActiveTab::ContextMenu => Some(egui::Id::new("search_menu_others")),
         ActiveTab::Startup => Some(egui::Id::new("search_startup")),
+        ActiveTab::Environment => Some(egui::Id::new("search_environment")),
         ActiveTab::Home | ActiveTab::History | ActiveTab::Settings => None,
     }
 }
@@ -25,6 +26,7 @@ impl WinTuneApp {
         if self.pending_confirm.is_some()
             || self.icon_picker.is_some()
             || self.menu_rename.is_some()
+            || self.env_dialog.is_some()
         {
             return;
         }

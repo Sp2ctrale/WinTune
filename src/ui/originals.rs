@@ -18,6 +18,7 @@ pub(super) enum OriginalsModule {
     Start,
     ContextMenu,
     Startup,
+    Environment,
     /// A tweak id the catalog no longer knows (e.g. removed in a later
     /// version): listed with its raw id, still restorable.
     Other,
@@ -42,6 +43,7 @@ impl OriginalsModule {
             Self::Start => tr.t("history.module.start"),
             Self::ContextMenu => tr.t("history.module.context_menu"),
             Self::Startup => tr.t("history.module.startup"),
+            Self::Environment => tr.t("history.module.environment"),
             Self::Other => tr.t("originals.other"),
         }
     }
@@ -61,6 +63,7 @@ enum RestoreRequest {
     Tweaks(Vec<String>),
     MenuKeys(Vec<String>),
     Startup(Vec<String>),
+    Environment(Vec<String>),
 }
 
 /// A secondary button that, given a reason, is disabled and says why on
@@ -121,6 +124,19 @@ impl WinTuneApp {
                 .map(|(key, backup)| OriginalRow {
                     key: key.clone(),
                     title: self.startup_slot_name(key),
+                    description: tr.t_args("originals.saved_on", &[&backup.timestamp]),
+                })
+                .collect();
+        }
+        if module == OriginalsModule::Environment {
+            let Some(backups) = self.env_store.snapshots.backups_of(&self.env.user_label) else {
+                return Vec::new();
+            };
+            return backups
+                .iter()
+                .map(|(key, backup)| OriginalRow {
+                    key: key.clone(),
+                    title: self.env_slot_name(key),
                     description: tr.t_args("originals.saved_on", &[&backup.timestamp]),
                 })
                 .collect();
@@ -237,6 +253,7 @@ impl WinTuneApp {
         let tweak_reason = self.busy_or_blocked(&self.tweak_store_error);
         let menu_reason = self.busy_or_blocked(&self.menu_store_error);
         let startup_reason = self.busy_or_blocked(&self.startup_store_error);
+        let env_reason = self.busy_or_blocked(&self.env_store_error);
         let mut request = None;
         let mut shown = 0;
 
@@ -322,6 +339,28 @@ impl WinTuneApp {
                 }
             }
         }
+        match &self.env_store_error {
+            Some(e) => {
+                let text = tr.t_args("originals.unreadable", &[&messages::load_error(tr, e)]);
+                kit::banner(ui, kit::BannerKind::Error, &text, None);
+                shown += 1;
+            }
+            None => {
+                let rows = self.originals_of(OriginalsModule::Environment);
+                if !rows.is_empty() {
+                    shown += 1;
+                    let reason = env_reason.as_deref();
+                    originals_section(
+                        ui,
+                        tr,
+                        OriginalsModule::Environment,
+                        rows,
+                        reason,
+                        &mut request,
+                    );
+                }
+            }
+        }
         if shown == 0 {
             kit::card(ui, |ui| {
                 kit::empty_state(ui, kit::Icon::Restore, &tr.t("originals.empty"), None);
@@ -334,6 +373,7 @@ impl WinTuneApp {
             Some(RestoreRequest::Tweaks(ids)) => self.request_restore_tweaks(ids),
             Some(RestoreRequest::MenuKeys(keys)) => self.request_restore_menu_keys(keys),
             Some(RestoreRequest::Startup(ids)) => self.request_restore_startup(ids),
+            Some(RestoreRequest::Environment(ids)) => self.request_restore_environment(ids),
             None => {}
         }
     }
@@ -376,7 +416,12 @@ fn originals_section(
     let is_rules = module == OriginalsModule::Associations;
     let is_menu = module == OriginalsModule::ContextMenu;
     let is_startup = module == OriginalsModule::Startup;
+    let is_env = module == OriginalsModule::Environment;
     let clicked = match (all, one) {
+        (true, _) if is_env => {
+            RestoreRequest::Environment(rows.into_iter().map(|r| r.key).collect())
+        }
+        (false, Some(key)) if is_env => RestoreRequest::Environment(vec![key]),
         (true, _) if is_startup => {
             RestoreRequest::Startup(rows.into_iter().map(|r| r.key).collect())
         }
@@ -484,6 +529,123 @@ mod tests {
 
     fn restore_all(app: &WinTuneApp, n: usize) -> String {
         app.tr.t_args("originals.restore_all", &[&n])
+    }
+
+    /// `name` edited to `value` through Apply, then History open.
+    fn edited_variable(
+        fx: &TempIcons,
+        ctx: &egui::Context,
+        name: &str,
+        wanted: (&str, &str),
+    ) -> WinTuneApp {
+        use super::super::environment_state::VarKey;
+        use crate::environment::VarEdit;
+        fx.seed_env(false, name, 1, "old");
+        let mut app = fx.app(ctx);
+        app.request_env_scan();
+        run_until_env_scanned(&mut app, ctx);
+        app.env_pending.vars.insert(
+            VarKey::Existing(name.to_ascii_lowercase()),
+            VarEdit {
+                original: Some(name.to_string()),
+                wanted: Some((wanted.0.to_string(), wanted.1.to_string())),
+            },
+        );
+        app.start_env_apply(ctx);
+        run_until_idle(&mut app, ctx);
+        assert!(
+            app.env_store
+                .snapshots
+                .backups_of("TEST\\user")
+                .is_some_and(|b| !b.is_empty()),
+            "{}",
+            app.last_notice()
+        );
+        app.open_page(ActiveTab::History);
+        app
+    }
+
+    #[test]
+    fn a_changed_variable_is_listed_in_saved_originals_and_restores() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = edited_variable(&fx, &ctx, "FOO", ("FOO", "new"));
+        assert_eq!(fx.user_env("FOO"), Some((1, "new".to_string())));
+        let slot = crate::environment::env_slot("FOO").id();
+
+        let out = settle(&mut app, &ctx);
+        let module = app.tr.t("history.module.environment");
+        let m = in_originals(&app, &out, &module).expect("group title drawn");
+        let r = in_originals(&app, &out, "FOO").expect("variable row drawn");
+        assert!(r.y > m.y);
+        let saved = app.env_store.snapshots.backups_of("TEST\\user").unwrap()[&slot]
+            .timestamp
+            .clone();
+        let desc = app.tr.t_args("originals.saved_on", &[&saved]);
+        assert!(drawn_texts(&out).contains(&desc), "{:?}", drawn_texts(&out));
+
+        let label = restore_label(&app);
+        let at = button_on_row(&mut app, &ctx, "FOO", &label);
+        click_at(&mut app, &ctx, at);
+        assert_eq!(
+            pending(&app),
+            Some(ConfirmAction::RestoreEnvironment(vec![slot]))
+        );
+        assert!(!app.is_busy(), "a restore started without confirmation");
+
+        app.resolve_confirm(&ctx, true);
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(
+            fx.user_env("FOO"),
+            Some((1, "old".to_string())),
+            "{}",
+            app.last_notice()
+        );
+        assert_eq!(fx.broadcast_count(), 2);
+        let out = settle(&mut app, &ctx);
+        assert!(in_originals(&app, &out, &module).is_none());
+        assert!(in_originals(&app, &out, "FOO").is_none());
+    }
+
+    #[test]
+    fn a_renamed_pair_restores_together_from_history() {
+        use crate::environment::env_slot;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = edited_variable(&fx, &ctx, "OLD", ("NEW", "old"));
+        let (old, new) = (env_slot("OLD").id(), env_slot("NEW").id());
+
+        let label = restore_label(&app);
+        let at = button_on_row(&mut app, &ctx, "OLD", &label);
+        click_at(&mut app, &ctx, at);
+
+        let Some(ConfirmAction::RestoreEnvironment(mut ids)) = pending(&app) else {
+            panic!("no restore asked: {:?}", pending(&app));
+        };
+        ids.sort();
+        let mut both = vec![old, new];
+        both.sort();
+        assert_eq!(ids, both);
+    }
+
+    #[test]
+    fn an_unreadable_environment_store_shows_a_banner() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = edited_variable(&fx, &ctx, "FOO", ("FOO", "new"));
+        std::fs::write(&app.env.env_store_path, "{ broken").unwrap();
+        app.reload_env_store();
+        let error = app.env_store_error.clone().expect("store error");
+
+        let out = settle(&mut app, &ctx);
+        let banner = app.tr.t_args(
+            "originals.unreadable",
+            &[&messages::load_error(app.tr, &error)],
+        );
+        assert!(drawn_texts(&out).contains(&banner), "no banner");
+        let module = app.tr.t("history.module.environment");
+        assert!(in_originals(&app, &out, &module).is_none());
+        assert!(in_originals(&app, &out, "FOO").is_none());
     }
 
     #[test]

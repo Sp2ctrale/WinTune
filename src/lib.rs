@@ -6,6 +6,7 @@ pub mod backups;
 pub mod clock;
 pub mod context_menu;
 pub mod detector;
+pub mod environment;
 pub mod gallery;
 pub mod history;
 pub mod i18n;

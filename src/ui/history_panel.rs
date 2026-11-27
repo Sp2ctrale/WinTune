@@ -22,6 +22,7 @@ pub(super) enum HistoryFilter {
     Start,
     ContextMenu,
     Startup,
+    Environment,
 }
 
 impl HistoryFilter {
@@ -35,6 +36,7 @@ impl HistoryFilter {
             Self::Start => stored_module == "Start & Privacy",
             Self::ContextMenu => stored_module == "Context menu",
             Self::Startup => stored_module == "Startup apps",
+            Self::Environment => stored_module == "Environment variables",
         }
     }
 }
@@ -81,6 +83,7 @@ impl WinTuneApp {
             tr.t("history.module.start"),
             tr.t("history.module.context_menu"),
             tr.t("history.module.startup"),
+            tr.t("history.module.environment"),
         ];
         let options = [
             (HistoryFilter::All, labels[0].as_str()),
@@ -89,6 +92,7 @@ impl WinTuneApp {
             (HistoryFilter::Start, labels[3].as_str()),
             (HistoryFilter::ContextMenu, labels[4].as_str()),
             (HistoryFilter::Startup, labels[5].as_str()),
+            (HistoryFilter::Environment, labels[6].as_str()),
         ];
         kit::section(ui, &heading, |ui| {
             if self.history.is_empty() {
@@ -363,6 +367,36 @@ mod tests {
         );
         assert!(
             !texts.contains(&title_of(&menu, "Context menu")),
+            "{texts:?}"
+        );
+    }
+
+    #[test]
+    fn the_environment_filter_shows_only_environment_operations() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let env = entry("Environment variables", "Apply");
+        let startup = entry("Startup apps", "Apply");
+        let mut app = history_app(&fx, &ctx, vec![env.clone(), startup.clone()]);
+        assert!(HistoryFilter::Environment.matches("Environment variables"));
+        assert!(!HistoryFilter::Environment.matches("Startup apps"));
+
+        let label = app.tr.t("history.module.environment");
+        let out = settled(&mut app, &ctx);
+        let at = text_centers(&out, &label)
+            .into_iter()
+            .rfind(|c| c.x > 220.0)
+            .expect("environment chip");
+        click_at(&mut app, &ctx, at);
+        let out = settled(&mut app, &ctx);
+        assert_eq!(app.history_filter, HistoryFilter::Environment);
+        let texts = drawn_texts(&out);
+        assert!(
+            texts.contains(&title_of(&env, "Environment variables")),
+            "{texts:?}"
+        );
+        assert!(
+            !texts.contains(&title_of(&startup, "Startup apps")),
             "{texts:?}"
         );
     }

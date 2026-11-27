@@ -81,6 +81,7 @@ impl WinTuneApp {
             self.reload_tweak_store();
             self.reload_menu_store();
             self.reload_startup_store();
+            self.reload_env_store();
         }
         if page == ActiveTab::Associations && self.active_tab != page {
             self.request_status_refresh();
@@ -101,6 +102,12 @@ impl WinTuneApp {
         }
         if page == ActiveTab::Startup && self.active_tab != page {
             self.request_startup_scan();
+        }
+        if page == ActiveTab::Environment && !self.is_busy() {
+            self.reload_env_store();
+        }
+        if page == ActiveTab::Environment && self.active_tab != page {
+            self.request_env_scan();
         }
         if self.active_tab != page {
             self.focus_search = false;
@@ -127,6 +134,7 @@ impl WinTuneApp {
         let start = tr.t("nav.start");
         let context_menu = tr.t("nav.context_menu");
         let startup = tr.t("nav.startup");
+        let environment = tr.t("nav.environment");
         let icons = tr.t("nav.icons");
         let history = tr.t("nav.history");
         let settings = tr.t("nav.settings");
@@ -163,6 +171,7 @@ impl WinTuneApp {
                         &context_menu,
                     ),
                     item(ActiveTab::Startup, kit::Icon::Startup, &startup),
+                    item(ActiveTab::Environment, kit::Icon::Environment, &environment),
                 ],
             },
             kit::NavGroup {
@@ -1184,6 +1193,174 @@ mod tests {
             app.startup_pending.clear();
         }
 
+        // The Environment variables page: a Path with a missing folder, a
+        // duplicate and a %VAR% entry; an expandable and a non-text
+        // variable; every kind of pending edit (so Discard and each pill
+        // show); the system section open; both dialogs; the Apply
+        // confirmation; then the states without data.
+        {
+            use super::super::environment_state::{EnvDialog, VarKey};
+            use crate::environment::{EnvProblem, EnvScan, VarEdit};
+            let d = fx.dir.display().to_string();
+            let tools = format!(r"{d}\tools");
+            std::fs::create_dir_all(&tools).unwrap();
+            fx.seed_env(false, "TOOLS", 1, &tools);
+            fx.seed_env(
+                false,
+                "Path",
+                2,
+                &format!(r"{tools};%TOOLS%;C:\Nowhere\x;{d}\moved"),
+            );
+            fx.seed_env(false, "EXPAND", 2, r"%TOOLS%\x");
+            fx.seed_env(false, "RENAMEME", 1, "1");
+            fx.seed_env(false, "DELETEME", 1, "1");
+            fx.seed_env(false, "CHANGEME", 1, "1");
+            fx.seed_env_raw(
+                "DWORDVAR",
+                winreg::RegValue {
+                    bytes: vec![5, 0, 0, 0],
+                    vtype: winreg::enums::RegType::REG_DWORD,
+                },
+            );
+            fx.seed_env(true, "JAVA_HOME", 1, r"C:\Java");
+            fx.seed_env(true, "Path", 2, r"C:\Windows");
+            app.request_env_scan();
+            run_until_env_scanned(&mut app, &ctx);
+            {
+                let edit = app.env_path_edit_mut().expect("a text Path");
+                edit.remove(2);
+                edit.move_up(2);
+                edit.add(format!(r"{d}\new"));
+            }
+            let var_edit = |original: &str, wanted: Option<(&str, &str)>| VarEdit {
+                original: Some(original.into()),
+                wanted: wanted.map(|(n, v)| (n.into(), v.into())),
+            };
+            app.env_pending.vars.insert(
+                VarKey::Existing("renameme".into()),
+                var_edit("RENAMEME", Some(("RENAMED", "1"))),
+            );
+            app.env_pending.vars.insert(
+                VarKey::Existing("deleteme".into()),
+                var_edit("DELETEME", None),
+            );
+            app.env_pending.vars.insert(
+                VarKey::Existing("changeme".into()),
+                var_edit("CHANGEME", Some(("CHANGEME", "2"))),
+            );
+            app.env_pending.vars.insert(
+                VarKey::New("added".into()),
+                VarEdit {
+                    original: None,
+                    wanted: Some(("ADDED".into(), "1".into())),
+                },
+            );
+            app.active_tab = ActiveTab::Environment;
+            let mut texts = Vec::new();
+            let draw = |app: &mut WinTuneApp, texts: &mut Vec<String>| {
+                for _ in 0..3 {
+                    texts.extend(drawn_texts(&frame(app, &ctx, tall_input(vec![]))));
+                }
+            };
+            draw(&mut app, &mut texts);
+            // Open the system section.
+            let out = frame(&mut app, &ctx, tall_input(vec![]));
+            let title = text_center(&out, &app.tr.t("env.system.title")).expect("system title");
+            click_at(&mut app, &ctx, title);
+            draw(&mut app, &mut texts);
+            // The dialogs, with a problem line each.
+            app.env_dialog = Some(EnvDialog::Variable {
+                key: None,
+                name: "A=B".into(),
+                value: "v".into(),
+            });
+            draw(&mut app, &mut texts);
+            app.env_dialog = Some(EnvDialog::Entry {
+                index: Some(0),
+                text: "a;b".into(),
+            });
+            draw(&mut app, &mut texts);
+            app.env_dialog = None;
+            // The Apply confirmation.
+            app.start_env_apply(&ctx);
+            assert!(app.pending_confirm.is_some(), "{}", app.last_notice());
+            draw(&mut app, &mut texts);
+            app.resolve_confirm(&ctx, false);
+            // No data: no Path and no variable, a search nothing matches,
+            // an unreadable user and system key, the first scan not done.
+            app.discard_env_changes();
+            app.env_scan = Some(EnvScan::default());
+            draw(&mut app, &mut texts);
+            app.env_search = "nothing like it".into();
+            draw(&mut app, &mut texts);
+            app.env_search.clear();
+            app.env_scan = Some(EnvScan {
+                user_error: Some("boom".into()),
+                system_error: Some("denied".into()),
+                ..Default::default()
+            });
+            draw(&mut app, &mut texts);
+            app.env_scan = None;
+            draw(&mut app, &mut texts);
+            let mut positive = vec![
+                app.tr.t("nav.environment"),
+                app.tr.t("env.subtitle"),
+                app.tr.t("env.note"),
+                app.tr.t("env.search"),
+                app.tr.t("env.path.title"),
+                app.tr.t("env.path.clean"),
+                app.tr.t("env.path.add_hint"),
+                app.tr.t("env.path.add"),
+                app.tr.t("env.browse"),
+                app.tr.t("env.pill.not_found"),
+                app.tr.t("env.pill.duplicate"),
+                app.tr.t("env.pill.will_add"),
+                app.tr.t("env.pill.moved"),
+                app.tr.t("env.pill.will_remove"),
+                app.tr.t("env.pill.uses_refs"),
+                app.tr.t("env.pill.read_only"),
+                app.tr.t("env.pill.will_change"),
+                app.tr.t_args("env.pill.will_rename", &[&"RENAMED"]),
+                app.tr.t("env.pill.will_delete"),
+                app.tr.t("env.vars.title"),
+                app.tr.t("env.vars.add"),
+                app.tr.t("env.vars.empty"),
+                app.tr.t("env.system.title"),
+                app.tr.t("env.system.path"),
+                app.tr.t("env.var_title_add"),
+                app.tr.t("env.entry_title"),
+                app.tr.t("env.name"),
+                app.tr.t("env.value"),
+                app.tr.t("env.dialog_ok"),
+                app.tr.t_args("env.pending", &[&5]),
+                app.tr.t("env.up_to_date"),
+                app.tr.t("env.path.empty"),
+                app.tr.t("env.no_match"),
+                app.tr.t("env.scanning"),
+                app.tr.t_args("env.unreadable", &[&"boom"]),
+                app.tr.t_args("env.system.unreadable", &[&"denied"]),
+                app.tr.t("tweaks.discard"),
+                app.tr.t("env.apply_title"),
+                crate::i18n::messages::env_problem(app.tr, &EnvProblem::NameHasEquals),
+                crate::i18n::messages::env_problem(app.tr, &EnvProblem::EntryHasSemicolon),
+            ];
+            positive.retain(|t| !t.is_empty());
+            for drawn in positive {
+                assert!(
+                    texts.iter().any(|t| t.contains(&drawn)),
+                    "{drawn:?} not drawn on Environment variables: {texts:?}"
+                );
+            }
+            for (key, value) in &english_only {
+                assert!(
+                    !texts.iter().any(|t| t == *value),
+                    "the Environment variables page draws English-only text {value:?} (key {key})"
+                );
+            }
+            app.env_scan_needed = false;
+            app.active_tab = ActiveTab::Home;
+        }
+
         // The History page: saved originals in every group, one opened
         // operation with an error and a `.reg` path, then a broken store.
         app.config.extensions = vec![rule(".a"), rule(".b")];
@@ -1220,8 +1397,30 @@ mod tests {
             },
         );
         startup_entry.time = "2000-01-02 00:00:00".into();
-        app.history = vec![entry, menu_entry, startup_entry];
+        let mut env_entry = crate::history::HistoryEntry::from_report(
+            "Environment variables",
+            "Apply",
+            &crate::associations::OperationReport {
+                succeeded: vec!["FRVAR".into()],
+                ..Default::default()
+            },
+        );
+        env_entry.time = "2000-01-03 00:00:00".into();
+        app.history = vec![entry, menu_entry, startup_entry, env_entry];
         app.open_page(ActiveTab::History);
+        // Same for an environment variable's original.
+        app.env_store
+            .snapshots
+            .users
+            .entry("TEST\\user".to_string())
+            .or_default()
+            .insert(
+                crate::environment::env_slot("FRVAR").id(),
+                crate::backups::Backup {
+                    timestamp: "2026-01-02 03:04:05".into(),
+                    snapshot: crate::backups::Snapshot::Value(Default::default()),
+                },
+            );
         // `open_page` reloaded the stores from disk, so put the unknown
         // tweak back in memory.
         app.tweak_store
@@ -1296,6 +1495,8 @@ mod tests {
             "Open with App".to_string(),
             // A turned-off startup app.
             "Off app".to_string(),
+            // A changed environment variable.
+            "FRVAR".to_string(),
         ];
         rows.extend(
             applied_tweaks
@@ -1322,6 +1523,14 @@ mod tests {
                 .any(|t| t.starts_with("2000-01-02") && t.contains(&module)),
             "no Startup apps operation: {texts:?}"
         );
+        // The Environment variables operation, by its French module name.
+        let module = app.tr.t("history.module.environment");
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.starts_with("2000-01-03") && t.contains(&module)),
+            "no Environment variables operation: {texts:?}"
+        );
 
         // Home: the Startup apps tile, with the counts of the last scan.
         app.active_tab = ActiveTab::Home;
@@ -1336,9 +1545,15 @@ mod tests {
                 .filter(|i| i.state != crate::startup::StartupState::On)
                 .count()
         });
+        let (vars, folders) = app
+            .env_scan
+            .as_ref()
+            .map_or((0, 0), |s| (s.user.len(), s.user_path_entries().len()));
         for drawn in [
             app.tr.t("nav.startup"),
             app.tr.t_args("home.startup_status", &[&items, &off]),
+            app.tr.t("nav.environment"),
+            app.tr.t_args("home.environment_status", &[&vars, &folders]),
         ] {
             assert!(
                 home.contains(&drawn),

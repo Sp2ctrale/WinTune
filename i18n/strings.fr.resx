@@ -971,6 +971,9 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="home.startup_status" xml:space="preserve">
     <value>{0} application(s), {1} désactivée(s)</value>
   </data>
+  <data name="home.environment_status" xml:space="preserve">
+    <value>{0} variable(s), {1} dossier(s) dans Path</value>
+  </data>
   <data name="job.apply_menu" xml:space="preserve">
     <value>Application des entrées du menu contextuel…</value>
   </data>
@@ -1418,6 +1421,254 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
     <value>Tous les changements sont appliqués</value>
   </data>
   <data name="startup.nothing_to_apply" xml:space="preserve">
+    <value>Rien à appliquer</value>
+  </data>
+  <data name="job.apply_environment" xml:space="preserve">
+    <value>Application des changements de variables…</value>
+  </data>
+  <data name="job.restore_environment" xml:space="preserve">
+    <value>Restauration des variables d'environnement…</value>
+  </data>
+  <data name="job.name.apply_environment" xml:space="preserve">
+    <value>L'application des changements de variables</value>
+  </data>
+  <data name="job.name.restore_environment" xml:space="preserve">
+    <value>La restauration des variables d'environnement</value>
+  </data>
+  <data name="report.applied_environment" xml:space="preserve">
+    <value>{0} changement(s) de variables appliqué(s)</value>
+  </data>
+  <data name="report.restored_environment" xml:space="preserve">
+    <value>{0} variable(s) restaurée(s)</value>
+  </data>
+  <data name="history.module.environment" xml:space="preserve">
+    <value>Variables d'environnement</value>
+  </data>
+  <data name="env.scan_failed" xml:space="preserve">
+    <value>Impossible de lire les variables d'environnement : {0}</value>
+  </data>
+  <data name="env.apply_title" xml:space="preserve">
+    <value>Appliquer ces changements ?</value>
+  </data>
+  <data name="env.apply_message" xml:space="preserve">
+    <value>{0}</value>
+  </data>
+  <data name="env.restore_title" xml:space="preserve">
+    <value>Restaurer les variables d'origine ?</value>
+  </data>
+  <data name="env.restore_message" xml:space="preserve">
+    <value>{0} retrouveront la valeur qu'elles avaient avant que WinTune les modifie.</value>
+  </data>
+  <data name="env.restore_message_one" xml:space="preserve">
+    <value>{0} retrouvera la valeur qu'elle avait avant que WinTune la modifie.</value>
+  </data>
+  <data name="env.restore_many" xml:space="preserve">
+    <value>{0} variables</value>
+  </data>
+  <data name="env.confirm.deleted" xml:space="preserve">
+    <value>{0} sera supprimée.</value>
+  </data>
+  <data name="env.confirm.path_removed" xml:space="preserve">
+    <value>Retirés de Path :
+{0}</value>
+  </data>
+  <data name="env.confirm.path_added" xml:space="preserve">
+    <value>Remis dans Path :
+{0}</value>
+  </data>
+  <data name="env.warning.removes" xml:space="preserve">
+    <value>{0} est utilisée par Windows et de nombreux programmes. La supprimer ou la renommer peut les casser.</value>
+  </data>
+  <data name="env.warning.path_too_long" xml:space="preserve">
+    <value>Avec le Path du système, votre Path fera {0} caractères. L'invite de commandes ne peut pas utiliser un Path de plus de 8 191 caractères.</value>
+  </data>
+  <data name="env.warning.path_changed" xml:space="preserve">
+    <value>Path a été modifié par un autre programme depuis le début de vos changements. Appliquer écrit votre liste : les dossiers ajoutés par ce programme seront retirés.</value>
+  </data>
+  <data name="env.problem.empty_name" xml:space="preserve">
+    <value>Saisissez un nom.</value>
+  </data>
+  <data name="env.problem.name_equals" xml:space="preserve">
+    <value>Un nom ne peut pas contenir =.</value>
+  </data>
+  <data name="env.problem.name_nul" xml:space="preserve">
+    <value>Un nom ne peut pas contenir de caractère nul.</value>
+  </data>
+  <data name="env.problem.name_too_long" xml:space="preserve">
+    <value>Un nom compte au plus 255 caractères.</value>
+  </data>
+  <data name="env.problem.name_taken" xml:space="preserve">
+    <value>Vous avez déjà une variable nommée {0}.</value>
+  </data>
+  <data name="env.problem.path_name" xml:space="preserve">
+    <value>Modifiez Path dans la section Votre Path.</value>
+  </data>
+  <data name="env.problem.empty_value" xml:space="preserve">
+    <value>Saisissez une valeur. Pour retirer une variable, supprimez-la.</value>
+  </data>
+  <data name="env.problem.value_too_long" xml:space="preserve">
+    <value>Une valeur compte au plus 32 767 caractères.</value>
+  </data>
+  <data name="env.problem.value_nul" xml:space="preserve">
+    <value>Une valeur ne peut pas contenir de caractère nul.</value>
+  </data>
+  <data name="env.problem.empty_entry" xml:space="preserve">
+    <value>Saisissez un dossier.</value>
+  </data>
+  <data name="env.problem.entry_semicolon" xml:space="preserve">
+    <value>Un dossier ne peut pas contenir ;.</value>
+  </data>
+  <data name="env.problem.gone" xml:space="preserve">
+    <value>{0} n'existe plus.</value>
+  </data>
+  <data name="env.problem.not_text" xml:space="preserve">
+    <value>{0} n'est pas du texte : WinTune ne la modifie pas.</value>
+  </data>
+  <data name="env.problem.twice" xml:space="preserve">
+    <value>{0} est modifiée deux fois dans la même application.</value>
+  </data>
+  <data name="env.problem.changed_since_scan" xml:space="preserve">
+    <value>{0} a été modifié par un autre programme depuis la dernière lecture de la page. Rien n'a été écrit : vérifiez la liste et appliquez à nouveau.</value>
+  </data>
+  <data name="nav.environment" xml:space="preserve">
+    <value>Variables d'environnement</value>
+  </data>
+  <data name="env.subtitle" xml:space="preserve">
+    <value>Vos variables et les dossiers où Windows cherche les programmes.</value>
+  </data>
+  <data name="env.note" xml:space="preserve">
+    <value>Les nouveaux programmes voient vos changements. Les fenêtres déjà ouvertes, comme les terminaux, gardent les anciennes valeurs jusqu'à leur redémarrage.</value>
+  </data>
+  <data name="env.search" xml:space="preserve">
+    <value>Rechercher des variables et des dossiers</value>
+  </data>
+  <data name="env.scanning" xml:space="preserve">
+    <value>Lecture de vos variables…</value>
+  </data>
+  <data name="env.unreadable" xml:space="preserve">
+    <value>Impossible de lire vos variables : {0}</value>
+  </data>
+  <data name="env.no_match" xml:space="preserve">
+    <value>Rien ne correspond à votre recherche.</value>
+  </data>
+  <data name="env.path.title" xml:space="preserve">
+    <value>Votre Path</value>
+  </data>
+  <data name="env.path.empty" xml:space="preserve">
+    <value>Vous n'avez pas encore de Path à vous. Ajoutez un premier dossier ci-dessous.</value>
+  </data>
+  <data name="env.path.clean" xml:space="preserve">
+    <value>Retirer les introuvables et les doublons</value>
+  </data>
+  <data name="env.path.clean_none" xml:space="preserve">
+    <value>Aucun dossier introuvable ni en double.</value>
+  </data>
+  <data name="env.path.add_hint" xml:space="preserve">
+    <value>Dossier à ajouter, par exemple C:\Tools\bin</value>
+  </data>
+  <data name="env.path.add" xml:space="preserve">
+    <value>Ajouter à Path</value>
+  </data>
+  <data name="env.browse" xml:space="preserve">
+    <value>Parcourir…</value>
+  </data>
+  <data name="env.pill.not_found" xml:space="preserve">
+    <value>Dossier introuvable</value>
+  </data>
+  <data name="env.pill.duplicate" xml:space="preserve">
+    <value>En double</value>
+  </data>
+  <data name="env.pill.will_add" xml:space="preserve">
+    <value>Sera ajouté</value>
+  </data>
+  <data name="env.pill.moved" xml:space="preserve">
+    <value>Déplacé</value>
+  </data>
+  <data name="env.pill.will_remove" xml:space="preserve">
+    <value>Sera retiré</value>
+  </data>
+  <data name="env.pill.uses_refs" xml:space="preserve">
+    <value>Utilise %…%</value>
+  </data>
+  <data name="env.pill.read_only" xml:space="preserve">
+    <value>Lecture seule</value>
+  </data>
+  <data name="env.pill.will_change" xml:space="preserve">
+    <value>Sera modifiée</value>
+  </data>
+  <data name="env.pill.will_rename" xml:space="preserve">
+    <value>Sera renommée {0}</value>
+  </data>
+  <data name="env.pill.will_delete" xml:space="preserve">
+    <value>Sera supprimée</value>
+  </data>
+  <data name="env.move_up" xml:space="preserve">
+    <value>Monter</value>
+  </data>
+  <data name="env.move_down" xml:space="preserve">
+    <value>Descendre</value>
+  </data>
+  <data name="env.no_move" xml:space="preserve">
+    <value>Déjà au bout de la liste.</value>
+  </data>
+  <data name="env.edit" xml:space="preserve">
+    <value>Modifier</value>
+  </data>
+  <data name="env.remove" xml:space="preserve">
+    <value>Retirer</value>
+  </data>
+  <data name="env.delete" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="env.not_text" xml:space="preserve">
+    <value>Cette valeur n'est pas du texte. WinTune l'affiche mais ne la modifie pas.</value>
+  </data>
+  <data name="env.vars.title" xml:space="preserve">
+    <value>Vos variables</value>
+  </data>
+  <data name="env.vars.add" xml:space="preserve">
+    <value>Ajouter une variable</value>
+  </data>
+  <data name="env.vars.empty" xml:space="preserve">
+    <value>Vous n'avez pas d'autre variable.</value>
+  </data>
+  <data name="env.system.title" xml:space="preserve">
+    <value>Pour tous les comptes (lecture seule)</value>
+  </data>
+  <data name="env.system.path" xml:space="preserve">
+    <value>Path (tous les comptes)</value>
+  </data>
+  <data name="env.system.unreadable" xml:space="preserve">
+    <value>Impossible de lire les variables du système : {0}</value>
+  </data>
+  <data name="env.var_title_add" xml:space="preserve">
+    <value>Ajouter une variable</value>
+  </data>
+  <data name="env.var_title_edit" xml:space="preserve">
+    <value>Modifier la variable</value>
+  </data>
+  <data name="env.entry_title" xml:space="preserve">
+    <value>Modifier le dossier</value>
+  </data>
+  <data name="env.name" xml:space="preserve">
+    <value>Nom</value>
+  </data>
+  <data name="env.value" xml:space="preserve">
+    <value>Valeur</value>
+  </data>
+  <data name="env.dialog_ok" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="env.pending" xml:space="preserve">
+    <value>{0} changements non appliqués</value>
+  </data>
+  <data name="env.pending_one" xml:space="preserve">
+    <value>1 changement non appliqué</value>
+  </data>
+  <data name="env.up_to_date" xml:space="preserve">
+    <value>Tous les changements sont appliqués</value>
+  </data>
+  <data name="env.nothing_to_apply" xml:space="preserve">
     <value>Rien à appliquer</value>
   </data>
 </root>

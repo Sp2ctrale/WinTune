@@ -10,6 +10,8 @@ mod autosave;
 mod confirm;
 mod context_menu_existing;
 mod context_menu_tab;
+mod environment_state;
+mod environment_tab;
 mod gallery_tab;
 mod history_panel;
 mod home;
@@ -43,6 +45,9 @@ use crate::context_menu::{
 };
 use crate::detector::{
     has_wsl_distribution, is_windows_11_build, resolve_vscode_executable, windows_build,
+};
+use crate::environment::{
+    broadcast_environment, default_env_store_path, EnvBackupStore, EnvScan, EnvTarget,
 };
 use crate::gallery::{IconCategory, IconGallery};
 use crate::i18n::{messages, Tr};
@@ -96,6 +101,13 @@ pub(crate) struct AppEnv {
     pub startup_store_path: PathBuf,
     /// Whether a per-user switch turns items of a source off.
     pub startup_switch_works: fn(Source) -> bool,
+    /// Where the environment variables are read (HKCU, HKLM) and written (HKCU).
+    pub env_target: Arc<dyn Fn() -> EnvTarget + Send + Sync>,
+    pub env_store_path: PathBuf,
+    /// Tells running programs that the environment changed.
+    pub notify_environment: Arc<dyn Fn() + Send + Sync>,
+    /// A variable of this process: the fallback of `%name%` expansion.
+    pub process_var: fn(&str) -> Option<String>,
     /// Where each preset program of the context menu lives.
     pub programs: Programs,
     /// `%SystemRoot%`: menu entries whose program is under it are Windows'
@@ -131,6 +143,10 @@ impl AppEnv {
             startup_target: Arc::new(StartupTarget::current_user),
             startup_store_path: default_startup_store_path(),
             startup_switch_works: Source::per_user_switch_works,
+            env_target: Arc::new(EnvTarget::current_user),
+            env_store_path: default_env_store_path(),
+            notify_environment: Arc::new(broadcast_environment),
+            process_var: crate::environment::process_var,
             programs: Programs::detect(),
             windows_dir: std::env::var_os("SystemRoot")
                 .map(PathBuf::from)
@@ -152,18 +168,20 @@ pub(crate) enum ActiveTab {
     Settings,
     ContextMenu,
     Startup,
+    Environment,
 }
 
 impl ActiveTab {
     /// Every page that can be opened, in navigation order (the tests walk it).
     #[cfg(test)]
-    pub(crate) const ALL: [ActiveTab; 9] = [
+    pub(crate) const ALL: [ActiveTab; 10] = [
         ActiveTab::Home,
         ActiveTab::Associations,
         ActiveTab::Tweaks,
         ActiveTab::StartPrivacy,
         ActiveTab::ContextMenu,
         ActiveTab::Startup,
+        ActiveTab::Environment,
         ActiveTab::Gallery,
         ActiveTab::History,
         ActiveTab::Settings,
@@ -178,6 +196,7 @@ impl ActiveTab {
             ActiveTab::StartPrivacy => Some("Start & Privacy"),
             ActiveTab::ContextMenu => Some("Context menu"),
             ActiveTab::Startup => Some("Startup apps"),
+            ActiveTab::Environment => Some("Environment variables"),
             ActiveTab::Home | ActiveTab::Gallery | ActiveTab::History | ActiveTab::Settings => None,
         }
     }
@@ -192,6 +211,7 @@ impl ActiveTab {
                 | ActiveTab::StartPrivacy
                 | ActiveTab::ContextMenu
                 | ActiveTab::Startup
+                | ActiveTab::Environment
         )
     }
 }
@@ -207,6 +227,8 @@ pub(super) enum ReportKind {
     RestoredMenu,
     AppliedStartup,
     RestoredStartup,
+    AppliedEnvironment,
+    RestoredEnvironment,
 }
 
 pub struct WinTuneApp {
@@ -284,6 +306,26 @@ pub struct WinTuneApp {
     startup_pending: BTreeMap<String, bool>,
     /// Filter typed in the Startup apps page (name / program).
     startup_search: String,
+    /// Original variables (environment-backups.json).
+    env_store: EnvBackupStore,
+    /// Set when environment-backups.json cannot be read: changes are blocked.
+    env_store_error: Option<LoadError>,
+    /// Variables as last read; `None` until the first scan ends. Kept while a
+    /// new scan runs.
+    env_scan: Option<EnvScan>,
+    env_scan_job: Option<environment_state::EnvScanJob>,
+    env_scan_needed: bool,
+    /// Edits not applied yet.
+    env_pending: environment_state::EnvPending,
+    /// Whether a `Path` folder exists, by expanded text: the last scan's
+    /// answers, plus folders checked since.
+    env_folders: HashMap<String, bool>,
+    /// Filter typed in the Environment variables page.
+    env_search: String,
+    /// The variable or folder dialog, while open.
+    env_dialog: Option<environment_state::EnvDialog>,
+    /// The folder typed in the Path section's add box.
+    env_new_entry: String,
     tr: Tr,
     /// The theme actually shown this frame (Light or Dark, never System):
     /// what the old palette helpers receive.
@@ -332,6 +374,8 @@ impl WinTuneApp {
         app.request_menu_scan();
         app.reload_startup_store();
         app.request_startup_scan();
+        app.reload_env_store();
+        app.request_env_scan();
         app
     }
 
@@ -396,6 +440,16 @@ impl WinTuneApp {
             startup_scan_needed: false,
             startup_pending: BTreeMap::new(),
             startup_search: String::new(),
+            env_store: EnvBackupStore::default(),
+            env_store_error: None,
+            env_scan: None,
+            env_scan_job: None,
+            env_scan_needed: false,
+            env_pending: Default::default(),
+            env_folders: HashMap::new(),
+            env_search: String::new(),
+            env_dialog: None,
+            env_new_entry: String::new(),
             tr,
             ui_theme,
             focus_search: false,
@@ -419,6 +473,7 @@ impl WinTuneApp {
         self.pump_status_refresh(ctx);
         self.pump_menu_scan(ctx);
         self.pump_startup_scan(ctx);
+        self.pump_env_scan(ctx);
         self.guard_close_while_busy(ctx);
 
         // Before the nav: the dialog claims the keyboard first (it is an Area,
@@ -426,6 +481,7 @@ impl WinTuneApp {
         self.show_confirm_dialog(ctx);
         self.show_icon_picker(ctx);
         self.show_menu_rename_dialog(ctx);
+        self.show_env_dialog(ctx);
         self.show_caption(ctx);
         self.show_nav(ctx);
         if !self.active_tab.owns_action_bar() {
@@ -442,6 +498,7 @@ impl WinTuneApp {
             ActiveTab::Gallery => self.show_gallery_tab(ctx),
             ActiveTab::ContextMenu => self.show_context_menu_tab(ctx),
             ActiveTab::Startup => self.show_startup_tab(ctx),
+            ActiveTab::Environment => self.show_environment_tab(ctx),
         }
 
         self.toasts.show(ctx, &self.tr.t("toast.clear_all"));
@@ -578,6 +635,8 @@ impl WinTuneApp {
             ReportKind::RestoredMenu => tr.t_args("report.restored_menu", &[&count]),
             ReportKind::AppliedStartup => tr.t_args("report.applied_startup", &[&count]),
             ReportKind::RestoredStartup => tr.t_args("report.restored_startup", &[&count]),
+            ReportKind::AppliedEnvironment => tr.t_args("report.applied_environment", &[&count]),
+            ReportKind::RestoredEnvironment => tr.t_args("report.restored_environment", &[&count]),
         };
         if let Some(first) = report.errors.first() {
             msg.push_str(&tr.t_args("report.errors", &[&report.errors.len(), first]));

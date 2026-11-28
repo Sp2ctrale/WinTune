@@ -269,6 +269,16 @@ change nothing.
   Apply that turns the master off, a touched master-gated row keeps its
   snapshot even when its readback matches its original: the master's SET,
   written last, may clear it (case 1).
+- **A gated row under a master that stays off (call, review T3-C4).** In
+  an Apply where the master is live off and the batch does not turn it on,
+  a master-gated row gets no snapshot (its GET may read masked) and no SET;
+  it is reported `HeldByMaster`. The page cannot ask for this (the row is
+  disabled); the engine refuses it anyway. The master is read for this
+  whenever a master-gated row is touched.
+- **Gated rows not written (review T3-C6).** A row skipped because its
+  re-read failed is reported `VeFailure::RereadFailed`; a failed save after
+  the re-read, with gated rows still to write, is
+  `VeFailure::GatedNotSaved`. Both texts say the rows were not written.
 - The store entry gets an optional `companion_of` field (the master's id),
   left out of the JSON when empty, so Mouse & keyboard's file stays
   byte-identical.
@@ -309,6 +319,13 @@ From a row or History, after a confirmation. Each id: SET the stored value
 exactly, GET it back, forget the snapshot only if they match. Same order rule
 as Apply, using the restored master value; restoring the master also takes
 companion snapshots first and restores the companions in the order of 5.3.
+**Restoring the master to off (call, review T3-C5):** when the master is
+already live off, no new companion snapshot is taken (its GET may read
+masked) and no companion without one is written. After the master's SET
+off, each gated row written before it is read again: only a value still at
+its original is forgotten; any other keeps its snapshot and is reported
+`HeldByMaster` (a readback taken before the master went off never forgets
+it).
 The pending choices of restored settings are dropped. No `.reg` for a
 restore.
 

@@ -306,6 +306,15 @@ pub enum VeFailure {
     },
     /// The store save after the writes failed.
     StoreNotSaved(String),
+    /// A gated row not written: its snapshot could not be read again after
+    /// the master went on (review T3-C1, T3-C6).
+    RereadFailed {
+        id: EffectId,
+        code: u32,
+    },
+    /// The master was written, but the rows it gates were not: the store
+    /// save after their re-read failed (review T3-C1, T3-C6).
+    GatedNotSaved(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

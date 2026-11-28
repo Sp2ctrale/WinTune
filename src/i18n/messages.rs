@@ -13,6 +13,7 @@ use crate::mouse_keyboard::{
 use crate::persist::LoadError;
 use crate::startup::{Source, StartupLock, StartupState};
 use crate::tweaks::{CustomReason, TweakGroup};
+use crate::visual_effects::VeFailure;
 
 pub fn rule_problem(tr: Tr, p: &RuleProblem) -> String {
     match p {
@@ -276,6 +277,20 @@ pub fn mk_issue(tr: Tr, issue: &MkIssue) -> String {
     match issue {
         MkIssue::Problem(p) => mk_problem(tr, p),
         MkIssue::Failure(f) => mk_failure(tr, f),
+    }
+}
+
+/// The two Visual effects failures that say the effects gated by UI effects
+/// were not written (review T3-C6); `title` is the effect's translated
+/// title. `None` for every other failure, translated with the rest of the
+/// module's messages.
+pub fn ve_not_written(tr: Tr, f: &VeFailure, title: &str) -> Option<String> {
+    match f {
+        VeFailure::RereadFailed { code, .. } => {
+            Some(tr.t_args("ve.failure.reread", &[&title, code]))
+        }
+        VeFailure::GatedNotSaved(why) => Some(tr.t_args("ve.failure.gated_not_saved", &[why])),
+        _ => None,
     }
 }
 

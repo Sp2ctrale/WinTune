@@ -649,6 +649,45 @@ fn every_mouse_keyboard_message_translates_in_every_shipped_language() {
 }
 
 #[test]
+fn the_visual_effects_not_written_messages_translate_in_every_shipped_language() {
+    use super::messages::ve_not_written;
+    use crate::visual_effects::{EffectId, VeFailure};
+
+    let reread = VeFailure::RereadFailed {
+        id: EffectId::MenuFade,
+        code: 5,
+    };
+    let not_saved = VeFailure::GatedNotSaved("disk full".into());
+    for (code, _) in Tr::languages() {
+        let tr = Tr::new(code);
+        let texts = [
+            ve_not_written(tr, &reread, "Menu fade").unwrap(),
+            ve_not_written(tr, &not_saved, "").unwrap(),
+        ];
+        assert!(
+            texts[0].contains("Menu fade") && texts[0].contains('5'),
+            "{code}"
+        );
+        assert!(texts[1].contains("disk full"), "{code}");
+        for text in &texts {
+            assert!(!text.contains('{'), "{code}: {text:?}");
+            assert!(!text.starts_with("ve."), "{code}: bare key {text:?}");
+        }
+    }
+    assert_eq!(
+        ve_not_written(Tr::new("fr"), &not_saved, ""),
+        Some(
+            "Les effets de l'interface ont été modifiés, mais les effets qui en dépendent \
+             n'ont pas été écrits : les valeurs d'origine n'ont pas pu être mises à jour \
+             (disk full)."
+                .to_string()
+        )
+    );
+    let other = VeFailure::StoreNotSaved("x".into());
+    assert_eq!(ve_not_written(Tr::english(), &other, ""), None);
+}
+
+#[test]
 fn every_key_used_in_the_code_exists_in_english() {
     let en = keys_of("en").expect("English catalog");
     let re = regex::Regex::new(r#"\.t(?:_args)?\(\s*"([A-Za-z0-9_.]+)""#).unwrap();

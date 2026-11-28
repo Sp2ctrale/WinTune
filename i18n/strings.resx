@@ -1852,6 +1852,12 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="mk.failure.store" xml:space="preserve">
     <value>The change was made, but the saved originals could not be updated: {0}</value>
   </data>
+  <data name="ve.failure.reread" xml:space="preserve">
+    <value>{0}: not written, because WinTune could not read it again after UI effects went on (error {1}).</value>
+  </data>
+  <data name="ve.failure.gated_not_saved" xml:space="preserve">
+    <value>UI effects was changed, but the effects it gates were not written: the saved originals could not be updated ({0}).</value>
+  </data>
   <data name="nav.mouse_keyboard" xml:space="preserve">
     <value>Mouse &amp; keyboard</value>
   </data>

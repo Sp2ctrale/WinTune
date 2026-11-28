@@ -1851,6 +1851,12 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="mk.failure.store" xml:space="preserve">
     <value>Le changement est fait, mais les valeurs d'origine n'ont pas pu être mises à jour : {0}</value>
   </data>
+  <data name="ve.failure.reread" xml:space="preserve">
+    <value>{0} : non écrit, car WinTune n'a pas pu le relire après l'activation des effets de l'interface (erreur {1}).</value>
+  </data>
+  <data name="ve.failure.gated_not_saved" xml:space="preserve">
+    <value>Les effets de l'interface ont été modifiés, mais les effets qui en dépendent n'ont pas été écrits : les valeurs d'origine n'ont pas pu être mises à jour ({0}).</value>
+  </data>
   <data name="nav.mouse_keyboard" xml:space="preserve">
     <value>Souris et clavier</value>
   </data>

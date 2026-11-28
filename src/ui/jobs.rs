@@ -24,6 +24,10 @@ use crate::startup::{
     apply_startup, now_filetime, restore_startup, StartupBackupStore, StartupOptions,
 };
 use crate::tasks::{BackgroundJob, JobPoll, Progress};
+use crate::visual_effects::{
+    apply_visual_effects, restore_visual_effects, EffectId, EffectsApi, VeBackupStore, VeOptions,
+    VeReport,
+};
 use eframe::egui;
 
 /// Result of a registry job: what happened, and the backup store as it is
@@ -77,6 +81,16 @@ pub(super) struct MkOutcome {
     pub(super) restored: bool,
 }
 
+/// Result of a visual effects job, with the snapshot store after it.
+pub(super) struct VeOutcome {
+    /// The English report (History) and the issues it was written from
+    /// (translated for the toast).
+    pub(super) report: VeReport,
+    pub(super) store: VeBackupStore,
+    /// True for "restore", false for "apply".
+    pub(super) restored: bool,
+}
+
 pub(super) enum RunningJob {
     Apply(BackgroundJob<StoreOutcome>),
     Rollback(BackgroundJob<StoreOutcome>),
@@ -110,6 +124,12 @@ pub(super) enum RunningJob {
         job: BackgroundJob<MkOutcome>,
         restore: bool,
     },
+    /// A visual effects job: apply the pending choices, or restore
+    /// originals.
+    VisualEffects {
+        job: BackgroundJob<VeOutcome>,
+        restore: bool,
+    },
 }
 
 impl RunningJob {
@@ -123,6 +143,7 @@ impl RunningJob {
             RunningJob::Startup { job, .. } => job.title(),
             RunningJob::Environment { job, .. } => job.title(),
             RunningJob::MouseKeyboard { job, .. } => job.title(),
+            RunningJob::VisualEffects { job, .. } => job.title(),
         }
     }
 
@@ -142,6 +163,8 @@ impl RunningJob {
             RunningJob::Environment { .. } => "job.apply_environment",
             RunningJob::MouseKeyboard { restore: true, .. } => "job.restore_mouse_keyboard",
             RunningJob::MouseKeyboard { .. } => "job.apply_mouse_keyboard",
+            RunningJob::VisualEffects { restore: true, .. } => "job.restore_visual_effects",
+            RunningJob::VisualEffects { .. } => "job.apply_visual_effects",
         }
     }
 
@@ -161,6 +184,8 @@ impl RunningJob {
             "job.restore_environment" => "job.name.restore_environment",
             "job.apply_mouse_keyboard" => "job.name.apply_mouse_keyboard",
             "job.restore_mouse_keyboard" => "job.name.restore_mouse_keyboard",
+            "job.apply_visual_effects" => "job.name.apply_visual_effects",
+            "job.restore_visual_effects" => "job.name.restore_visual_effects",
             _ => "job.name.apply_tweaks",
         }
     }
@@ -188,6 +213,8 @@ impl RunningJob {
                 Some(("Mouse & keyboard", "Restore"))
             }
             RunningJob::MouseKeyboard { .. } => Some(("Mouse & keyboard", "Apply")),
+            RunningJob::VisualEffects { restore: true, .. } => Some(("Visual effects", "Restore")),
+            RunningJob::VisualEffects { .. } => Some(("Visual effects", "Apply")),
             RunningJob::BuildPak(_) => None,
         }
     }
@@ -202,6 +229,7 @@ impl RunningJob {
             RunningJob::Startup { job, .. } => job.progress(),
             RunningJob::Environment { job, .. } => job.progress(),
             RunningJob::MouseKeyboard { job, .. } => job.progress(),
+            RunningJob::VisualEffects { job, .. } => job.progress(),
         }
     }
 }
@@ -600,6 +628,11 @@ impl WinTuneApp {
                 JobPoll::Finished(outcome) => Finished::MouseKeyboard(outcome),
                 JobPoll::Panicked(msg) => Finished::Panicked(msg),
             },
+            RunningJob::VisualEffects { job, .. } => match job.poll() {
+                JobPoll::Running => return,
+                JobPoll::Finished(outcome) => Finished::VisualEffects(outcome),
+                JobPoll::Panicked(msg) => Finished::Panicked(msg),
+            },
         };
         let title = job.title().to_string();
         let title_text = self.tr.t(job.name_key());
@@ -648,6 +681,7 @@ impl WinTuneApp {
             Finished::Startup(outcome) => self.finish_startup_job(outcome),
             Finished::Environment(outcome) => self.finish_env_job(outcome),
             Finished::MouseKeyboard(outcome) => self.finish_mk_job(outcome),
+            Finished::VisualEffects(outcome) => self.finish_ve_job(outcome),
             Finished::Panicked(msg) => {
                 if let Some((module, action)) = history_label {
                     // It may have written part of its changes: keep a trace.
@@ -668,6 +702,7 @@ impl WinTuneApp {
                 self.reload_startup_store();
                 self.reload_env_store();
                 self.reload_mk_store();
+                self.reload_ve_store();
             }
         }
         // Any job may have changed the menu (or the snapshots behind it).
@@ -675,6 +710,7 @@ impl WinTuneApp {
         self.request_startup_scan();
         self.request_env_scan();
         self.request_mk_scan();
+        self.request_ve_scan();
     }
 
     /// Why an environment change cannot start: the unreadable snapshot store
@@ -1028,6 +1064,135 @@ impl WinTuneApp {
         self.record_history("Mouse & keyboard", action, &report);
     }
 
+    /// Why a visual effects change cannot start: the unreadable snapshot
+    /// store (which the next save would overwrite). Shown as the toast and as
+    /// the hover of the disabled Apply button.
+    pub(super) fn ve_blocked_reason(&self) -> Option<String> {
+        self.ve_store_error.as_ref().map(|e| {
+            let detail = messages::load_error(self.tr, e);
+            self.tr.t_args("tweaks.blocked", &[&detail])
+        })
+    }
+
+    /// Writes the pending choices in one background job, without asking
+    /// first: nothing here can lock the user out, and History undoes it
+    /// (spec 5.4).
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(super) fn start_ve_apply(&mut self, ctx: &egui::Context) {
+        if self.refuse_if_busy() {
+            return;
+        }
+        if let Some(reason) = self.ve_blocked_reason() {
+            self.notify(ToastKind::Error, reason);
+            return;
+        }
+        let changes = self.ve_changes();
+        if changes.is_empty() {
+            return;
+        }
+        self.spawn_ve_job(
+            ctx,
+            false,
+            "Applying visual effects",
+            move |api, store, opts| apply_visual_effects(api, store, &changes, opts),
+        );
+    }
+
+    /// Puts the given effects (`EffectId::key` strings) back to their saved
+    /// originals; restoring the master takes its companions with it. Only an
+    /// unreadable store stops it here: the engine refuses a wrong account
+    /// itself, before any call.
+    pub(super) fn start_ve_restore(&mut self, ctx: &egui::Context, ids: Vec<String>) {
+        if self.refuse_if_busy() {
+            return;
+        }
+        if let Some(reason) = self.ve_blocked_reason() {
+            self.notify(ToastKind::Error, reason);
+            return;
+        }
+        self.spawn_ve_job(
+            ctx,
+            true,
+            "Restoring visual effects",
+            move |api, store, opts| restore_visual_effects(api, store, &ids, opts),
+        );
+    }
+
+    /// Runs `run` on the job's worker thread: every GET and SET, the account
+    /// check, the store save and the `.reg` happen there, never on the UI
+    /// thread.
+    fn spawn_ve_job(
+        &mut self,
+        ctx: &egui::Context,
+        restored: bool,
+        title: &'static str,
+        run: impl FnOnce(&dyn EffectsApi, &mut VeBackupStore, &VeOptions) -> VeReport + Send + 'static,
+    ) {
+        let env = self.env.clone();
+        let mut store = self.ve_store.clone();
+        let user = self.env.user_label.clone();
+        let job = BackgroundJob::spawn(title, repaint(ctx), move |sink| {
+            let progress = |done: usize, total: usize, label: &str| sink.report(done, total, label);
+            let reg_source = (env.mk_reg_source)();
+            let opts = VeOptions {
+                user,
+                store_path: env.ve_store_path.clone(),
+                reg_backup_dir: env.reg_backup_dir.clone(),
+                reg_source: &reg_source,
+                account: &*env.input_account,
+                progress: &progress,
+            };
+            let report = run(&*env.effects, &mut store, &opts);
+            VeOutcome {
+                report,
+                store,
+                restored,
+            }
+        });
+        self.job = Some(RunningJob::VisualEffects {
+            job,
+            restore: restored,
+        });
+    }
+
+    fn finish_ve_job(&mut self, outcome: VeOutcome) {
+        self.ve_store = outcome.store;
+        let VeReport { report, issues } = outcome.report;
+        // A clean apply did everything asked. After a refused or partial one
+        // the choices stay, so Apply can be tried again; the next scan drops
+        // those the live values already match.
+        if !outcome.restored && report.errors.is_empty() {
+            self.ve_pending.clear();
+        }
+        // A choice for a restored effect was made on the value the restore
+        // replaced: kept, Apply would undo the restore.
+        if outcome.restored {
+            for key in &report.succeeded {
+                if let Some(id) = EffectId::from_key(key) {
+                    self.ve_pending.remove(&id);
+                }
+            }
+        }
+        // The toast shows the issues in the UI language; History keeps the
+        // English lines.
+        let tr = self.tr;
+        let shown = OperationReport {
+            succeeded: report.succeeded.clone(),
+            removed: report.removed.clone(),
+            errors: issues.iter().map(|i| messages::ve_issue(tr, i)).collect(),
+            warnings: report.warnings.clone(),
+            reg_backup_file: report.reg_backup_file.clone(),
+        };
+        let kind = if outcome.restored {
+            ReportKind::RestoredVisualEffects
+        } else {
+            ReportKind::AppliedVisualEffects
+        };
+        self.show_report(kind, &shown);
+        let action = if outcome.restored { "Restore" } else { "Apply" };
+        self.record_history("Visual effects", action, &report);
+    }
+
     fn finish_startup_job(&mut self, outcome: StartupOutcome) {
         self.startup_store = outcome.store;
         // A clean apply did everything asked. After a refused or partial
@@ -1075,6 +1240,7 @@ enum Finished {
     Startup(StartupOutcome),
     Environment(EnvOutcome),
     MouseKeyboard(MkOutcome),
+    VisualEffects(VeOutcome),
     Panicked(String),
 }
 
@@ -2315,6 +2481,257 @@ mod tests {
         }
     }
 
+    fn scanned_ve_app(fx: &TempIcons, ctx: &egui::Context) -> WinTuneApp {
+        let mut app = fx.app(ctx);
+        app.request_ve_scan();
+        run_until_ve_scanned(&mut app, ctx);
+        assert!(app.ve_scan.as_ref().is_some_and(|s| s.account_ok()));
+        app
+    }
+
+    #[test]
+    fn a_visual_effects_apply_sets_logs_and_clears_pending() {
+        use crate::visual_effects::EffectId::CursorShadow;
+        use crate::visual_effects::SettingValue::Flag;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_ve_app(&fx, &ctx);
+        app.set_ve_wanted(CursorShadow, Flag(true));
+
+        app.start_ve_apply(&ctx);
+        assert!(app.pending_confirm.is_none(), "no confirmation");
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+
+        assert_eq!(fx.fake_effects().value(CursorShadow), Flag(true));
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Visual effects", "Apply")
+        );
+        assert!(last.errors.is_empty(), "{:?}", last.errors);
+        assert!(app.ve_pending.is_empty());
+        assert!(app.ve_store.has_backup("TEST\\user", "cursor_shadow"));
+        let files = reg_files(&app);
+        assert_eq!(files.len(), 1, "{files:?}");
+        assert!(files[0].to_string_lossy().ends_with("-visual-effects.reg"));
+        assert!(
+            app.last_notice().starts_with("1 setting(s) applied"),
+            "{}",
+            app.last_notice()
+        );
+    }
+
+    #[test]
+    fn a_visual_effects_apply_with_nothing_pending_starts_nothing() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_ve_app(&fx, &ctx);
+        app.start_ve_apply(&ctx);
+        assert!(!app.is_busy());
+        assert_eq!(fx.fake_effects().sets(), []);
+    }
+
+    #[test]
+    fn a_held_effect_keeps_the_choice_and_the_toast_is_translated() {
+        use crate::visual_effects::EffectId::{CursorShadow, UiEffects};
+        use crate::visual_effects::SettingValue::Flag;
+        use crate::visual_effects::{MasterMode, VeFailure};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        // The page saw the master on and took the choice ...
+        let mut app = scanned_ve_app(&fx, &ctx);
+        app.set_language("fr");
+        app.set_ve_wanted(CursorShadow, Flag(true));
+        assert_eq!(app.ve_pending_count(), 1);
+        // ... then the master went off elsewhere, before any rescan.
+        fx.fake_effects().master_mode(MasterMode::ReadsOff);
+        fx.fake_effects().put(UiEffects, Flag(false));
+
+        app.start_ve_apply(&ctx);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        // A frame would run the follow-up scan.
+        finish_job_without_scanning(&mut app);
+
+        assert_eq!(fx.fake_effects().sets(), [], "a held row was written");
+        assert_eq!(app.ve_pending.get(&CursorShadow), Some(&Flag(true)));
+        let held = VeFailure::HeldByMaster {
+            id: CursorShadow,
+            wanted: Flag(true),
+            read: Flag(false),
+        };
+        let french = crate::i18n::messages::ve_failure(app.tr, &held);
+        let english = crate::i18n::messages::ve_failure(crate::i18n::Tr::english(), &held);
+        assert_ne!(french, english);
+        assert!(app.last_notice().contains(&french), "{}", app.last_notice());
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Visual effects", "Apply")
+        );
+        assert_eq!(last.errors.len(), 1, "{:?}", last.errors);
+        assert!(
+            last.errors[0].contains("keeps this effect off"),
+            "{:?}",
+            last.errors
+        );
+    }
+
+    #[test]
+    fn a_visual_effects_restore_drops_the_pending_choice_of_what_it_restored() {
+        use crate::visual_effects::EffectId::{CaretWidth, CursorShadow, FocusBorderWidth};
+        use crate::visual_effects::SettingValue::{Flag, Number};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_ve_app(&fx, &ctx);
+        app.set_ve_wanted(CaretWidth, Number(2));
+        app.set_ve_wanted(CursorShadow, Flag(true));
+        app.start_ve_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        run_until_ve_scanned(&mut app, &ctx);
+        assert_eq!(fx.fake_effects().value(CaretWidth), Number(2));
+
+        // New choices for the restored setting, and for another one.
+        app.set_ve_wanted(CaretWidth, Number(3));
+        app.set_ve_wanted(FocusBorderWidth, Number(2));
+        app.start_ve_restore(&ctx, vec!["caret_width".into()]);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+
+        assert_eq!(fx.fake_effects().value(CaretWidth), Number(1));
+        assert_eq!(fx.fake_effects().value(CursorShadow), Flag(true));
+        assert_eq!(
+            app.ve_pending,
+            std::collections::BTreeMap::from([(FocusBorderWidth, Number(2))])
+        );
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Visual effects", "Restore")
+        );
+        assert!(last.errors.is_empty(), "{:?}", last.errors);
+        assert!(
+            app.last_notice().starts_with("1 setting(s) restored"),
+            "{}",
+            app.last_notice()
+        );
+    }
+
+    #[test]
+    fn an_unreadable_visual_effects_store_blocks_apply_and_restore() {
+        use crate::visual_effects::EffectId::CaretWidth;
+        use crate::visual_effects::SettingValue::Number;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_ve_app(&fx, &ctx);
+        app.set_ve_wanted(CaretWidth, Number(2));
+        assert_eq!(app.ve_pending_count(), 1);
+        app.ve_store_error = Some(corrupt("visual-effects-backups.json", "bad json"));
+        assert!(app.ve_blocked_reason().is_some());
+        let calls = fx.fake_effects().calls().len();
+
+        app.start_ve_apply(&ctx);
+        assert!(!app.is_busy());
+        assert!(
+            app.last_notice().starts_with("Changes are blocked"),
+            "{}",
+            app.last_notice()
+        );
+
+        app.notify(ToastKind::Info, "marker");
+        app.start_ve_restore(&ctx, vec!["caret_width".into()]);
+        assert!(!app.is_busy());
+        assert!(
+            app.last_notice().starts_with("Changes are blocked"),
+            "{}",
+            app.last_notice()
+        );
+        assert_eq!(
+            fx.fake_effects().calls().len(),
+            calls,
+            "the backend was called"
+        );
+        assert_eq!(fx.fake_effects().value(CaretWidth), Number(1));
+        assert!(!app.env.ve_store_path.exists(), "store written");
+        assert!(reg_files(&app).is_empty(), ".reg written");
+
+        // The same apply runs once the store is readable again.
+        app.ve_store_error = None;
+        app.start_ve_apply(&ctx);
+        assert!(app.is_busy());
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(fx.fake_effects().value(CaretWidth), Number(2));
+    }
+
+    #[test]
+    fn a_visual_effects_restore_from_history_as_the_wrong_account_is_refused() {
+        use crate::visual_effects::AccountCheck;
+        use crate::visual_effects::EffectId::CaretWidth;
+        use crate::visual_effects::SettingValue::Number;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_ve_app(&fx, &ctx);
+        app.set_ve_wanted(CaretWidth, Number(2));
+        app.start_ve_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(fx.fake_effects().value(CaretWidth), Number(2));
+        fx.set_account(AccountCheck::Different {
+            process: "PC\\Admin".into(),
+            session: "PC\\Ana".into(),
+        });
+        let sets = fx.fake_effects().sets().len();
+
+        app.start_ve_restore(&ctx, vec!["caret_width".into()]);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+
+        assert_eq!(fx.fake_effects().value(CaretWidth), Number(2));
+        assert_eq!(fx.fake_effects().sets().len(), sets, "a SET was made");
+        assert!(app.ve_store.has_backup("TEST\\user", "caret_width"));
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Visual effects", "Restore")
+        );
+        assert!(
+            last.errors.iter().any(|e| e.contains("runs as PC\\Admin")),
+            "{:?}",
+            last.errors
+        );
+    }
+
+    #[test]
+    fn a_panicking_visual_effects_job_is_logged_and_reloads_the_store() {
+        use crate::visual_effects::EffectId::CaretWidth;
+        use crate::visual_effects::SettingValue::Number;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned_ve_app(&fx, &ctx);
+        app.ve_store_error = Some(corrupt("visual-effects-backups.json", "sentinel"));
+        app.set_ve_wanted(CaretWidth, Number(2));
+        let calls = fx.fake_effects().calls().len();
+        app.job = Some(RunningJob::VisualEffects {
+            job: BackgroundJob::spawn(
+                "Applying visual effects",
+                || {},
+                |_| -> VeOutcome { panic!("boom") },
+            ),
+            restore: false,
+        });
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(app.ve_store_error, None);
+        // The values may have changed: they are read again.
+        run_until_ve_scanned(&mut app, &ctx);
+        assert!(fx.fake_effects().calls().len() > calls, "no rescan");
+        assert_eq!(app.ve_pending_count(), 1);
+        let last = app.history.first().expect("history entry");
+        assert_eq!(
+            (last.module.as_str(), last.action.as_str()),
+            ("Visual effects", "Apply")
+        );
+        assert!(app.last_notice().contains("failed unexpectedly"));
+    }
+
     #[test]
     fn every_job_title_key_exists_in_english() {
         let tr = crate::i18n::Tr::english();
@@ -2346,6 +2763,10 @@ mod tests {
             "job.restore_mouse_keyboard",
             "job.name.apply_mouse_keyboard",
             "job.name.restore_mouse_keyboard",
+            "job.apply_visual_effects",
+            "job.restore_visual_effects",
+            "job.name.apply_visual_effects",
+            "job.name.restore_visual_effects",
         ] {
             assert_ne!(tr.t(key), key);
         }

@@ -6,6 +6,7 @@ use crate::associations::AssocTarget;
 use crate::models::AppConfig;
 use crate::mouse_keyboard::{AccountCheck, FakeInput};
 use crate::regsnap::test_support::Sandbox;
+use crate::visual_effects::FakeEffects;
 use eframe::egui::{self, FullOutput, RawInput, ViewportCommand, ViewportEvent, ViewportId};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -26,6 +27,8 @@ pub(super) struct TempIcons {
     /// The mouse and keyboard settings the app reads and writes (never the
     /// real ones).
     input: Arc<FakeInput>,
+    /// The visual effects the app reads and writes (never the real ones).
+    effects: Arc<FakeEffects>,
     /// What the account check answers (`Same` unless a test changes it).
     account: Arc<Mutex<AccountCheck>>,
 }
@@ -150,12 +153,19 @@ impl TempIcons {
                     base: base.clone(),
                 })
             },
+            effects: self.effects.clone(),
+            ve_store_path: self.dir.join("visual-effects-backups.json"),
         }
     }
 
     /// The fake behind the app's mouse and keyboard settings.
     pub(super) fn fake_input(&self) -> &FakeInput {
         &self.input
+    }
+
+    /// The fake behind the app's visual effects.
+    pub(super) fn fake_effects(&self) -> &FakeEffects {
+        &self.effects
     }
 
     /// What the account check answers from now on.
@@ -208,6 +218,7 @@ impl TempIcons {
             opened: Arc::default(),
             broadcasts: Arc::default(),
             input: Arc::new(FakeInput::new()),
+            effects: Arc::new(FakeEffects::new()),
             account: Arc::new(Mutex::new(AccountCheck::Same)),
         }
     }
@@ -470,6 +481,19 @@ pub(super) fn run_until_mk_scanned(app: &mut WinTuneApp, ctx: &egui::Context) {
     assert!(
         !app.mk_scan_needed && app.mk_scan_job.is_none(),
         "the mouse and keyboard scan never finished"
+    );
+}
+
+/// Runs frames until no visual effects scan is pending or running.
+pub(super) fn run_until_ve_scanned(app: &mut WinTuneApp, ctx: &egui::Context) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while (app.ve_scan_needed || app.ve_scan_job.is_some()) && Instant::now() < deadline {
+        frame(app, ctx, RawInput::default());
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(
+        !app.ve_scan_needed && app.ve_scan_job.is_none(),
+        "the visual effects scan never finished"
     );
 }
 

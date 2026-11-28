@@ -1935,4 +1935,196 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="home.mouse_keyboard_status_one" xml:space="preserve">
     <value>{0} réglage modifié par WinTune</value>
   </data>
+  <data name="job.apply_visual_effects" xml:space="preserve">
+    <value>Application des effets visuels…</value>
+  </data>
+  <data name="job.restore_visual_effects" xml:space="preserve">
+    <value>Restauration des effets visuels…</value>
+  </data>
+  <data name="job.name.apply_visual_effects" xml:space="preserve">
+    <value>L'application des effets visuels</value>
+  </data>
+  <data name="job.name.restore_visual_effects" xml:space="preserve">
+    <value>La restauration des effets visuels</value>
+  </data>
+  <data name="report.applied_visual_effects" xml:space="preserve">
+    <value>{0} réglage(s) appliqué(s)</value>
+  </data>
+  <data name="report.restored_visual_effects" xml:space="preserve">
+    <value>{0} réglage(s) restauré(s)</value>
+  </data>
+  <data name="history.module.visual_effects" xml:space="preserve">
+    <value>Effets visuels</value>
+  </data>
+  <data name="ve.scan_failed" xml:space="preserve">
+    <value>Impossible de lire les effets visuels : {0}</value>
+  </data>
+  <data name="ve.restore_title" xml:space="preserve">
+    <value>Restaurer les réglages d'origine ?</value>
+  </data>
+  <data name="ve.restore_message" xml:space="preserve">
+    <value>{0} retrouveront la valeur qu'ils avaient avant que WinTune les modifie.</value>
+  </data>
+  <data name="ve.restore_many" xml:space="preserve">
+    <value>{0} réglages</value>
+  </data>
+  <data name="ve.also_restores" xml:space="preserve">
+    <value>Restaure aussi {0} effets : {1}</value>
+  </data>
+  <data name="ve.also_restores_one" xml:space="preserve">
+    <value>Restaure aussi {0} effet : {1}</value>
+  </data>
+  <data name="ve.section.ui_effects" xml:space="preserve">
+    <value>Effets de l'interface</value>
+  </data>
+  <data name="ve.section.animations" xml:space="preserve">
+    <value>Animations</value>
+  </data>
+  <data name="ve.section.menus" xml:space="preserve">
+    <value>Menus et info-bulles</value>
+  </data>
+  <data name="ve.section.shadows" xml:space="preserve">
+    <value>Ombres</value>
+  </data>
+  <data name="ve.section.text" xml:space="preserve">
+    <value>Texte</value>
+  </data>
+  <data name="ve.section.caret" xml:space="preserve">
+    <value>Curseur et focus</value>
+  </data>
+  <data name="ve.ui_effects.title" xml:space="preserve">
+    <value>Effets de l'interface</value>
+  </data>
+  <data name="ve.ui_effects.description" xml:space="preserve">
+    <value>Active ou désactive ensemble les effets de menus, de listes, d'info-bulles et du pointeur ci-dessous.</value>
+  </data>
+  <data name="ve.window_animation.title" xml:space="preserve">
+    <value>Animer les fenêtres lors de la réduction et de l'agrandissement</value>
+  </data>
+  <data name="ve.client_area_animation.title" xml:space="preserve">
+    <value>Animer les contrôles et les éléments à l'intérieur des fenêtres</value>
+  </data>
+  <data name="ve.combobox_animation.title" xml:space="preserve">
+    <value>Ouvrir les zones de liste déroulante en glissant</value>
+  </data>
+  <data name="ve.listbox_smooth_scroll.title" xml:space="preserve">
+    <value>Défilement fluide des zones de liste</value>
+  </data>
+  <data name="ve.menu_animation.title" xml:space="preserve">
+    <value>Animation des menus</value>
+  </data>
+  <data name="ve.menu_fade.title" xml:space="preserve">
+    <value>Effet des menus</value>
+  </data>
+  <data name="ve.selection_fade.title" xml:space="preserve">
+    <value>Estomper les éléments de menu après un clic</value>
+  </data>
+  <data name="ve.tooltip_animation.title" xml:space="preserve">
+    <value>Animation des info-bulles</value>
+  </data>
+  <data name="ve.tooltip_fade.title" xml:space="preserve">
+    <value>Effet des info-bulles</value>
+  </data>
+  <data name="ve.cursor_shadow.title" xml:space="preserve">
+    <value>Afficher une ombre sous le pointeur de la souris</value>
+  </data>
+  <data name="ve.drop_shadow.title" xml:space="preserve">
+    <value>Afficher des ombres sous les fenêtres</value>
+  </data>
+  <data name="ve.font_smoothing.title" xml:space="preserve">
+    <value>Lisser les polices de l'écran</value>
+  </data>
+  <data name="ve.font_smoothing_type.title" xml:space="preserve">
+    <value>Type de lissage</value>
+  </data>
+  <data name="ve.cleartype_contrast.title" xml:space="preserve">
+    <value>Contraste ClearType</value>
+  </data>
+  <data name="ve.caret_width.title" xml:space="preserve">
+    <value>Épaisseur du curseur de texte</value>
+  </data>
+  <data name="ve.focus_border_width.title" xml:space="preserve">
+    <value>Largeur du rectangle de focus</value>
+  </data>
+  <data name="ve.focus_border_height.title" xml:space="preserve">
+    <value>Hauteur du rectangle de focus</value>
+  </data>
+  <data name="ve.value.on" xml:space="preserve">
+    <value>Activé</value>
+  </data>
+  <data name="ve.value.off" xml:space="preserve">
+    <value>Désactivé</value>
+  </data>
+  <data name="ve.value.fade" xml:space="preserve">
+    <value>Fondu</value>
+  </data>
+  <data name="ve.value.slide" xml:space="preserve">
+    <value>Glissement</value>
+  </data>
+  <data name="ve.value.standard" xml:space="preserve">
+    <value>Standard</value>
+  </data>
+  <data name="ve.value.cleartype" xml:space="preserve">
+    <value>ClearType</value>
+  </data>
+  <data name="ve.value.unknown" xml:space="preserve">
+    <value>Inconnu ({0})</value>
+  </data>
+  <data name="ve.value.px" xml:space="preserve">
+    <value>{0} px</value>
+  </data>
+  <data name="ve.value.thousands" xml:space="preserve">
+    <value>&#x202F;</value>
+  </data>
+  <data name="ve.problem.out_of_range" xml:space="preserve">
+    <value>{0} : cette valeur est hors des limites permises par WinTune.</value>
+  </data>
+  <data name="ve.problem.unknown" xml:space="preserve">
+    <value>{0} est un réglage que cette version de WinTune ne connaît pas.</value>
+  </data>
+  <data name="ve.problem.unreadable" xml:space="preserve">
+    <value>{0} : Windows n'a pas pu lire ce réglage (erreur {1}).</value>
+  </data>
+  <data name="ve.problem.wrong_account" xml:space="preserve">
+    <value>WinTune s'exécute en tant que {0}, mais c'est {1} qui a ouvert la session. Les effets visuels seraient enregistrés pour le mauvais compte.</value>
+  </data>
+  <data name="ve.problem.account_unknown" xml:space="preserve">
+    <value>WinTune ne peut pas savoir quel compte a ouvert la session ({0}) : il ne modifie donc pas les effets visuels.</value>
+  </data>
+  <data name="ve.problem.not_saved" xml:space="preserve">
+    <value>Rien n'a été appliqué : les valeurs d'origine ou la sauvegarde .reg n'ont pas pu être enregistrées ({0}).</value>
+  </data>
+  <data name="ve.problem.no_original" xml:space="preserve">
+    <value>{0} : aucune valeur d'origine n'est enregistrée.</value>
+  </data>
+  <data name="ve.failure.set" xml:space="preserve">
+    <value>{0} : Windows a refusé le changement (erreur {1}).</value>
+  </data>
+  <data name="ve.failure.mismatch" xml:space="preserve">
+    <value>{0} : Windows a gardé {1} au lieu de {2}.</value>
+  </data>
+  <data name="ve.failure.unverified" xml:space="preserve">
+    <value>{0} : WinTune n'a pas pu relire le réglage (erreur {1}).</value>
+  </data>
+  <data name="ve.failure.held" xml:space="preserve">
+    <value>{0} : Windows garde cet effet désactivé tant que les effets de l'interface sont désactivés.</value>
+  </data>
+  <data name="ve.failure.store" xml:space="preserve">
+    <value>Le changement est fait, mais les valeurs d'origine n'ont pas pu être mises à jour : {0}</value>
+  </data>
+  <data name="ve.gate.master" xml:space="preserve">
+    <value>Sans effet tant que les effets de l'interface sont désactivés</value>
+  </data>
+  <data name="ve.gate.menu" xml:space="preserve">
+    <value>Sans effet tant que l'animation des menus est désactivée</value>
+  </data>
+  <data name="ve.gate.tooltip" xml:space="preserve">
+    <value>Sans effet tant que l'animation des info-bulles est désactivée</value>
+  </data>
+  <data name="ve.gate.smoothing" xml:space="preserve">
+    <value>Sans effet tant que le lissage des polices est désactivé</value>
+  </data>
+  <data name="ve.gate.cleartype" xml:space="preserve">
+    <value>Sans effet si le type de lissage n'est pas ClearType</value>
+  </data>
 </root>

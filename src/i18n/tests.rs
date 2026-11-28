@@ -649,6 +649,180 @@ fn every_mouse_keyboard_message_translates_in_every_shipped_language() {
 }
 
 #[test]
+fn every_visual_effects_message_translates_in_every_shipped_language() {
+    use super::messages::{
+        history_module, ve_companions, ve_description, ve_failure, ve_issue, ve_not_written,
+        ve_problem, ve_section, ve_title, ve_value,
+    };
+    use crate::visual_effects::EffectId::*;
+    use crate::visual_effects::SettingValue::*;
+    use crate::visual_effects::{EffectId, VeFailure, VeIssue, VeProblem, VeSection};
+
+    for (code, _) in Tr::languages() {
+        let tr = Tr::new(code);
+        let titles: Vec<String> = EffectId::ALL.map(|id| ve_title(tr, id)).into();
+        let unique: BTreeSet<&String> = titles.iter().collect();
+        assert_eq!(unique.len(), 18, "{code}: {titles:?}");
+        let sections: Vec<String> = VeSection::ALL.map(|s| ve_section(tr, s)).into();
+        let unique: BTreeSet<&String> = sections.iter().collect();
+        assert_eq!(unique.len(), 6, "{code}: {sections:?}");
+        let descriptions: Vec<String> = EffectId::ALL
+            .iter()
+            .filter_map(|&id| ve_description(tr, id))
+            .collect();
+        assert_eq!(descriptions.len(), 1, "{code}: {descriptions:?}");
+        let caret = ve_title(tr, CaretWidth);
+        let mut texts = titles.clone();
+        texts.extend(sections);
+        texts.extend(descriptions);
+
+        // Each issue text, with the arguments it must show.
+        let problems: [(VeProblem, Vec<&str>); 8] = [
+            (VeProblem::OutOfRange(CaretWidth), vec![&caret]),
+            (VeProblem::UnknownSetting("X".into()), vec!["X"]),
+            (
+                VeProblem::Unreadable {
+                    id: CaretWidth,
+                    code: 5,
+                },
+                vec![&caret, "5"],
+            ),
+            (
+                VeProblem::WrongAccount {
+                    process: "X".into(),
+                    session: "Y".into(),
+                },
+                vec!["X", "Y"],
+            ),
+            (VeProblem::AccountUnknown("X".into()), vec!["X"]),
+            (VeProblem::NotSaved("X".into()), vec!["X"]),
+            (VeProblem::NoOriginal("X".into()), vec!["X"]),
+            (VeProblem::NoOriginal("caret_width".into()), vec![&caret]),
+        ];
+        for (problem, args) in problems {
+            let text = ve_problem(tr, &problem);
+            for arg in args {
+                assert!(text.contains(arg), "{code}: {arg:?} not in {text:?}");
+            }
+            assert_eq!(ve_issue(tr, &VeIssue::Problem(problem)), text);
+            texts.push(text);
+        }
+        let shadow = ve_title(tr, CursorShadow);
+        let px = |n: u32| ve_value(tr, Some(CaretWidth), &Number(n));
+        let (two_px, one_px) = (px(2), px(1));
+        let failures: [(VeFailure, Vec<&str>); 7] = [
+            (
+                VeFailure::SetFailed {
+                    id: CaretWidth,
+                    code: 5,
+                },
+                vec![&caret, "5"],
+            ),
+            (
+                VeFailure::Mismatch {
+                    id: CaretWidth,
+                    wanted: Number(2),
+                    read: Number(1),
+                },
+                vec![&caret, &two_px, &one_px],
+            ),
+            (
+                VeFailure::Unverified {
+                    id: CaretWidth,
+                    code: 5,
+                },
+                vec![&caret, "5"],
+            ),
+            (
+                VeFailure::HeldByMaster {
+                    id: CursorShadow,
+                    wanted: Flag(true),
+                    read: Flag(false),
+                },
+                vec![&shadow],
+            ),
+            (VeFailure::StoreNotSaved("X".into()), vec!["X"]),
+            (
+                VeFailure::RereadFailed {
+                    id: CursorShadow,
+                    code: 5,
+                },
+                vec![&shadow, "5"],
+            ),
+            (VeFailure::GatedNotSaved("X".into()), vec!["X"]),
+        ];
+        for (failure, args) in failures {
+            let text = ve_failure(tr, &failure);
+            for arg in args {
+                assert!(text.contains(arg), "{code}: {arg:?} not in {text:?}");
+            }
+            assert_eq!(ve_issue(tr, &VeIssue::Failure(failure.clone())), text);
+            // The two "not written" failures read as `ve_not_written` says.
+            if let Some(not_written) = ve_not_written(tr, &failure, &shadow) {
+                assert_eq!(text, not_written, "{code}");
+            }
+            texts.push(text);
+        }
+
+        let companions = ve_companions(tr, 2, &["A".into(), "B".into()]);
+        assert!(companions.contains("A, B") && companions.contains('2'));
+        let one = ve_companions(tr, 1, &["A".into()]);
+        assert!(one.contains('A') && one.contains('1'));
+        assert_ne!(one, ve_companions(tr, 2, &["A".into()]), "{code}: singular");
+        texts.extend([companions, one]);
+
+        // An unmapped label passes through unchanged, so compare with the key.
+        let module = history_module(tr, "Visual effects");
+        assert_eq!(module, tr.t("history.module.visual_effects"), "{code}");
+        assert_ne!(module, "history.module.visual_effects", "{code}");
+        texts.push(module);
+
+        for text in &texts {
+            assert!(!text.is_empty() && !text.contains('{'), "{code}: {text:?}");
+            assert!(
+                !text.starts_with("ve.") && !text.starts_with("history."),
+                "{code}: looks like a bare key: {text:?}"
+            );
+        }
+    }
+
+    let en = Tr::english();
+    let value = |id: EffectId, v| ve_value(en, Some(id), &v);
+    assert_eq!(value(MenuFade, Flag(false)), "Slide");
+    assert_eq!(value(TooltipFade, Flag(true)), "Fade");
+    assert_eq!(value(CursorShadow, Flag(true)), "On");
+    assert_eq!(value(CursorShadow, Flag(false)), "Off");
+    assert_eq!(value(FontSmoothingType, Number(1)), "Standard");
+    assert_eq!(value(FontSmoothingType, Number(2)), "ClearType");
+    assert_eq!(value(FontSmoothingType, Number(3)), "Unknown (3)");
+    assert_eq!(value(CleartypeContrast, Number(1200)), "1,200");
+    assert_eq!(value(CleartypeContrast, Number(999)), "999");
+    assert_eq!(value(CleartypeContrast, Number(1_234_567)), "1,234,567");
+    assert_eq!(value(CaretWidth, Number(2)), "2 px");
+    assert_eq!(value(FocusBorderHeight, Number(4)), "4 px");
+    assert_eq!(ve_value(en, None, &Number(1200)), "1200");
+    assert_eq!(ve_value(en, None, &Flag(true)), "On");
+    let fr = Tr::new("fr");
+    assert_eq!(
+        ve_value(fr, Some(CleartypeContrast), &Number(1200)),
+        "1\u{202F}200"
+    );
+    assert_eq!(ve_value(fr, Some(MenuFade), &Flag(true)), "Fondu");
+    assert_eq!(history_module(fr, "Visual effects"), "Effets visuels");
+    assert_eq!(
+        ve_failure(
+            en,
+            &VeFailure::Mismatch {
+                id: CleartypeContrast,
+                wanted: Number(1600),
+                read: Number(1200),
+            }
+        ),
+        "ClearType contrast: Windows kept 1,200 instead of 1,600."
+    );
+}
+
+#[test]
 fn the_visual_effects_not_written_messages_translate_in_every_shipped_language() {
     use super::messages::ve_not_written;
     use crate::visual_effects::{EffectId, VeFailure};

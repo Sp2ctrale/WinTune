@@ -9,7 +9,7 @@ use crate::environment::{
     is_path_name, removed_entries, split_entries, EnvScan, PathBasis, REG_EXPAND_SZ_KIND,
     REG_SZ_KIND,
 };
-use crate::i18n::Tr;
+use crate::i18n::{messages, Tr};
 use eframe::egui;
 
 /// Entry names listed in the restore question before it gives a count.
@@ -68,6 +68,9 @@ pub(super) enum ConfirmAction {
     /// Mouse and keyboard settings (`SettingId::key` strings) whose original
     /// must be put back.
     RestoreMouseKeyboard(Vec<String>),
+    /// Visual effects (`EffectId::key` strings) whose original must be put
+    /// back; the master brings its companions.
+    RestoreVisualEffects(Vec<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -298,6 +301,47 @@ impl WinTuneApp {
         });
     }
 
+    /// Asks before putting visual effects back to what they were before
+    /// WinTune changed them. Restoring the master names the companions it
+    /// restores with it (spec 5.3).
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(super) fn request_restore_visual_effects(&mut self, ids: Vec<String>) {
+        if ids.is_empty() {
+            return;
+        }
+        let tr = self.tr;
+        let named = named_list(
+            tr,
+            ids.iter().map(|key| self.ve_slot_name(key)),
+            "ve.restore_many",
+        );
+        let mut message = tr.t_args("ve.restore_message", &[&named]);
+        let master = crate::visual_effects::EffectId::UiEffects.key();
+        if ids.iter().any(|key| key == master) {
+            let mut companions: Vec<String> = self
+                .ve_store
+                .companions_of(&self.env.user_label, master)
+                .into_iter()
+                .filter(|key| !ids.contains(key))
+                .collect();
+            companions.sort_by_key(|key| crate::visual_effects::EffectId::from_key(key));
+            if !companions.is_empty() {
+                let titles: Vec<String> = companions
+                    .iter()
+                    .map(|key| self.ve_slot_name(key))
+                    .collect();
+                message.push_str("\n\n");
+                message.push_str(&messages::ve_companions(tr, titles.len(), &titles));
+            }
+        }
+        self.pending_confirm = Some(Confirm {
+            title: tr.t("ve.restore_title"),
+            message,
+            confirm_label: tr.t("confirm.restore"),
+            action: ConfirmAction::RestoreVisualEffects(ids),
+        });
+    }
+
     /// Asks before an Apply whose hides do more than remove a menu item:
     /// one line per side effect.
     pub(super) fn request_apply_menu(&mut self, warnings: &[String]) {
@@ -346,6 +390,7 @@ impl WinTuneApp {
             ConfirmAction::RestoreEnvironment(ids) => self.start_env_restore(ctx, ids),
             ConfirmAction::ApplyMouseKeyboard => self.run_mk_apply(ctx),
             ConfirmAction::RestoreMouseKeyboard(ids) => self.start_mk_restore(ctx, ids),
+            ConfirmAction::RestoreVisualEffects(ids) => self.start_ve_restore(ctx, ids),
         }
     }
 
@@ -1026,6 +1071,60 @@ mod tests {
         app.request_restore_mouse_keyboard(keys.map(String::from).to_vec());
         let message = &app.pending_confirm.as_ref().unwrap().message;
         assert!(message.contains("4 settings"), "{message}");
+    }
+
+    #[test]
+    fn restoring_the_master_names_its_companions() {
+        use crate::visual_effects::EffectId::UiEffects;
+        use crate::visual_effects::SettingValue::Flag as VeFlag;
+        use crate::visual_effects::MASTER_COMPANIONS;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        app.request_restore_visual_effects(Vec::new());
+        assert!(app.pending_confirm.is_none());
+        app.request_ve_scan();
+        run_until_ve_scanned(&mut app, &ctx);
+        app.set_ve_wanted(UiEffects, VeFlag(false));
+        app.start_ve_apply(&ctx);
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(fx.fake_effects().value(UiEffects), VeFlag(false));
+        let tr = app.tr;
+
+        app.request_restore_visual_effects(vec!["ui_effects".into()]);
+        let confirm = app.pending_confirm.clone().expect("asks first");
+        assert_eq!(
+            confirm.action,
+            ConfirmAction::RestoreVisualEffects(vec!["ui_effects".into()])
+        );
+        assert_eq!(confirm.title, tr.t("ve.restore_title"));
+        assert_eq!(confirm.confirm_label, tr.t("confirm.restore"));
+        let titles: Vec<String> = MASTER_COMPANIONS
+            .iter()
+            .map(|&id| messages::ve_title(tr, id))
+            .collect();
+        let companions = messages::ve_companions(tr, 8, &titles);
+        assert!(companions.contains("Menu animation"), "{companions}");
+        assert_eq!(
+            confirm.message,
+            format!(
+                "{}\n\n{companions}",
+                tr.t_args("ve.restore_message", &[&"UI effects"])
+            )
+        );
+        assert!(!app.is_busy(), "restored without confirmation");
+        app.resolve_confirm(&ctx, true);
+        assert!(app.is_busy(), "{}", app.last_notice());
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(fx.fake_effects().value(UiEffects), VeFlag(true));
+
+        app.request_restore_visual_effects(vec!["caret_width".into()]);
+        let message = &app.pending_confirm.as_ref().unwrap().message;
+        assert_eq!(
+            message,
+            &tr.t_args("ve.restore_message", &[&"Text cursor width"]),
+            "no companions line"
+        );
     }
 
     #[test]

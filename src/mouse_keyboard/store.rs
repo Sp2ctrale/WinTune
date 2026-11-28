@@ -1,69 +1,17 @@
 //! The snapshot store (`mouse-keyboard-backups.json`) and the `.reg` net
 //! taken before every Apply.
 
-use super::SettingValue;
 use crate::backups::RegTarget;
-use crate::clock;
 use crate::models::app_data_dir;
 use crate::persist::LoadError;
-use crate::regsnap::{self, RegValueExport, ValueSnapshot};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use crate::sysparams::{export_values, SpiBackup, SpiBackupStore};
 use std::path::{Path, PathBuf};
-use winreg::enums::KEY_READ;
 
 /// One original value, as first read before WinTune changed it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct MkBackup {
-    /// When it was read (local time).
-    pub timestamp: String,
-    pub value: SettingValue,
-}
+pub type MkBackup = SpiBackup;
 
-/// Original values, per user then per `SettingId::key`. Same shape and
-/// rules as `backups::UserBackups` (spec 5.3); a key this version does not
-/// know still loads.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct MkBackupStore {
-    pub users: BTreeMap<String, BTreeMap<String, MkBackup>>,
-}
-
-impl MkBackupStore {
-    pub fn backups_of(&self, user: &str) -> Option<&BTreeMap<String, MkBackup>> {
-        self.users.get(user)
-    }
-
-    pub fn has_backup(&self, user: &str, id: &str) -> bool {
-        self.backups_of(user).is_some_and(|b| b.contains_key(id))
-    }
-
-    pub fn original(&self, user: &str, id: &str) -> Option<&SettingValue> {
-        self.backups_of(user)?.get(id).map(|b| &b.value)
-    }
-
-    /// Records `value` unless `id` already has one: the first is the
-    /// original.
-    pub fn record_first(&mut self, user: &str, id: &str, timestamp: &str, value: SettingValue) {
-        self.users
-            .entry(user.to_string())
-            .or_default()
-            .entry(id.to_string())
-            .or_insert_with(|| MkBackup {
-                timestamp: timestamp.to_string(),
-                value,
-            });
-    }
-
-    /// Drops the snapshot of `id`, and the user once they have none left.
-    pub fn forget(&mut self, user: &str, id: &str) {
-        if let Some(backups) = self.users.get_mut(user) {
-            backups.remove(id);
-            if backups.is_empty() {
-                self.users.remove(user);
-            }
-        }
-    }
-}
+/// Original values, per user then per `SettingId::key` (spec 5.3).
+pub type MkBackupStore = SpiBackupStore;
 
 pub fn default_mk_store_path() -> PathBuf {
     app_data_dir().join("mouse-keyboard-backups.json")
@@ -91,38 +39,7 @@ pub const CONTROL_PANEL_KEYS: [&str; 3] = [
 /// `<reg_dir>\<file_stamp>-mouse-keyboard.reg`; a missing key is skipped.
 /// Read only. The error is the bare cause (pre-flight ruling F8).
 pub fn export_control_panel(source: &RegTarget, reg_dir: &Path) -> Result<PathBuf, String> {
-    let mut read: Vec<(String, String, ValueSnapshot)> = Vec::new();
-    for key in CONTROL_PANEL_KEYS {
-        let path = source.path(key);
-        let opened = match source.root.open_subkey_with_flags(&path, KEY_READ) {
-            Ok(opened) => opened,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(format!("cannot read {}\\{path}: {e}", source.root_name)),
-        };
-        for item in opened.enum_values() {
-            let (name, value) =
-                item.map_err(|e| format!("cannot read {}\\{path}: {e}", source.root_name))?;
-            let snapshot = ValueSnapshot {
-                exists: true,
-                kind: value.vtype as u32,
-                data: value.bytes,
-            };
-            read.push((path.clone(), name, snapshot));
-        }
-    }
-    let values: Vec<RegValueExport> = read
-        .iter()
-        .map(|(path, name, snapshot)| RegValueExport {
-            root_name: &source.root_name,
-            path: path.clone(),
-            name: name.clone(),
-            snapshot,
-        })
-        .collect();
-    let file =
-        regsnap::unique_reg_file(reg_dir, &format!("{}-mouse-keyboard", clock::file_stamp()));
-    regsnap::write_reg_file(&file, &regsnap::export_reg_full(&[], &values))?;
-    Ok(file)
+    export_values(source, &CONTROL_PANEL_KEYS, reg_dir, "mouse-keyboard")
 }
 
 #[cfg(test)]
@@ -238,6 +155,53 @@ mod tests {
         save_mk_store(&store, &f.store_path()).unwrap();
         assert_eq!(load_mk_store(&f.store_path()).unwrap(), store);
         assert!(default_mk_store_path().ends_with("mouse-keyboard-backups.json"));
+    }
+
+    #[test]
+    fn the_store_file_bytes_do_not_change() {
+        let mut store = MkBackupStore::default();
+        store.record_first("U", "pointer_precision", "x", Mouse([6, 10, 1]));
+        store.record_first("U", "pointer_speed", "x", Number(10));
+        store.record_first("U", "swap_buttons", "x", Flag(false));
+        let f = Fixture::new();
+        save_mk_store(&store, &f.store_path()).unwrap();
+        let want = [
+            "{",
+            r#"  "users": {"#,
+            r#"    "U": {"#,
+            r#"      "pointer_precision": {"#,
+            r#"        "timestamp": "x","#,
+            r#"        "value": {"#,
+            r#"          "kind": "Mouse","#,
+            r#"          "data": ["#,
+            "            6,",
+            "            10,",
+            "            1",
+            "          ]",
+            "        }",
+            "      },",
+            r#"      "pointer_speed": {"#,
+            r#"        "timestamp": "x","#,
+            r#"        "value": {"#,
+            r#"          "kind": "Number","#,
+            r#"          "data": 10"#,
+            "        }",
+            "      },",
+            r#"      "swap_buttons": {"#,
+            r#"        "timestamp": "x","#,
+            r#"        "value": {"#,
+            r#"          "kind": "Flag","#,
+            r#"          "data": false"#,
+            "        }",
+            "      }",
+            "    }",
+            "  }",
+            "}",
+        ]
+        .join("\n");
+        let bytes = std::fs::read_to_string(f.store_path()).unwrap();
+        assert_eq!(bytes, want);
+        assert!(!bytes.contains("companion_of"));
     }
 
     #[test]

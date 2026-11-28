@@ -1,7 +1,7 @@
 //! The pure catalog: setting ids, sections, page ranges, defaults and the
 //! rules that turn a wanted choice into a concrete value.
 
-use serde::{Deserialize, Serialize};
+pub use crate::sysparams::{SettingValue, Shape};
 
 /// Wheel lines value meaning "one screen at a time".
 pub const WHEEL_PAGESCROLL: u32 = u32::MAX;
@@ -47,31 +47,6 @@ impl Section {
         Section::Keyboard,
         Section::WindowsMenus,
     ];
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Shape {
-    Number,
-    Flag,
-    Mouse,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", content = "data")]
-pub enum SettingValue {
-    Number(u32),
-    Flag(bool),
-    Mouse([i32; 3]),
-}
-
-impl SettingValue {
-    pub fn shape(&self) -> Shape {
-        match self {
-            SettingValue::Number(_) => Shape::Number,
-            SettingValue::Flag(_) => Shape::Flag,
-            SettingValue::Mouse(_) => Shape::Mouse,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

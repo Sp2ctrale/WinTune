@@ -88,6 +88,7 @@ impl WinTuneApp {
             .mk_store
             .backups_of(&self.env.user_label)
             .map_or(0, |b| b.len());
+        let ve_saved = self.ve_store.own_backups(&self.env.user_label).len();
         vec![
             ModuleSummary {
                 page: ActiveTab::Associations,
@@ -128,6 +129,19 @@ impl WinTuneApp {
                 ),
                 drift: 0,
             },
+            ModuleSummary {
+                page: ActiveTab::VisualEffects,
+                icon: kit::Icon::Effects,
+                status: tr.t_args(
+                    if ve_saved == 1 {
+                        "home.visual_effects_status_one"
+                    } else {
+                        "home.visual_effects_status"
+                    },
+                    &[&ve_saved],
+                ),
+                drift: 0,
+            },
         ]
     }
 
@@ -159,6 +173,7 @@ impl WinTuneApp {
             ActiveTab::Startup => tr.t("nav.startup"),
             ActiveTab::Environment => tr.t("nav.environment"),
             ActiveTab::MouseKeyboard => tr.t("nav.mouse_keyboard"),
+            ActiveTab::VisualEffects => tr.t("nav.visual_effects"),
             _ => tr.t("nav.context_menu"),
         };
         let history = &self.history;
@@ -547,6 +562,55 @@ mod tests {
         app.active_tab = ActiveTab::Home;
         click_text(&mut app, &ctx, &expected);
         assert_eq!(app.active_tab, ActiveTab::MouseKeyboard);
+    }
+
+    #[test]
+    fn the_visual_effects_tile_counts_snapshots_without_companions() {
+        use crate::visual_effects::SettingValue::{Flag, Number};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        app.rule_statuses.clear();
+        app.tweak_statuses.clear();
+        assert!(app.ve_scan.is_none());
+        let none = app.tr.t_args("home.visual_effects_status", &[&0]);
+        assert_eq!(status_of(&app, ActiveTab::VisualEffects), (none, 0));
+
+        app.ve_store.record_first(
+            "TEST\\user",
+            "ui_effects",
+            "2026-01-02 03:04:05",
+            Flag(true),
+        );
+        for id in crate::visual_effects::MASTER_COMPANIONS {
+            app.ve_store.record_companion(
+                "TEST\\user",
+                id.key(),
+                "2026-01-02 03:04:05",
+                Flag(true),
+                "ui_effects",
+            );
+        }
+        app.ve_store.record_first(
+            "TEST\\user",
+            "caret_width",
+            "2026-01-02 03:04:05",
+            Number(1),
+        );
+        let expected = app.tr.t_args("home.visual_effects_status", &[&2]);
+        assert_eq!(expected, "2 effects changed by WinTune");
+        assert_eq!(
+            status_of(&app, ActiveTab::VisualEffects),
+            (expected.clone(), 0)
+        );
+
+        app.ve_store.forget("TEST\\user", "caret_width");
+        let one = app.tr.t_args("home.visual_effects_status_one", &[&1]);
+        assert_eq!(one, "1 effect changed by WinTune");
+        assert_eq!(status_of(&app, ActiveTab::VisualEffects), (one.clone(), 0));
+        app.active_tab = ActiveTab::Home;
+        click_text(&mut app, &ctx, &one);
+        assert_eq!(app.active_tab, ActiveTab::VisualEffects);
     }
 
     #[test]

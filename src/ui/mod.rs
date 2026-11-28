@@ -36,6 +36,8 @@ mod startup_tab;
 #[cfg(test)]
 mod test_support;
 mod tweaks_tab;
+mod visual_effects_state;
+mod visual_effects_tab;
 
 use crate::associations::{
     default_backup_store_path, default_reg_backup_dir, load_backup_store,
@@ -67,6 +69,10 @@ use crate::startup::{
 use crate::tweaks::{
     current_user_label, default_tweak_store_path, notify_explorer_settings, TweakBackupStore,
     TweakStatus, TweakTarget,
+};
+use crate::visual_effects::{
+    default_ve_store_path, EffectId, EffectsApi, SettingValue as VeValue, SpiEffects,
+    VeBackupStore, VeScan,
 };
 use eframe::egui::{self, ColorImage, TextureHandle, TextureOptions};
 use jobs::RunningJob;
@@ -131,6 +137,11 @@ pub(crate) struct AppEnv {
     pub mk_store_path: PathBuf,
     /// Where the `.reg` net reads `Control Panel` (read only).
     pub mk_reg_source: Arc<dyn Fn() -> RegTarget + Send + Sync>,
+    /// Reads and writes the visual effects. The account check and the
+    /// `.reg` source are Mouse & keyboard's (`input_account`,
+    /// `mk_reg_source`).
+    pub effects: Arc<dyn EffectsApi>,
+    pub ve_store_path: PathBuf,
 }
 
 impl AppEnv {
@@ -171,6 +182,8 @@ impl AppEnv {
             input_account: Arc::new(session_account_check),
             mk_store_path: default_mk_store_path(),
             mk_reg_source: Arc::new(RegTarget::current_user),
+            effects: Arc::new(SpiEffects),
+            ve_store_path: default_ve_store_path(),
         }
     }
 }
@@ -188,12 +201,13 @@ pub(crate) enum ActiveTab {
     Startup,
     Environment,
     MouseKeyboard,
+    VisualEffects,
 }
 
 impl ActiveTab {
     /// Every page that can be opened, in navigation order (the tests walk it).
     #[cfg(test)]
-    pub(crate) const ALL: [ActiveTab; 11] = [
+    pub(crate) const ALL: [ActiveTab; 12] = [
         ActiveTab::Home,
         ActiveTab::Associations,
         ActiveTab::Tweaks,
@@ -202,6 +216,7 @@ impl ActiveTab {
         ActiveTab::Startup,
         ActiveTab::Environment,
         ActiveTab::MouseKeyboard,
+        ActiveTab::VisualEffects,
         ActiveTab::Gallery,
         ActiveTab::History,
         ActiveTab::Settings,
@@ -218,6 +233,7 @@ impl ActiveTab {
             ActiveTab::Startup => Some("Startup apps"),
             ActiveTab::Environment => Some("Environment variables"),
             ActiveTab::MouseKeyboard => Some("Mouse & keyboard"),
+            ActiveTab::VisualEffects => Some("Visual effects"),
             ActiveTab::Home | ActiveTab::Gallery | ActiveTab::History | ActiveTab::Settings => None,
         }
     }
@@ -234,6 +250,7 @@ impl ActiveTab {
                 | ActiveTab::Startup
                 | ActiveTab::Environment
                 | ActiveTab::MouseKeyboard
+                | ActiveTab::VisualEffects
         )
     }
 }
@@ -253,6 +270,8 @@ pub(super) enum ReportKind {
     RestoredEnvironment,
     AppliedMouseKeyboard,
     RestoredMouseKeyboard,
+    AppliedVisualEffects,
+    RestoredVisualEffects,
 }
 
 pub struct WinTuneApp {
@@ -367,6 +386,20 @@ pub struct WinTuneApp {
     mk_click_test: mouse_keyboard_tab::ClickTest,
     /// The text typed in the key repeat test field.
     mk_key_test: String,
+    /// Original visual effects (visual-effects-backups.json).
+    ve_store: VeBackupStore,
+    /// Set when visual-effects-backups.json cannot be read: changes are
+    /// blocked.
+    ve_store_error: Option<LoadError>,
+    /// Effects as last read; `None` until the first scan ends. Kept while a
+    /// new scan runs.
+    ve_scan: Option<VeScan>,
+    ve_scan_job: Option<visual_effects_state::VeScanJob>,
+    ve_scan_needed: bool,
+    /// Choices not applied yet, by effect.
+    ve_pending: BTreeMap<EffectId, VeValue>,
+    /// Filter typed in the Visual effects page (titles).
+    ve_search: String,
     tr: Tr,
     /// The theme actually shown this frame (Light or Dark, never System):
     /// what the old palette helpers receive.
@@ -419,6 +452,8 @@ impl WinTuneApp {
         app.request_env_scan();
         app.reload_mk_store();
         app.request_mk_scan();
+        app.reload_ve_store();
+        app.request_ve_scan();
         app
     }
 
@@ -502,6 +537,13 @@ impl WinTuneApp {
             mk_search: String::new(),
             mk_click_test: Default::default(),
             mk_key_test: String::new(),
+            ve_store: VeBackupStore::default(),
+            ve_store_error: None,
+            ve_scan: None,
+            ve_scan_job: None,
+            ve_scan_needed: false,
+            ve_pending: BTreeMap::new(),
+            ve_search: String::new(),
             tr,
             ui_theme,
             focus_search: false,
@@ -527,6 +569,7 @@ impl WinTuneApp {
         self.pump_startup_scan(ctx);
         self.pump_env_scan(ctx);
         self.pump_mk_scan(ctx);
+        self.pump_ve_scan(ctx);
         self.guard_close_while_busy(ctx);
 
         // Before the nav: the dialog claims the keyboard first (it is an Area,
@@ -553,6 +596,7 @@ impl WinTuneApp {
             ActiveTab::Startup => self.show_startup_tab(ctx),
             ActiveTab::Environment => self.show_environment_tab(ctx),
             ActiveTab::MouseKeyboard => self.show_mouse_keyboard_tab(ctx),
+            ActiveTab::VisualEffects => self.show_visual_effects_tab(ctx),
         }
 
         self.toasts.show(ctx, &self.tr.t("toast.clear_all"));
@@ -696,6 +740,12 @@ impl WinTuneApp {
             }
             ReportKind::RestoredMouseKeyboard => {
                 tr.t_args("report.restored_mouse_keyboard", &[&count])
+            }
+            ReportKind::AppliedVisualEffects => {
+                tr.t_args("report.applied_visual_effects", &[&count])
+            }
+            ReportKind::RestoredVisualEffects => {
+                tr.t_args("report.restored_visual_effects", &[&count])
             }
         };
         if let Some(first) = report.errors.first() {

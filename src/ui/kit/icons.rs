@@ -31,11 +31,12 @@ pub enum Icon {
     Startup,
     Environment,
     Mouse,
+    Effects,
 }
 
 impl Icon {
     /// Every icon, for tests and galleries.
-    pub const ALL: [Icon; 23] = [
+    pub const ALL: [Icon; 24] = [
         Icon::Home,
         Icon::Associations,
         Icon::Explorer,
@@ -59,6 +60,7 @@ impl Icon {
         Icon::Startup,
         Icon::Environment,
         Icon::Mouse,
+        Icon::Effects,
     ];
 }
 
@@ -88,6 +90,7 @@ pub fn glyph(icon: Icon) -> char {
         Icon::Startup => '\u{E7E8}',     // PowerButton
         Icon::Environment => '\u{E943}', // Code
         Icon::Mouse => '\u{E962}',       // Mouse
+        Icon::Effects => '\u{E771}',     // Personalize
     }
 }
 

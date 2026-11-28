@@ -24,6 +24,7 @@ pub(super) enum HistoryFilter {
     Startup,
     Environment,
     MouseKeyboard,
+    VisualEffects,
 }
 
 impl HistoryFilter {
@@ -39,6 +40,7 @@ impl HistoryFilter {
             Self::Startup => stored_module == "Startup apps",
             Self::Environment => stored_module == "Environment variables",
             Self::MouseKeyboard => stored_module == "Mouse & keyboard",
+            Self::VisualEffects => stored_module == "Visual effects",
         }
     }
 }
@@ -87,6 +89,7 @@ impl WinTuneApp {
             tr.t("history.module.startup"),
             tr.t("history.module.environment"),
             tr.t("history.module.mouse_keyboard"),
+            tr.t("history.module.visual_effects"),
         ];
         let options = [
             (HistoryFilter::All, labels[0].as_str()),
@@ -97,6 +100,7 @@ impl WinTuneApp {
             (HistoryFilter::Startup, labels[5].as_str()),
             (HistoryFilter::Environment, labels[6].as_str()),
             (HistoryFilter::MouseKeyboard, labels[7].as_str()),
+            (HistoryFilter::VisualEffects, labels[8].as_str()),
         ];
         kit::section(ui, &heading, |ui| {
             if self.history.is_empty() {
@@ -104,7 +108,7 @@ impl WinTuneApp {
                 return;
             }
             let before = self.history_filter;
-            // Eight chips are wider than the window at its default size.
+            // Nine chips are wider than the window at its default size.
             egui::ScrollArea::horizontal()
                 .id_salt("history_filter_chips")
                 .show(ui, |ui| {
@@ -450,6 +454,50 @@ mod tests {
         );
         assert!(
             !texts.contains(&title_of(&env, "Environment variables")),
+            "{texts:?}"
+        );
+    }
+
+    #[test]
+    fn the_visual_effects_filter_shows_only_its_operations() {
+        let fx = TempIcons::new(&["foo"]);
+        let ctx = egui::Context::default();
+        let ve = entry("Visual effects", "Apply");
+        let mk = entry("Mouse & keyboard", "Apply");
+        let mut app = history_app(&fx, &ctx, vec![ve.clone(), mk.clone()]);
+        assert!(HistoryFilter::VisualEffects.matches("Visual effects"));
+        assert!(!HistoryFilter::VisualEffects.matches("Mouse & keyboard"));
+
+        let label = app.tr.t("history.module.visual_effects");
+        // A window wide enough for the nine chips, the last of which is
+        // otherwise reached by scrolling the chip row.
+        fn wide(events: Vec<egui::Event>) -> RawInput {
+            RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1800.0, 4000.0),
+                )),
+                events,
+                ..Default::default()
+            }
+        }
+        frame(&mut app, &ctx, wide(vec![]));
+        let out = frame(&mut app, &ctx, wide(vec![]));
+        let at = text_centers(&out, &label)
+            .into_iter()
+            .rfind(|c| c.x > 220.0)
+            .expect("visual effects chip");
+        click_at_with(&mut app, &ctx, wide, at);
+        frame(&mut app, &ctx, wide(vec![]));
+        let out = frame(&mut app, &ctx, wide(vec![]));
+        assert_eq!(app.history_filter, HistoryFilter::VisualEffects);
+        let texts = drawn_texts(&out);
+        assert!(
+            texts.contains(&title_of(&ve, "Visual effects")),
+            "{texts:?}"
+        );
+        assert!(
+            !texts.contains(&title_of(&mk, "Mouse & keyboard")),
             "{texts:?}"
         );
     }

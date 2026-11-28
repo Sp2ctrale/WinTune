@@ -765,6 +765,303 @@ the starting values first (or use History's **Restore all** at the end).
 Record anything that differs, with the step and the Windows version, before
 merging.
 
+## Visual effects
+
+The Visual effects module shows and changes 18 settings of the signed-in user
+in six sections: the UI effects master switch, animations, menus and tooltips,
+shadows, text (font smoothing and ClearType) and caret and focus. These are the
+checkboxes of Windows' Performance Options dialog that Windows exposes through
+`SystemParametersInfoW`, plus a few from the ClearType and Accessibility
+settings. The module writes nothing to the registry. Every change goes through
+`SystemParametersInfoW`, which also tells running programs; the values Windows
+keeps under `HKCU\Control Panel` are read only, for a `.reg` safety net.
+
+### What WinTune reads
+
+| Source | Use |
+| --- | --- |
+| `SystemParametersInfoW` GET actions (the Get column of the table below) | The live value of every setting, at each scan, before each Apply (to snapshot it) and right after each SET (the readback). Window animation is read through an `ANIMATIONINFO` (`cbSize` 8, `uiParam` 8); any non-zero `iMinAnimate` reads as on |
+| `GetUserNameExW` and `WTSQuerySessionInformationW` | The account check, as in Mouse & keyboard: the account WinTune runs as, read from the process token, against the user signed in to the current session. If they differ, or the check fails, the page is replaced by a banner and nothing is applied |
+| `HKCU\Control Panel\Desktop` and `HKCU\Control Panel\Desktop\WindowMetrics` | The values directly in each key (not other subkeys), read only, for the `.reg` net below |
+
+### What WinTune writes
+
+Nothing directly. WinTune never writes under `HKCU\Control Panel`, never writes
+`UserPreferencesMask` (most of these effects are bits in it, with a layout
+Microsoft does not document), and never touches `Explorer\Advanced` or `DWM`.
+
+Each change is one `SystemParametersInfoW` SET from the table below, always
+with `SPIF_UPDATEINIFILE | SPIF_SENDCHANGE`: the first writes the setting to the
+user profile, the second broadcasts `WM_SETTINGCHANGE`. Every SET runs on the
+job worker thread and is followed at once by its GET. If Windows kept another
+value, that setting is reported as failed and the next one is still tried.
+
+The write order is the table order, except for `ui_effects`: it is written
+first when it goes on and last when it goes off, so that each effect is written
+while the master is on, in case a SET under a disabled master misbehaves.
+
+### The settings
+
+"ui" means the value goes in `uiParam`; "pv" means it goes in `pvParam`, cast
+to a pointer, with `uiParam` 0; "ai" means `pvParam` points to an
+`ANIMATIONINFO` and `uiParam` is its size, 8 (for the GET too). Sending a value
+in the wrong place silently sets 0 or garbage, which is why each SET is read
+back. The gate column is what makes a row disabled on the page while it is off
+(the gate's pending value, else its live value). The default column is what the
+"Windows default" menu entry applies; DOCUMENTED, OBSERVED and FOLKLORE are
+explained under Evidence.
+
+| Id | Section | Get | Set (action, family) | Page control | Gate | Windows default |
+| --- | --- | --- | --- | --- | --- | --- |
+| `ui_effects` | UI effects | `SPI_GETUIEFFECTS` 0x103E | 0x103F pv | toggle | | on (FOLKLORE) |
+| `window_animation` | Animations | `SPI_GETANIMATION` 0x0048 (ai) | 0x0049 ai | toggle | | on (FOLKLORE) |
+| `client_area_animation` | Animations | `SPI_GETCLIENTAREAANIMATION` 0x1042 | 0x1043 pv | toggle | | on (FOLKLORE) |
+| `combobox_animation` | Animations | `SPI_GETCOMBOBOXANIMATION` 0x1004 | 0x1005 pv | toggle | `ui_effects` | on (FOLKLORE) |
+| `listbox_smooth_scroll` | Animations | `SPI_GETLISTBOXSMOOTHSCROLLING` 0x1006 | 0x1007 pv | toggle | `ui_effects` | on (FOLKLORE) |
+| `menu_animation` | Menus and tooltips | `SPI_GETMENUANIMATION` 0x1002 | 0x1003 pv | toggle | `ui_effects` | on (FOLKLORE) |
+| `menu_fade` | Menus and tooltips | `SPI_GETMENUFADE` 0x1012 | 0x1013 pv | Fade / Slide | `menu_animation` | Fade (FOLKLORE) |
+| `selection_fade` | Menus and tooltips | `SPI_GETSELECTIONFADE` 0x1014 | 0x1015 pv | toggle | `ui_effects` | on (FOLKLORE) |
+| `tooltip_animation` | Menus and tooltips | `SPI_GETTOOLTIPANIMATION` 0x1016 | 0x1017 pv | toggle | `ui_effects` | on (FOLKLORE) |
+| `tooltip_fade` | Menus and tooltips | `SPI_GETTOOLTIPFADE` 0x1018 | 0x1019 pv | Fade / Slide | `tooltip_animation` | Fade (FOLKLORE) |
+| `cursor_shadow` | Shadows | `SPI_GETCURSORSHADOW` 0x101A | 0x101B pv | toggle | `ui_effects` | on (FOLKLORE) |
+| `drop_shadow` | Shadows | `SPI_GETDROPSHADOW` 0x1024 | 0x1025 pv | toggle | | on (FOLKLORE) |
+| `font_smoothing` | Text | `SPI_GETFONTSMOOTHING` 0x004A | 0x004B ui | toggle | | on (FOLKLORE) |
+| `font_smoothing_type` | Text | `SPI_GETFONTSMOOTHINGTYPE` 0x200A | 0x200B pv | Standard / ClearType | `font_smoothing` | ClearType, 2 (FOLKLORE) |
+| `cleartype_contrast` | Text | `SPI_GETFONTSMOOTHINGCONTRAST` 0x200C | 0x200D pv | slider 1,000..2,200, step 100 | smoothing on and type ClearType | 1,400 (DOCUMENTED) |
+| `caret_width` | Caret and focus | `SPI_GETCARETWIDTH` 0x2006 | 0x2007 pv | slider 1..20 px | | 1 (DOCUMENTED) |
+| `focus_border_width` | Caret and focus | `SPI_GETFOCUSBORDERWIDTH` 0x200E | 0x200F pv | slider 1..10 px | | 1 (FOLKLORE) |
+| `focus_border_height` | Caret and focus | `SPI_GETFOCUSBORDERHEIGHT` 0x2010 | 0x2011 pv | slider 1..10 px | | 1 (FOLKLORE) |
+
+Every GET is `SystemParametersInfoW(action, 0, &mut u32, 0)` except
+`window_animation`. The two fade rows are flags (TRUE is Fade, FALSE is Slide).
+`font_smoothing_type` is a number: 1 Standard, 2 ClearType.
+
+- **Gates.** Master-gated is the kept members of Learn's list of UI effects
+  and nothing more. Drop shadow, window animation and client area animation are
+  not gated, though FOLKLORE says some are bits under the master too. A row
+  whose gate row is itself disabled is disabled too, with the outer reason
+  (Menu fade while UI effects is off), and a gate turned off drops the pending
+  choices of the rows it disables. A disabled row says why on hover. Gating is
+  a page rule: the engine writes what it is given, and a restore from History
+  sets a gated id even when its gate is off.
+- **Ranges.** Apply refuses a value outside the page range, with nothing
+  written (flags always pass; the type is 1 or 2). The slider step is not
+  checked. Restore original and Windows default are not checked against the
+  range. A live value outside a range or off a step (a smoothing type of 3, or
+  a contrast of 1,250) is shown as it is until the control is moved.
+- **Window animation.** Off writes `iMinAnimate` 0 and on writes 1; any
+  non-zero live value reads as on and is snapshotted as on.
+- **Defaults.** "Windows default" is on for every row, the fades as Fade, and
+  ClearType for the type (what Windows ships, not the API's own default of
+  Standard). The two presets only fill pending choices: **For appearance**
+  turns everything on in sections 1 to 4 with the fades as Fade, and **For
+  performance** turns every effect in sections 1 to 4 off and also sets the
+  master pending on, so the gated rows are enabled and get their pending off.
+  Neither touches Text or Caret and focus.
+
+### The master's companions
+
+Windows does not document whether turning `ui_effects` off overwrites each
+gated effect or only gates it, nor whether the gated effects' GETs still report
+their own value while the master is off (FOLKLORE: it is a separate bit that
+gates the others, which keep theirs). The module is safe in every case, so it
+does not depend on checklist item 4, which only records which case happens.
+
+The master's **companions** are the 8 rows gated by `ui_effects`, directly or
+through another row: `combobox_animation`, `listbox_smooth_scroll`,
+`menu_animation`, `menu_fade`, `selection_fade`, `tooltip_animation`,
+`tooltip_fade` and `cursor_shadow`. Beside the six rows the master gates
+directly, WinTune counts `tooltip_fade` and `menu_fade`, because
+`tooltip_fade` is a member of Learn's UI effects list and `menu_fade` is gated
+by `menu_animation`, which the master gates, so either can be cleared or
+masked along with the master too.
+Cost of the two extra rows: one more snapshot and SET each, which change
+nothing when the master only gates.
+
+- **Snapshots.** Any Apply or Restore that touches `ui_effects` first reads
+  every companion through its GET and records it, before any write, as a
+  companion of the master (`companion_of` in the store). A failed GET refuses
+  the job. A row that already has its own snapshot keeps it. Except when the
+  master is live off and the job leaves it off: then no companion is read or
+  snapshotted, since its GET may read a masked off (see "Master staying off").
+- **History.** Companions are not History rows of their own and are not counted
+  on Home; the master's row says "also restores {0} effects". A companion the
+  user changes directly keeps its first-touch original but becomes its own
+  History row.
+- **Restore order.** Restoring the master restores its companions with it: when
+  the restored master is on, the master first, then the companions; when it is
+  off, the companions first, the master last.
+- **Master from off to on.** A companion's GET may read off while the master is
+  off, whatever its stored value, so a snapshot taken then can be wrong. When
+  an Apply turns the master from live off to on, or a Restore sets the master
+  on before its companions, every companion snapshotted in that job is read
+  again once the master's SET and readback succeed, that value replaces the
+  snapshot, and the store is saved again before any gated row is written. This
+  is the one exception to "every snapshot GET comes before the first write".
+  If the re-read or the save fails, no gated row is written and the report says
+  so.
+- **Master going off.** In a batch that turns the master off, the snapshot of a
+  touched companion is kept even when its readback matches its original, as the
+  master's SET (written last) may clear it.
+- **Master staying off.** No companion is read, snapshotted or written while
+  the master is live off and the job leaves it off. In an Apply that does not
+  turn the master on, a touched companion gets no snapshot (its GET may read
+  masked) and no SET, and is reported held by the master; the page cannot ask
+  for this (the row is disabled), the engine refuses it anyway. An Apply that
+  sets such a master off again (a page that saw it on) takes no companion
+  snapshot either. A Restore that sets such a master off takes no new
+  companion snapshot and writes no companion, even one that has a snapshot:
+  each is reported held by the master and keeps its snapshot, to be restored
+  once the master is on.
+- **Master-off restore.** When the master is live on and a Restore sets it
+  off, its companions are written first. After the master's SET off, each
+  companion written before it is read again: a value still at its original is
+  forgotten, any other keeps its snapshot and is reported held by the master
+  (never forgotten on a readback taken before the master went off).
+- **HeldByMaster.** When a companion's SET is read back while `ui_effects` is
+  live off and the value differs, the issue is "Windows keeps this effect off
+  while UI effects is off", not a plain mismatch, and the snapshot is kept. If
+  that GET of the master fails, WinTune cannot tell the two apart: the issue is
+  "unverified" and the snapshot is kept.
+- **When the GETs read off.** A master-off restore leaves the companions
+  that are on as held rows: WinTune cannot verify them, so it keeps their
+  snapshots and shows them. That is safe and visible, and checklist item 4
+  decides whether it is the real behaviour.
+- **Forget.** A companion is forgotten on its own when it is restored, or when
+  the master is back at its original, after a GET of each; one whose live
+  value still differs is kept, as its own History row.
+
+### The `.reg` net
+
+Each Apply first writes `reg-backups\<stamp>-visual-effects.reg`: the values
+directly in `HKCU\Control Panel\Desktop` and `HKCU\Control Panel\Desktop\WindowMetrics`,
+as single values, never a key delete. It is a last-resort net, and **WinTune
+never imports it**. Importing it by hand also puts back `UserPreferencesMask`,
+the bitfield that holds these effects, so it reverts Mouse & keyboard's
+ClickLock, Sonar and Vanish too; it also reverts the wallpaper and the window
+metrics (title and menu fonts); and the values take effect only at the next
+sign-in, not in the running session. Use **Restore original** in History
+instead. A restore writes no `.reg`.
+
+Before the first change to a setting, its value, read through its GET, is saved
+in `visual-effects-backups.json` (in `%ProgramData%\Wintune`, per user then
+setting id, as `{ timestamp, value }` plus the optional `companion_of`, which
+is left out when empty; no registry bytes). If saving it or the `.reg` fails,
+nothing is applied. **Restore original** sets that value through the same
+call, reads it back, and drops the snapshot only if they match. When an Apply
+brings a setting back to its original, its snapshot is dropped, except the
+rows the companion rules above keep.
+
+### Evidence
+
+| Claim | Status | Source |
+| --- | --- | --- |
+| `SystemParametersInfoW` has a GET and a SET action for each setting above | DOCUMENTED | Microsoft Learn, *SystemParametersInfoW function* (https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-systemparametersinfow), the Desktop, Menu, UI effects, Window and Accessibility parameter tables |
+| `SPIF_UPDATEINIFILE` writes the setting to the user profile; `SPIF_SENDCHANGE` broadcasts `WM_SETTINGCHANGE` | DOCUMENTED | Same page, the `fWinIni` parameter |
+| Minimize and maximize animation uses an `ANIMATIONINFO` with `uiParam` equal to its size; non-zero `iMinAnimate` is on | DOCUMENTED | Same page (Window table); *ANIMATIONINFO structure* (https://learn.microsoft.com/windows/win32/api/winuser/ns-winuser-animationinfo) |
+| `SPI_SETUIEFFECTS` FALSE disables all UI effects and TRUE enables them; the UI effects list is combo box, cursor shadow, gradient captions, hot tracking, list box smooth scrolling, menu animation, menu underlines, selection fade, tooltip animation and tooltip fade | DOCUMENTED | Same page, the UI effects table. Menu fade and drop shadow are in the Menu and Desktop tables |
+| Menu fade is ignored unless menu animation is on; tooltip fade is meaningful only if tooltip animation is on | DOCUMENTED | Same page |
+| Font smoothing on or off takes its value in `uiParam`; smoothing type needs smoothing on; contrast needs type ClearType, valid 1,000..2,200, default 1,400 | DOCUMENTED | Same page; *ClearType antialiasing* (https://learn.microsoft.com/windows/win32/gdi/cleartype-antialiasing), whose sample passes TRUE in `uiParam` |
+| Caret width defaults to 1, also its minimum | DOCUMENTED | `SystemParametersInfoW` page, the Window table |
+| Client area animation exists as its own setting | DOCUMENTED | `SystemParametersInfoW` page, the Accessibility table; *Client-area animation* (https://learn.microsoft.com/windows/win32/winauto/client-area-animation) |
+| Gradient captions are not supported on Windows 10 and later | DOCUMENTED | Microsoft Learn, *GetSysColor function* (https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getsyscolor) |
+| Fades and shadows need more than 256 colours (always true today) | DOCUMENTED | `SystemParametersInfoW` page, the UI effects table |
+| The values land in `HKCU\Control Panel\Desktop` (`CaretWidth`, `FocusBorderWidth`, `FocusBorderHeight`, `FontSmoothing`, `FontSmoothingType`, `UserPreferencesMask`) and `Desktop\WindowMetrics\MinAnimate`, mostly as `REG_SZ` numbers and `REG_DWORD` for the caret, focus border and smoothing type | OBSERVED | Seen on the development PC (Windows 11, build 26300), where they agreed with the live GETs wherever a named value exists. Learn never says the "user profile" is `HKCU` and names no value, so WinTune only reads them |
+| `UserPreferencesMask` was `9E1E078012000000`: the byte with 0x80 matches UI effects on, and a clear bit matches cursor shadow off, as the GETs say | OBSERVED | Same machine. The bit layout is FOLKLORE (not on Learn), which is why the mask is never edited or restored by bytes |
+| The live ClearType contrast was 1,200 while `FontSmoothingGamma` read 0, so the registry does not hold the live number | OBSERVED | Same machine. That 0 means "use the tuner's value" is FOLKLORE |
+| Seen on the development PC: UI effects, window, client area, combo box, list box, menu, menu fade, selection fade, tooltip, tooltip fade and drop shadow on; cursor shadow off; smoothing on, type 2 (ClearType); caret 1, focus border 1 by 1; `VisualFXSetting` absent | OBSERVED | Read-only probe with `fWinIni` 0, no SET called |
+| Whether the master overwrites each gated effect or only gates it, and whether a gated GET still reports its own value while the master is off | FOLKLORE | Not on Learn; commonly reported that the master is a separate bit (bit 31 of `UserPreferencesMask`) that gates the others. This is why the companion rules exist and why checklist item 4 records the real behaviour |
+| Which Performance Options checkbox maps to which action, notably "Animate controls and elements inside windows" is client area animation and "Show shadows under windows" is drop shadow | FOLKLORE | No Learn page maps them. Learn ties drop shadow to `CS_DROPSHADOW` windows, menus and tooltips |
+| Settings, Accessibility, Visual effects, "Animation effects" may flip several rows at once; the dialog may show "Custom" after a change | FOLKLORE | Commonly reported |
+| Windows ships ClearType as the smoothing type, while the API default is Standard | FOLKLORE | Learn gives Standard as the API default; the shipped value is commonly reported |
+| Every default marked FOLKLORE above is that of a new Windows 11 profile; the fades default to Fade and the focus border to 1 | FOLKLORE | Commonly reported, not on Learn |
+| A SET takes its value in `pvParam` cast to a pointer for the "pv" actions and in `uiParam` for the "ui" ones | FOLKLORE | Learn's wording is vague for several; this is Win32 practice and the readback after each SET catches a wrong choice |
+| Caret width 1..20 matches Settings, Accessibility, Text cursor | FOLKLORE | Not on Learn; the focus border range 1..10 is chosen, not documented |
+| Some programs read these settings only when they start | FOLKLORE | Not on Learn; this is why the page says some programs show a change only after a restart |
+
+### Not handled here
+
+None of these has a `SystemParametersInfo` action (Explorer or DWM read them,
+often only at a restart), and each would need its own registry evidence:
+
+| Item | Where it lives | Status |
+| --- | --- | --- |
+| Show thumbnails instead of icons | `Explorer\Advanced\IconsOnly` | FOLKLORE |
+| Show translucent selection rectangle | `Explorer\Advanced\ListviewAlphaSelect` | FOLKLORE |
+| Drop shadows for icon labels on the desktop | `Explorer\Advanced\ListviewShadow` | FOLKLORE |
+| Animations in the taskbar | `Explorer\Advanced\TaskbarAnimations` | FOLKLORE |
+| Enable Peek | `Software\Microsoft\Windows\DWM\EnableAeroPeek` | FOLKLORE |
+| Save taskbar thumbnail previews | `DWM\AlwaysHibernateThumbnails` | FOLKLORE |
+| The dialog's radio choice | `Explorer\VisualEffects\VisualFXSetting` | FOLKLORE |
+| Transparency effects | `Themes\Personalize\EnableTransparency` | FOLKLORE |
+
+Settings that have an action pair but are left out: gradient captions
+(`SPI_[GS]ETGRADIENTCAPTIONS`, ignored by Windows 10 and later, DOCUMENTED),
+hot tracking (`SPI_[GS]ETHOTTRACKING`, not in the dialog and its effect under
+visual styles is unclear, FOLKLORE), `SPI_[GS]ETCLEARTYPE` (a second ClearType
+switch; Learn documents smoothing plus smoothing type, DOCUMENTED), font
+smoothing orientation (`SPI_[GS]ETFONTSMOOTHINGORIENTATION`, RGB or BGR
+per panel, the ClearType Text Tuner's job; the pair is DOCUMENTED, RGB was
+OBSERVED on the development PC), menu underlines
+(`SPI_[GS]ETMENUUNDERLINES`, keyboard cues for accessibility, not an
+effect; DOCUMENTED, off on the development PC, OBSERVED), "disable
+overlapped content" (`SPI_[GS]ETDISABLEOVERLAPPEDCONTENT`, a low-vision
+accessibility setting that is not in the dialog; DOCUMENTED, off on the
+development PC, OBSERVED) and "Show window contents while dragging" (`SPI_[GS]ETDRAGFULLWINDOWS`, owned
+by Mouse & keyboard as `drag_full_windows`; this page links there).
+
+#### Pre-merge checklist (Visual effects)
+
+Not run by the developer: the engine is covered by tests with a fake
+`EffectsApi` and the `.reg` by tests in a registry sandbox, and no test calls a
+real SET. Nothing was changed through WinTune and then looked at in Performance
+Options, Registry Editor or Notepad. The owner runs this before merging, on a
+real PC, and records each result next to its item. Note the starting values
+first (or use History's **Restore all** at the end).
+
+- [ ] 1. Turn "Animate windows when minimizing and maximizing" off, Apply:
+  minimizing Notepad no longer animates, and Performance Options shows the box
+  cleared. Turn it on again. Result: ______
+- [ ] 2. In a classic menu bar (Registry Editor), menu animation on with Slide,
+  Apply: menus slide. Fade: they fade. Menu animation off: they just appear.
+  Result: ______
+- [ ] 3. Turn "Show shadows under mouse pointer" on, Apply: the pointer has a
+  shadow and Performance Options shows it checked. Result: ______
+- [ ] 4. Note the gated rows, turn UI effects off, Apply: Registry Editor menus
+  no longer animate. After the rescan, record which case happens: the gated rows
+  keep their values (the master only gates), or they read off (either cleared:
+  the master stored off for them; or reads off: their GETs report off while
+  the master is off). Then restore UI effects from History: menus
+  animate again and the gated rows show their noted values. What each outcome
+  means:
+  - The gated rows keep their values (the master only gates): nothing special;
+    the extra companion snapshots were harmless, and the restore only brings the
+    master back.
+  - The rows are cleared: the master's restore brings the effects back
+    from its companions; the menus animating again and the gated rows showing
+    their noted values is the proof.
+  - The rows read off (their GETs report off): a write is reported as "Windows keeps this
+    effect off while UI effects is off", and nothing is lost, but a master-off
+    restore leaves the companions that are on as held rows (WinTune cannot
+    verify them). If rows remain listed under History after the restore, a
+    follow-up is needed to model that case; record which rows remained.
+
+  Result: ______
+- [ ] 5. Set smoothing type Standard, Apply: Magnifier shows grey text edges, no
+  colour fringes. Back to ClearType, contrast 2,200: text is darker. Restore
+  both from the rows. Result: ______
+- [ ] 6. Caret width 5 and focus border 3 x 3, Apply: Notepad's caret is thick,
+  Settings > Accessibility > Text cursor shows 5, and Tab in the Run dialog
+  (Win+R) shows a thick focus rectangle. Result: ______
+- [ ] 7. For performance, Apply; then History, Saved originals, Visual effects,
+  Restore all: the page and Performance Options show the originals; the group is
+  empty. Result: ______
+- [ ] 8. Change two settings, Apply, sign out and in: WinTune and Performance
+  Options still show them. Restore them. Result: ______
+
+Record anything that differs, with the step and the Windows version, before
+merging.
+
 ## Sources
 
 - Microsoft Learn, *SystemParametersInfoW function* and *SystemParametersInfoA
@@ -774,6 +1071,13 @@ merging.
   the defaults. Where the profile lives, the `HKCU\Control Panel` value names,
   the bit positions of ClickLock, Sonar and Vanish, the precision toggle's
   values and the default of several settings are not documented there.
+- Microsoft Learn, *SystemParametersInfoW function*, *ANIMATIONINFO structure*,
+  *ClearType antialiasing*, *Client-area animation* and *GetSysColor function*:
+  the Visual effects actions, the three SET families, the master switch and its
+  list of effects, the pairs, the ranges and the defaults of caret width and
+  contrast. Which checkbox of Performance Options is which action, what the
+  master does to the gated effects, the shipped defaults and the registry
+  layout are not documented there.
 - Microsoft Learn, *Environment Variables*, *Changing Environment Variables*,
   *Win32_Environment class*, *WM_SETTINGCHANGE message*, *Registry value types*,
   *setx* and *Command-line string limitation*: where the variables live, the

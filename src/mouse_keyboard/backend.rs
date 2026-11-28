@@ -3,16 +3,10 @@
 //! user.
 
 use super::{MkProblem, SettingId, SettingValue, Shape};
-
-/// A failed system call: the `GetLastError` code (87 for a value of the
-/// wrong shape).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ApiError {
-    pub code: u32,
-}
-
-/// `ERROR_INVALID_PARAMETER`, given for a value of the wrong shape.
-const WRONG_SHAPE: ApiError = ApiError { code: 87 };
+pub use crate::sysparams::ApiError;
+pub(crate) use crate::sysparams::SetCall;
+pub use crate::sysparams::{compare_accounts, session_account_check, AccountCheck};
+use crate::sysparams::{spi_get, spi_set, WRONG_SHAPE};
 
 pub trait InputApi: Send + Sync {
     fn get(&self, id: SettingId) -> Result<SettingValue, ApiError>;
@@ -103,14 +97,6 @@ pub(crate) fn descriptor(id: SettingId) -> &'static Descriptor {
         .expect("every setting id has a descriptor")
 }
 
-/// The parameters of one `SystemParametersInfoW` SET.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SetCall {
-    Ui { action: u32, ui: u32 },
-    PvValue { action: u32, pv: usize },
-    PvArray { action: u32, array: [i32; 3] },
-}
-
 /// The SET parameters for `value`; a value of another shape than the id's,
 /// or one its family cannot carry, gives error 87.
 pub(crate) fn set_call(id: SettingId, value: &SettingValue) -> Result<SetCall, ApiError> {
@@ -140,26 +126,6 @@ pub(crate) fn set_call(id: SettingId, value: &SettingValue) -> Result<SetCall, A
 
 /// The real backend: `SystemParametersInfoW` and friends.
 pub struct SpiInput;
-
-fn last_error() -> ApiError {
-    // SAFETY: GetLastError only reads the calling thread's last-error value.
-    let code = unsafe { windows_sys::Win32::Foundation::GetLastError() };
-    ApiError { code }
-}
-
-/// `SystemParametersInfoW(action, 0, out, 0)`: a GET into `*out`.
-fn spi_get<T>(action: u32, out: &mut T) -> Result<(), ApiError> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::SystemParametersInfoW;
-    // SAFETY: `out` is a live, writable `T` that the caller sized to the
-    // action's documented output (u32, BOOL or int[3]); fWinIni 0 writes
-    // nothing to the profile.
-    let ok = unsafe { SystemParametersInfoW(action, 0, (out as *mut T).cast(), 0) };
-    if ok == 0 {
-        Err(last_error())
-    } else {
-        Ok(())
-    }
-}
 
 impl InputApi for SpiInput {
     fn get(&self, id: SettingId) -> Result<SettingValue, ApiError> {
@@ -200,32 +166,7 @@ impl InputApi for SpiInput {
     }
 
     fn set(&self, id: SettingId, value: &SettingValue) -> Result<(), ApiError> {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{
-            SystemParametersInfoW, SPIF_SENDCHANGE, SPIF_UPDATEINIFILE,
-        };
-        let flags = SPIF_UPDATEINIFILE | SPIF_SENDCHANGE;
-        let ok = match set_call(id, value)? {
-            // SAFETY: this action takes its value in uiParam and ignores
-            // pvParam, so a null pointer is never dereferenced.
-            SetCall::Ui { action, ui } => unsafe {
-                SystemParametersInfoW(action, ui, std::ptr::null_mut(), flags)
-            },
-            // SAFETY: this action takes its value in pvParam itself (cast to
-            // a pointer, spec 5.1 "pv"); the system never dereferences it.
-            SetCall::PvValue { action, pv } => unsafe {
-                SystemParametersInfoW(action, 0, pv as *mut core::ffi::c_void, flags)
-            },
-            SetCall::PvArray { action, mut array } => {
-                // SAFETY: pvParam points to a live int[3] on this stack frame,
-                // the layout SPI_SETMOUSE reads; it outlives the call.
-                unsafe { SystemParametersInfoW(action, 0, array.as_mut_ptr().cast(), flags) }
-            }
-        };
-        if ok == 0 {
-            Err(last_error())
-        } else {
-            Ok(())
-        }
+        spi_set(set_call(id, value)?)
     }
 
     fn filter_keys_on(&self) -> Result<bool, ApiError> {
@@ -252,7 +193,7 @@ impl InputApi for SpiInput {
             )
         };
         if ok == 0 {
-            return Err(last_error());
+            return Err(crate::sysparams::last_error());
         }
         Ok(fk.dw_flags & FKF_FILTERKEYSON != 0)
     }
@@ -270,14 +211,6 @@ struct FilterKeys {
     i_bounce_msec: u32,
 }
 
-/// Whether WinTune runs as the user signed in to this session.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AccountCheck {
-    Same,
-    Different { process: String, session: String },
-    Unknown(String),
-}
-
 impl AccountCheck {
     pub fn problem(&self) -> Option<MkProblem> {
         match self {
@@ -289,105 +222,6 @@ impl AccountCheck {
             AccountCheck::Unknown(why) => Some(MkProblem::AccountUnknown(why.clone())),
         }
     }
-}
-
-/// `Same` when the two `DOMAIN\user` names match, ignoring case.
-pub fn compare_accounts(process: &str, session: &str) -> AccountCheck {
-    if process.to_lowercase() == session.to_lowercase() {
-        AccountCheck::Same
-    } else {
-        AccountCheck::Different {
-            process: process.to_string(),
-            session: session.to_string(),
-        }
-    }
-}
-
-/// Compares the process account (from its token) with the user signed in
-/// to this session.
-pub fn session_account_check() -> AccountCheck {
-    use windows_sys::Win32::System::RemoteDesktop::{WTSDomainName, WTSUserName};
-    let process = match process_account() {
-        Ok(name) => name,
-        Err(code) => return AccountCheck::Unknown(format!("GetUserNameExW failed: error {code}")),
-    };
-    let session = wts_string(WTSDomainName).and_then(|domain| {
-        let user = wts_string(WTSUserName)?;
-        Ok((domain, user))
-    });
-    match session {
-        Err(code) => {
-            AccountCheck::Unknown(format!("WTSQuerySessionInformationW failed: error {code}"))
-        }
-        Ok((_, user)) if user.is_empty() => {
-            AccountCheck::Unknown("no user is signed in to this session".to_string())
-        }
-        Ok((domain, user)) => compare_accounts(&process, &format!("{domain}\\{user}")),
-    }
-}
-
-/// `DOMAIN\user` of the process token, or the `GetLastError` code.
-fn process_account() -> Result<String, u32> {
-    use windows_sys::Win32::Foundation::ERROR_MORE_DATA;
-    use windows_sys::Win32::Security::Authentication::Identity::{
-        GetUserNameExW, NameSamCompatible,
-    };
-    let mut buf = vec![0u16; 256];
-    for _ in 0..2 {
-        let mut len = buf.len() as u32;
-        // SAFETY: `buf` is writable for `len` UTF-16 units; on success `len`
-        // is the name's length without the NUL, on ERROR_MORE_DATA the size
-        // needed.
-        let ok = unsafe { GetUserNameExW(NameSamCompatible, buf.as_mut_ptr(), &mut len) };
-        if ok != 0 {
-            let end = (len as usize).min(buf.len());
-            return Ok(String::from_utf16_lossy(&buf[..end]));
-        }
-        let code = last_error().code;
-        if code != ERROR_MORE_DATA {
-            return Err(code);
-        }
-        buf.resize(len as usize + 1, 0);
-    }
-    Err(ERROR_MORE_DATA)
-}
-
-/// One string of this session's information, or the `GetLastError` code.
-fn wts_string(
-    class: windows_sys::Win32::System::RemoteDesktop::WTS_INFO_CLASS,
-) -> Result<String, u32> {
-    use windows_sys::Win32::System::RemoteDesktop::{
-        WTSFreeMemory, WTSQuerySessionInformationW, WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION,
-    };
-    let mut ptr: *mut u16 = std::ptr::null_mut();
-    let mut bytes = 0u32;
-    // SAFETY: both out-pointers are live locals; on success the system
-    // allocates `bytes` bytes at `ptr`, freed below with WTSFreeMemory.
-    let ok = unsafe {
-        WTSQuerySessionInformationW(
-            WTS_CURRENT_SERVER_HANDLE,
-            WTS_CURRENT_SESSION,
-            class,
-            &mut ptr,
-            &mut bytes,
-        )
-    };
-    if ok == 0 {
-        return Err(last_error().code);
-    }
-    if ptr.is_null() {
-        return Ok(String::new());
-    }
-    // SAFETY: `ptr` holds `bytes` bytes of UTF-16 owned by us until the
-    // WTSFreeMemory call; the slice is copied into a String before it.
-    let text = unsafe {
-        let units = std::slice::from_raw_parts(ptr, bytes as usize / 2);
-        let end = units.iter().position(|&u| u == 0).unwrap_or(units.len());
-        let text = String::from_utf16_lossy(&units[..end]);
-        WTSFreeMemory(ptr.cast());
-        text
-    };
-    Ok(text)
 }
 
 /// A call made to the fake.

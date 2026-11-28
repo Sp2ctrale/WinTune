@@ -15,6 +15,8 @@ pub mod mouse_keyboard;
 pub mod persist;
 pub mod regsnap;
 pub mod startup;
+pub mod sysparams;
 pub mod tasks;
 pub mod tweaks;
 pub mod ui;
+pub mod visual_effects;

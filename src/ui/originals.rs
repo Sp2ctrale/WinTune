@@ -9,6 +9,7 @@ use crate::context_menu::{catalog_clsid, entry_key, Place, KEY_PREFIX};
 use crate::i18n::{messages, Tr};
 use crate::mouse_keyboard::SettingId;
 use crate::tweaks::find_tweak;
+use crate::visual_effects::EffectId;
 use eframe::egui::{self, RichText};
 
 /// The module a saved original belongs to, in the order the groups show.
@@ -21,6 +22,7 @@ pub(super) enum OriginalsModule {
     Startup,
     Environment,
     MouseKeyboard,
+    VisualEffects,
     /// A tweak id the catalog no longer knows (e.g. removed in a later
     /// version): listed with its raw id, still restorable.
     Other,
@@ -47,6 +49,7 @@ impl OriginalsModule {
             Self::Startup => tr.t("history.module.startup"),
             Self::Environment => tr.t("history.module.environment"),
             Self::MouseKeyboard => tr.t("history.module.mouse_keyboard"),
+            Self::VisualEffects => tr.t("history.module.visual_effects"),
             Self::Other => tr.t("originals.other"),
         }
     }
@@ -68,6 +71,7 @@ enum RestoreRequest {
     Startup(Vec<String>),
     Environment(Vec<String>),
     MouseKeyboard(Vec<String>),
+    VisualEffects(Vec<String>),
 }
 
 /// A secondary button that, given a reason, is disabled and says why on
@@ -157,6 +161,38 @@ impl WinTuneApp {
                         key: key.clone(),
                         title: self.mk_slot_name(key),
                         description: tr.t_args("mk.original_desc", &[&original, &backup.timestamp]),
+                    }
+                })
+                .collect();
+        }
+        if module == OriginalsModule::VisualEffects {
+            let user = &self.env.user_label;
+            return self
+                .ve_store
+                .own_backups(user)
+                .into_iter()
+                .map(|(key, backup)| {
+                    let original = messages::ve_value(tr, EffectId::from_key(key), &backup.value);
+                    let mut description =
+                        tr.t_args("ve.original_desc", &[&original, &backup.timestamp]);
+                    if key == EffectId::UiEffects.key() {
+                        let mut companions = self.ve_store.companions_of(user, key);
+                        companions.sort_by_key(|c| EffectId::from_key(c));
+                        if !companions.is_empty() {
+                            let titles: Vec<String> =
+                                companions.iter().map(|c| self.ve_slot_name(c)).collect();
+                            description.push('\n');
+                            description.push_str(&messages::ve_companions(
+                                tr,
+                                titles.len(),
+                                &titles,
+                            ));
+                        }
+                    }
+                    OriginalRow {
+                        key: key.clone(),
+                        title: self.ve_slot_name(key),
+                        description,
                     }
                 })
                 .collect();
@@ -275,6 +311,7 @@ impl WinTuneApp {
         let startup_reason = self.busy_or_blocked(&self.startup_store_error);
         let env_reason = self.busy_or_blocked(&self.env_store_error);
         let mk_reason = self.busy_or_blocked(&self.mk_store_error);
+        let ve_reason = self.busy_or_blocked(&self.ve_store_error);
         let mut request = None;
         let mut shown = 0;
 
@@ -404,6 +441,28 @@ impl WinTuneApp {
                 }
             }
         }
+        match &self.ve_store_error {
+            Some(e) => {
+                let text = tr.t_args("originals.unreadable", &[&messages::load_error(tr, e)]);
+                kit::banner(ui, kit::BannerKind::Error, &text, None);
+                shown += 1;
+            }
+            None => {
+                let rows = self.originals_of(OriginalsModule::VisualEffects);
+                if !rows.is_empty() {
+                    shown += 1;
+                    let reason = ve_reason.as_deref();
+                    originals_section(
+                        ui,
+                        tr,
+                        OriginalsModule::VisualEffects,
+                        rows,
+                        reason,
+                        &mut request,
+                    );
+                }
+            }
+        }
         if shown == 0 {
             kit::card(ui, |ui| {
                 kit::empty_state(ui, kit::Icon::Restore, &tr.t("originals.empty"), None);
@@ -418,6 +477,7 @@ impl WinTuneApp {
             Some(RestoreRequest::Startup(ids)) => self.request_restore_startup(ids),
             Some(RestoreRequest::Environment(ids)) => self.request_restore_environment(ids),
             Some(RestoreRequest::MouseKeyboard(ids)) => self.request_restore_mouse_keyboard(ids),
+            Some(RestoreRequest::VisualEffects(ids)) => self.request_restore_visual_effects(ids),
             None => {}
         }
     }
@@ -462,7 +522,12 @@ fn originals_section(
     let is_startup = module == OriginalsModule::Startup;
     let is_env = module == OriginalsModule::Environment;
     let is_mk = module == OriginalsModule::MouseKeyboard;
+    let is_ve = module == OriginalsModule::VisualEffects;
     let clicked = match (all, one) {
+        (true, _) if is_ve => {
+            RestoreRequest::VisualEffects(rows.into_iter().map(|r| r.key).collect())
+        }
+        (false, Some(key)) if is_ve => RestoreRequest::VisualEffects(vec![key]),
         (true, _) if is_mk => {
             RestoreRequest::MouseKeyboard(rows.into_iter().map(|r| r.key).collect())
         }
@@ -800,6 +865,172 @@ mod tests {
         let module = app.tr.t("history.module.mouse_keyboard");
         assert!(in_originals(&app, &out, &module).is_none());
         assert!(in_originals(&app, &out, "Pointer speed").is_none());
+    }
+
+    /// The master turned off through the page's job, History open.
+    fn master_off(fx: &TempIcons, ctx: &egui::Context) -> WinTuneApp {
+        use crate::visual_effects::EffectId::UiEffects;
+        use crate::visual_effects::SettingValue::Flag;
+        let mut app = fx.app(ctx);
+        app.request_ve_scan();
+        run_until_ve_scanned(&mut app, ctx);
+        app.set_ve_wanted(UiEffects, Flag(false));
+        app.start_ve_apply(ctx);
+        run_until_idle(&mut app, ctx);
+        assert!(
+            app.ve_store.has_backup("TEST\\user", "ui_effects"),
+            "{}",
+            app.last_notice()
+        );
+        app.open_page(ActiveTab::History);
+        app
+    }
+
+    /// `(key, title, description)` of the Visual effects originals.
+    fn ve_rows(app: &WinTuneApp) -> Vec<(String, String, String)> {
+        app.originals_of(OriginalsModule::VisualEffects)
+            .into_iter()
+            .map(|r| (r.key, r.title, r.description))
+            .collect()
+    }
+
+    #[test]
+    fn the_master_row_lists_its_companions_and_they_have_no_row() {
+        use crate::visual_effects::EffectId::UiEffects;
+        use crate::visual_effects::SettingValue::Flag;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = master_off(&fx, &ctx);
+        assert_eq!(fx.fake_effects().value(UiEffects), Flag(false));
+
+        let rows = ve_rows(&app);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        let (key, title, desc) = &rows[0];
+        assert_eq!(key, "ui_effects");
+        assert_eq!(title, "UI effects");
+        let n = crate::visual_effects::MASTER_COMPANIONS.len();
+        assert_eq!(n, 8);
+        assert!(desc.contains("Original: On"), "{desc}");
+        assert!(desc.contains("Also restores 8 effects"), "{desc}");
+        assert!(desc.contains("Menu animation"), "{desc}");
+        // The description's lines are separate, the original first.
+        assert!(desc.starts_with("Original: On, saved on "), "{desc}");
+        assert!(desc.contains("\nAlso restores"), "{desc}");
+        assert!(!rows
+            .iter()
+            .any(|(_, t, _)| t == "Show shadows under mouse pointer"));
+
+        let out = settle(&mut app, &ctx);
+        let module = app.tr.t("history.module.visual_effects");
+        assert!(in_originals(&app, &out, &module).is_some());
+        let label = restore_label(&app);
+        let at = button_on_row(&mut app, &ctx, "UI effects", &label);
+        click_at(&mut app, &ctx, at);
+        assert_eq!(
+            pending(&app),
+            Some(ConfirmAction::RestoreVisualEffects(vec![
+                "ui_effects".to_string()
+            ]))
+        );
+        assert!(!app.is_busy(), "a restore started without confirmation");
+
+        app.resolve_confirm(&ctx, true);
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(fx.fake_effects().value(UiEffects), Flag(true));
+        assert!(ve_rows(&app).is_empty(), "{:?}", ve_rows(&app));
+        assert!(app.ve_store.own_backups("TEST\\user").is_empty());
+        let out = settle(&mut app, &ctx);
+        assert!(in_originals(&app, &out, &module).is_none());
+    }
+
+    #[test]
+    fn a_companion_changed_directly_gets_its_own_row() {
+        use crate::visual_effects::EffectId::{MenuAnimation, UiEffects};
+        use crate::visual_effects::SettingValue::Flag;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        app.request_ve_scan();
+        run_until_ve_scanned(&mut app, &ctx);
+        // Menu animation off on its own first, then the master off: the
+        // companion already has a snapshot of its own.
+        for id in [MenuAnimation, UiEffects] {
+            app.set_ve_wanted(id, Flag(false));
+            app.start_ve_apply(&ctx);
+            run_until_idle(&mut app, &ctx);
+            assert!(
+                app.ve_store.has_backup("TEST\\user", id.key()),
+                "{}",
+                app.last_notice()
+            );
+        }
+        app.open_page(ActiveTab::History);
+
+        let rows = ve_rows(&app);
+        let keys: Vec<&str> = rows.iter().map(|(k, _, _)| k.as_str()).collect();
+        assert_eq!(keys, ["menu_animation", "ui_effects"], "{rows:?}");
+        let master = rows.iter().find(|(k, _, _)| k == "ui_effects").unwrap();
+        assert_eq!(master.1, "UI effects");
+        assert!(master.2.contains("Also restores 7 effects"), "{}", master.2);
+        assert!(!master.2.contains("Menu animation"), "{}", master.2);
+        let own = rows.iter().find(|(k, _, _)| k == "menu_animation").unwrap();
+        assert_eq!(own.1, "Menu animation");
+        assert!(own.2.contains("Original: On"), "{}", own.2);
+        assert!(!own.2.contains("Also restores"), "{}", own.2);
+    }
+
+    #[test]
+    fn an_unknown_effect_is_listed_by_its_raw_key() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        let mut store = crate::visual_effects::VeBackupStore::default();
+        store.record_first(
+            "TEST\\user",
+            "hot_tracking",
+            "2026-01-02 03:04:05",
+            crate::visual_effects::SettingValue::Flag(true),
+        );
+        crate::visual_effects::save_ve_store(&store, &app.env.ve_store_path).unwrap();
+        app.open_page(ActiveTab::History);
+        assert_eq!(app.ve_store_error, None);
+
+        let rows = ve_rows(&app);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0].0, "hot_tracking");
+        assert_eq!(rows[0].1, "hot_tracking");
+        let out = settle(&mut app, &ctx);
+        assert!(in_originals(&app, &out, "hot_tracking").is_some());
+        let label = restore_label(&app);
+        let at = button_on_row(&mut app, &ctx, "hot_tracking", &label);
+        click_at(&mut app, &ctx, at);
+        assert_eq!(
+            pending(&app),
+            Some(ConfirmAction::RestoreVisualEffects(vec![
+                "hot_tracking".to_string()
+            ]))
+        );
+    }
+
+    #[test]
+    fn an_unreadable_visual_effects_store_shows_a_banner() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = master_off(&fx, &ctx);
+        std::fs::write(&app.env.ve_store_path, "{ broken").unwrap();
+        app.reload_ve_store();
+        let error = app.ve_store_error.clone().expect("store error");
+        assert!(ve_rows(&app).is_empty());
+
+        let out = settle(&mut app, &ctx);
+        let banner = app.tr.t_args(
+            "originals.unreadable",
+            &[&messages::load_error(app.tr, &error)],
+        );
+        assert!(drawn_texts(&out).contains(&banner), "no banner");
+        let module = app.tr.t("history.module.visual_effects");
+        assert!(in_originals(&app, &out, &module).is_none());
+        assert!(in_originals(&app, &out, "UI effects").is_none());
     }
 
     #[test]

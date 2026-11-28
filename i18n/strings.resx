@@ -1852,6 +1852,12 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="mk.failure.store" xml:space="preserve">
     <value>The change was made, but the saved originals could not be updated: {0}</value>
   </data>
+  <data name="ve.failure.reread" xml:space="preserve">
+    <value>{0}: not written, because WinTune could not read it again after UI effects went on (error {1}).</value>
+  </data>
+  <data name="ve.failure.gated_not_saved" xml:space="preserve">
+    <value>UI effects was changed, but the effects it gates were not written: the saved originals could not be updated ({0}).</value>
+  </data>
   <data name="nav.mouse_keyboard" xml:space="preserve">
     <value>Mouse &amp; keyboard</value>
   </data>
@@ -1929,5 +1935,257 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   </data>
   <data name="home.mouse_keyboard_status_one" xml:space="preserve">
     <value>{0} setting changed by WinTune</value>
+  </data>
+  <data name="job.apply_visual_effects" xml:space="preserve">
+    <value>Applying visual effects…</value>
+  </data>
+  <data name="job.restore_visual_effects" xml:space="preserve">
+    <value>Restoring visual effects…</value>
+  </data>
+  <data name="job.name.apply_visual_effects" xml:space="preserve">
+    <value>Applying visual effects</value>
+  </data>
+  <data name="job.name.restore_visual_effects" xml:space="preserve">
+    <value>Restoring visual effects</value>
+  </data>
+  <data name="report.applied_visual_effects" xml:space="preserve">
+    <value>{0} setting(s) applied</value>
+  </data>
+  <data name="report.restored_visual_effects" xml:space="preserve">
+    <value>{0} setting(s) restored</value>
+  </data>
+  <data name="ve.original_desc" xml:space="preserve">
+    <value>Original: {0}, saved on {1}</value>
+  </data>
+  <data name="home.visual_effects_status" xml:space="preserve">
+    <value>{0} effects changed by WinTune</value>
+  </data>
+  <data name="home.visual_effects_status_one" xml:space="preserve">
+    <value>{0} effect changed by WinTune</value>
+  </data>
+  <data name="history.module.visual_effects" xml:space="preserve">
+    <value>Visual effects</value>
+  </data>
+  <data name="ve.scan_failed" xml:space="preserve">
+    <value>Could not read the visual effects: {0}</value>
+  </data>
+  <data name="ve.restore_title" xml:space="preserve">
+    <value>Restore original settings?</value>
+  </data>
+  <data name="ve.restore_message" xml:space="preserve">
+    <value>{0} will get back the value they had before WinTune changed them.</value>
+  </data>
+  <data name="ve.restore_message_one" xml:space="preserve">
+    <value>{0}: the value from before WinTune changed it will be restored.</value>
+  </data>
+  <data name="ve.restore_many" xml:space="preserve">
+    <value>{0} settings</value>
+  </data>
+  <data name="ve.also_restores" xml:space="preserve">
+    <value>Also restores {0} effects: {1}</value>
+  </data>
+  <data name="ve.also_restores_one" xml:space="preserve">
+    <value>Also restores {0} effect: {1}</value>
+  </data>
+  <data name="ve.section.ui_effects" xml:space="preserve">
+    <value>UI effects</value>
+  </data>
+  <data name="ve.section.animations" xml:space="preserve">
+    <value>Animations</value>
+  </data>
+  <data name="ve.section.menus" xml:space="preserve">
+    <value>Menus and tooltips</value>
+  </data>
+  <data name="ve.section.shadows" xml:space="preserve">
+    <value>Shadows</value>
+  </data>
+  <data name="ve.section.text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="ve.section.caret" xml:space="preserve">
+    <value>Caret and focus</value>
+  </data>
+  <data name="ve.ui_effects.title" xml:space="preserve">
+    <value>UI effects</value>
+  </data>
+  <data name="ve.ui_effects.description" xml:space="preserve">
+    <value>Turns the menu, list, tooltip and pointer effects below on or off together.</value>
+  </data>
+  <data name="ve.window_animation.title" xml:space="preserve">
+    <value>Animate windows when minimizing and maximizing</value>
+  </data>
+  <data name="ve.client_area_animation.title" xml:space="preserve">
+    <value>Animate controls and elements inside windows</value>
+  </data>
+  <data name="ve.combobox_animation.title" xml:space="preserve">
+    <value>Slide open combo boxes</value>
+  </data>
+  <data name="ve.listbox_smooth_scroll.title" xml:space="preserve">
+    <value>Smooth-scroll list boxes</value>
+  </data>
+  <data name="ve.menu_animation.title" xml:space="preserve">
+    <value>Menu animation</value>
+  </data>
+  <data name="ve.menu_fade.title" xml:space="preserve">
+    <value>Menu effect</value>
+  </data>
+  <data name="ve.selection_fade.title" xml:space="preserve">
+    <value>Fade out menu items after clicking</value>
+  </data>
+  <data name="ve.tooltip_animation.title" xml:space="preserve">
+    <value>Tooltip animation</value>
+  </data>
+  <data name="ve.tooltip_fade.title" xml:space="preserve">
+    <value>Tooltip effect</value>
+  </data>
+  <data name="ve.cursor_shadow.title" xml:space="preserve">
+    <value>Show shadows under mouse pointer</value>
+  </data>
+  <data name="ve.drop_shadow.title" xml:space="preserve">
+    <value>Show shadows under windows</value>
+  </data>
+  <data name="ve.font_smoothing.title" xml:space="preserve">
+    <value>Smooth edges of screen fonts</value>
+  </data>
+  <data name="ve.font_smoothing_type.title" xml:space="preserve">
+    <value>Smoothing type</value>
+  </data>
+  <data name="ve.cleartype_contrast.title" xml:space="preserve">
+    <value>ClearType contrast</value>
+  </data>
+  <data name="ve.caret_width.title" xml:space="preserve">
+    <value>Text cursor width</value>
+  </data>
+  <data name="ve.focus_border_width.title" xml:space="preserve">
+    <value>Focus rectangle width</value>
+  </data>
+  <data name="ve.focus_border_height.title" xml:space="preserve">
+    <value>Focus rectangle height</value>
+  </data>
+  <data name="ve.value.on" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="ve.value.off" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="ve.value.fade" xml:space="preserve">
+    <value>Fade</value>
+  </data>
+  <data name="ve.value.slide" xml:space="preserve">
+    <value>Slide</value>
+  </data>
+  <data name="ve.value.standard" xml:space="preserve">
+    <value>Standard</value>
+  </data>
+  <data name="ve.value.cleartype" xml:space="preserve">
+    <value>ClearType</value>
+  </data>
+  <data name="ve.value.unknown" xml:space="preserve">
+    <value>Unknown ({0})</value>
+  </data>
+  <data name="ve.value.px" xml:space="preserve">
+    <value>{0} px</value>
+  </data>
+  <data name="ve.value.thousands" xml:space="preserve">
+    <value>,</value>
+  </data>
+  <data name="ve.problem.out_of_range" xml:space="preserve">
+    <value>{0}: this value is outside what WinTune allows.</value>
+  </data>
+  <data name="ve.problem.unknown" xml:space="preserve">
+    <value>{0} is a setting this version of WinTune does not know.</value>
+  </data>
+  <data name="ve.problem.unreadable" xml:space="preserve">
+    <value>{0}: Windows could not read this setting (error {1}).</value>
+  </data>
+  <data name="ve.problem.wrong_account" xml:space="preserve">
+    <value>WinTune runs as {0}, but {1} is signed in. Visual effects would be saved for the wrong account.</value>
+  </data>
+  <data name="ve.problem.account_unknown" xml:space="preserve">
+    <value>WinTune cannot tell which account is signed in ({0}), so it does not change visual effects.</value>
+  </data>
+  <data name="ve.problem.not_saved" xml:space="preserve">
+    <value>Nothing applied: the originals or the .reg backup could not be saved ({0}).</value>
+  </data>
+  <data name="ve.problem.no_original" xml:space="preserve">
+    <value>{0}: no original value is saved.</value>
+  </data>
+  <data name="ve.failure.set" xml:space="preserve">
+    <value>{0}: Windows refused the change (error {1}).</value>
+  </data>
+  <data name="ve.failure.mismatch" xml:space="preserve">
+    <value>{0}: Windows kept {1} instead of {2}.</value>
+  </data>
+  <data name="ve.failure.unverified" xml:space="preserve">
+    <value>{0}: WinTune could not read the setting back (error {1}).</value>
+  </data>
+  <data name="ve.failure.held" xml:space="preserve">
+    <value>{0}: Windows keeps this effect off while UI effects is off.</value>
+  </data>
+  <data name="ve.failure.store" xml:space="preserve">
+    <value>The change was made, but the saved originals could not be updated: {0}</value>
+  </data>
+  <data name="ve.gate.master" xml:space="preserve">
+    <value>Has no effect while UI effects is off</value>
+  </data>
+  <data name="ve.gate.menu" xml:space="preserve">
+    <value>Has no effect while Menu animation is off</value>
+  </data>
+  <data name="ve.gate.tooltip" xml:space="preserve">
+    <value>Has no effect while Tooltip animation is off</value>
+  </data>
+  <data name="ve.gate.smoothing" xml:space="preserve">
+    <value>Has no effect while font smoothing is off</value>
+  </data>
+  <data name="ve.gate.cleartype" xml:space="preserve">
+    <value>Has no effect unless the smoothing type is ClearType</value>
+  </data>
+  <data name="nav.visual_effects" xml:space="preserve">
+    <value>Visual effects</value>
+  </data>
+  <data name="ve.subtitle" xml:space="preserve">
+    <value>Animations, shadows, font smoothing and the text cursor, each with an undo.</value>
+  </data>
+  <data name="ve.note" xml:space="preserve">
+    <value>Changes apply when you press Apply and are kept when you sign out. Some programs show them only after a restart.</value>
+  </data>
+  <data name="ve.preset.appearance" xml:space="preserve">
+    <value>For appearance</value>
+  </data>
+  <data name="ve.preset.performance" xml:space="preserve">
+    <value>For performance</value>
+  </data>
+  <data name="ve.search" xml:space="preserve">
+    <value>Search settings</value>
+  </data>
+  <data name="ve.scanning" xml:space="preserve">
+    <value>Reading your settings…</value>
+  </data>
+  <data name="ve.no_match" xml:space="preserve">
+    <value>No setting matches your search.</value>
+  </data>
+  <data name="ve.pill.not_applied" xml:space="preserve">
+    <value>Not applied</value>
+  </data>
+  <data name="ve.windows_default" xml:space="preserve">
+    <value>Windows default</value>
+  </data>
+  <data name="ve.default_shown" xml:space="preserve">
+    <value>This is already the Windows default.</value>
+  </data>
+  <data name="ve.drag_link" xml:space="preserve">
+    <value>Show window contents while dragging is on the Mouse &amp; keyboard page</value>
+  </data>
+  <data name="ve.text_note" xml:space="preserve">
+    <value>WinTune draws its own text, so look at another window, such as Notepad, to see the change.</value>
+  </data>
+  <data name="ve.pending" xml:space="preserve">
+    <value>{0} changes not applied</value>
+  </data>
+  <data name="ve.up_to_date" xml:space="preserve">
+    <value>All changes applied</value>
+  </data>
+  <data name="ve.nothing_to_apply" xml:space="preserve">
+    <value>Nothing to apply</value>
   </data>
 </root>

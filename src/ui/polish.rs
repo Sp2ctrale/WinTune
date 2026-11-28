@@ -16,6 +16,7 @@ pub(super) fn search_box_id(tab: ActiveTab) -> Option<egui::Id> {
         ActiveTab::Startup => Some(egui::Id::new("search_startup")),
         ActiveTab::Environment => Some(egui::Id::new("search_environment")),
         ActiveTab::MouseKeyboard => Some(egui::Id::new("search_mouse_keyboard")),
+        ActiveTab::VisualEffects => Some(egui::Id::new("search_visual_effects")),
         ActiveTab::Home | ActiveTab::History | ActiveTab::Settings => None,
     }
 }

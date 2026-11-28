@@ -83,6 +83,7 @@ impl WinTuneApp {
             self.reload_startup_store();
             self.reload_env_store();
             self.reload_mk_store();
+            self.reload_ve_store();
         }
         if page == ActiveTab::Associations && self.active_tab != page {
             self.request_status_refresh();
@@ -116,6 +117,12 @@ impl WinTuneApp {
         if page == ActiveTab::MouseKeyboard && self.active_tab != page {
             self.request_mk_scan();
         }
+        if page == ActiveTab::VisualEffects && !self.is_busy() {
+            self.reload_ve_store();
+        }
+        if page == ActiveTab::VisualEffects && self.active_tab != page {
+            self.request_ve_scan();
+        }
         if self.active_tab != page {
             self.focus_search = false;
             self.close_popups_next_frame = true;
@@ -143,6 +150,7 @@ impl WinTuneApp {
         let startup = tr.t("nav.startup");
         let environment = tr.t("nav.environment");
         let mouse_keyboard = tr.t("nav.mouse_keyboard");
+        let visual_effects = tr.t("nav.visual_effects");
         let icons = tr.t("nav.icons");
         let history = tr.t("nav.history");
         let settings = tr.t("nav.settings");
@@ -181,6 +189,11 @@ impl WinTuneApp {
                     item(ActiveTab::Startup, kit::Icon::Startup, &startup),
                     item(ActiveTab::Environment, kit::Icon::Environment, &environment),
                     item(ActiveTab::MouseKeyboard, kit::Icon::Mouse, &mouse_keyboard),
+                    item(
+                        ActiveTab::VisualEffects,
+                        kit::Icon::Effects,
+                        &visual_effects,
+                    ),
                 ],
             },
             kit::NavGroup {
@@ -1493,6 +1506,137 @@ mod tests {
             app.active_tab = ActiveTab::Home;
         }
 
+        // The Visual effects page, in passes (ruling F7). First the master
+        // live off (the gate hovers), smoothing type 3 live, an unreadable
+        // caret width and a saved original, with two `…` menus open and the
+        // Apply hover; then the Performance preset pending; then a search
+        // with no match, no scan yet, and a scan whose account is wrong,
+        // then unknown.
+        {
+            use crate::i18n::messages::{ve_problem, ve_section, ve_title, ve_value};
+            use crate::visual_effects::EffectId::*;
+            use crate::visual_effects::SettingValue::*;
+            use crate::visual_effects::{account_problem, AccountCheck, VeScan, VeSection};
+            let toggle = egui::vec2(40.0, 20.0);
+            fx.fake_effects().put(UiEffects, Flag(false));
+            fx.fake_effects().put(FontSmoothingType, Number(3));
+            fx.fake_effects().fail_get(CaretWidth);
+            app.request_ve_scan();
+            run_until_ve_scanned(&mut app, &ctx);
+            app.ve_store
+                .record_first("TEST\\user", "menu_animation", "x", Flag(true));
+            app.active_tab = ActiveTab::VisualEffects;
+            let mut texts = Vec::new();
+            let draw = |app: &mut WinTuneApp, texts: &mut Vec<String>| {
+                for _ in 0..3 {
+                    texts.extend(drawn_texts(&frame(app, &ctx, tall_input(vec![]))));
+                }
+            };
+            draw(&mut app, &mut texts);
+            // Pass 1: a gated toggle's hover.
+            let menu_animation = ve_title(app.tr, MenuAnimation);
+            let at = widget_right_of(&mut app, &ctx, &menu_animation, toggle)
+                .expect("no toggle on the Menu animation row");
+            let hover = hover_texts(&mut app, &ctx, at);
+            assert!(hover.contains(&app.tr.t("ve.gate.master")), "{hover:?}");
+            texts.extend(hover);
+            // Menu animation's `…` menu (gated, with a saved original), its
+            // Windows default item hovered; then Drop shadow's, already at
+            // the default.
+            let windows_default = app.tr.t("ve.windows_default");
+            for id in [MenuAnimation, DropShadow] {
+                let title = ve_title(app.tr, id);
+                let menu = widget_right_of(&mut app, &ctx, &title, kit::OVERFLOW_BUTTON)
+                    .expect("no … on the row");
+                click_at(&mut app, &ctx, menu);
+                draw(&mut app, &mut texts);
+                frame(&mut app, &ctx, tall_input(vec![]));
+                let out = frame(&mut app, &ctx, tall_input(vec![]));
+                let item = text_center(&out, &windows_default).expect("Windows default item");
+                texts.extend(hover_texts(&mut app, &ctx, item));
+                frame(
+                    &mut app,
+                    &ctx,
+                    tall_input(vec![key_press(egui::Key::Escape)]),
+                );
+            }
+            // Apply, disabled: nothing to apply.
+            let out = frame(&mut app, &ctx, tall_input(vec![]));
+            let apply = text_center(&out, &app.tr.t("tweaks.apply")).expect("Apply");
+            texts.extend(hover_texts(&mut app, &ctx, apply));
+            // Pass 2: the Performance preset, the master pending on.
+            app.apply_ve_preset(super::super::visual_effects_state::VePreset::Performance);
+            let pending = app.ve_pending_count();
+            assert_eq!(pending, 10, "{:?}", app.ve_pending);
+            draw(&mut app, &mut texts);
+            app.discard_ve_changes();
+            // A search nothing matches, then no scan yet.
+            app.ve_search = "nothing like it".into();
+            draw(&mut app, &mut texts);
+            app.ve_search.clear();
+            let scan = app.ve_scan.take().expect("scanned");
+            draw(&mut app, &mut texts);
+            // Another account, then an account check that failed.
+            let wrong = AccountCheck::Different {
+                process: "PC\\Admin".into(),
+                session: "PC\\Ana".into(),
+            };
+            let unknown = AccountCheck::Unknown("no session".into());
+            for account in [wrong.clone(), unknown.clone()] {
+                app.ve_scan = Some(VeScan {
+                    account,
+                    ..scan.clone()
+                });
+                draw(&mut app, &mut texts);
+            }
+            let mut positive = vec![
+                app.tr.t("nav.visual_effects"),
+                app.tr.t("ve.subtitle"),
+                app.tr.t("ve.note"),
+                app.tr.t("ve.search"),
+                app.tr.t("ve.preset.appearance"),
+                app.tr.t("ve.preset.performance"),
+                app.tr.t("ve.scanning"),
+                app.tr.t("ve.no_match"),
+                app.tr.t("ve.pill.not_applied"),
+                app.tr.t("ve.windows_default"),
+                app.tr.t("ve.default_shown"),
+                app.tr.t("tweaks.restore_original"),
+                app.tr.t("ve.drag_link"),
+                app.tr.t("ve.text_note"),
+                app.tr.t("ve.up_to_date"),
+                app.tr.t("ve.nothing_to_apply"),
+                app.tr.t("ve.gate.master"),
+                app.tr.t("ve.value.fade"),
+                app.tr.t("ve.value.slide"),
+                app.tr.t("ve.ui_effects.description"),
+                app.tr.t_args("ve.pending", &[&pending]),
+                app.tr.t("tweaks.discard"),
+                ve_value(app.tr, Some(FontSmoothingType), &Number(3)),
+                ve_problem(app.tr, &account_problem(&wrong).unwrap()),
+                ve_problem(app.tr, &account_problem(&unknown).unwrap()),
+            ];
+            positive.extend(VeSection::ALL.map(|s| ve_section(app.tr, s)));
+            positive.extend(crate::visual_effects::EffectId::ALL.map(|id| ve_title(app.tr, id)));
+            positive.retain(|t| !t.is_empty());
+            for drawn in positive {
+                assert!(
+                    texts.iter().any(|t| t.contains(&drawn)),
+                    "{drawn:?} not drawn on Visual effects: {texts:?}"
+                );
+            }
+            for (key, value) in &english_only {
+                assert!(
+                    !texts.iter().any(|t| t == *value),
+                    "the Visual effects page draws English-only text {value:?} (key {key})"
+                );
+            }
+            app.ve_scan = Some(scan);
+            app.ve_store = Default::default();
+            app.ve_scan_needed = false;
+            app.active_tab = ActiveTab::Home;
+        }
+
         // The History page: saved originals in every group, one opened
         // operation with an error and a `.reg` path, then a broken store.
         app.config.extensions = vec![rule(".a"), rule(".b")];
@@ -1547,7 +1691,23 @@ mod tests {
             },
         );
         mk_entry.time = "2000-01-04 00:00:00".into();
-        app.history = vec![entry, menu_entry, startup_entry, env_entry, mk_entry];
+        let mut ve_entry = crate::history::HistoryEntry::from_report(
+            "Visual effects",
+            "Apply",
+            &crate::associations::OperationReport {
+                succeeded: vec!["UI effects".into()],
+                ..Default::default()
+            },
+        );
+        ve_entry.time = "2000-01-05 00:00:00".into();
+        app.history = vec![
+            entry,
+            menu_entry,
+            startup_entry,
+            env_entry,
+            mk_entry,
+            ve_entry,
+        ];
         app.open_page(ActiveTab::History);
         // A changed mouse setting's original (`open_page` reloaded the
         // store from disk).
@@ -1557,6 +1717,22 @@ mod tests {
             "2026-01-02 03:04:05",
             crate::mouse_keyboard::SettingValue::Number(10),
         );
+        // The Visual effects master's original, with two companions.
+        app.ve_store.record_first(
+            "TEST\\user",
+            "ui_effects",
+            "2026-01-02 03:04:06",
+            crate::visual_effects::SettingValue::Flag(true),
+        );
+        for id in ["menu_animation", "tooltip_animation"] {
+            app.ve_store.record_companion(
+                "TEST\\user",
+                id,
+                "2026-01-02 03:04:06",
+                crate::visual_effects::SettingValue::Flag(true),
+                "ui_effects",
+            );
+        }
         // Same for an environment variable's original.
         app.env_store
             .snapshots
@@ -1701,6 +1877,37 @@ mod tests {
             .t_args("mk.original_desc", &[&original, &"2026-01-02 03:04:05"]);
         assert!(texts.contains(&desc), "{desc:?} not drawn on History");
 
+        // The Visual effects operation and original, with its companions.
+        let module = app.tr.t("history.module.visual_effects");
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.starts_with("2000-01-05") && t.contains(&module)),
+            "no Visual effects operation: {texts:?}"
+        );
+        let original = crate::i18n::messages::ve_value(
+            app.tr,
+            Some(crate::visual_effects::EffectId::UiEffects),
+            &crate::visual_effects::SettingValue::Flag(true),
+        );
+        let desc = app
+            .tr
+            .t_args("ve.original_desc", &[&original, &"2026-01-02 03:04:06"]);
+        let titles = [
+            crate::i18n::messages::ve_title(app.tr, crate::visual_effects::EffectId::MenuAnimation),
+            crate::i18n::messages::ve_title(
+                app.tr,
+                crate::visual_effects::EffectId::TooltipAnimation,
+            ),
+        ];
+        let companions = crate::i18n::messages::ve_companions(app.tr, 2, &titles);
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.contains(&desc) && t.contains(&companions)),
+            "{desc:?} with {companions:?} not drawn on History"
+        );
+
         // Home: the Startup apps tile, with the counts of the last scan.
         app.active_tab = ActiveTab::Home;
         let mut home = Vec::new();
@@ -1725,6 +1932,8 @@ mod tests {
             app.tr.t_args("home.environment_status", &[&vars, &folders]),
             app.tr.t("nav.mouse_keyboard"),
             app.tr.t_args("home.mouse_keyboard_status_one", &[&1]),
+            app.tr.t("nav.visual_effects"),
+            app.tr.t_args("home.visual_effects_status_one", &[&1]),
         ] {
             assert!(
                 home.contains(&drawn),

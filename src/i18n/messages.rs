@@ -13,6 +13,7 @@ use crate::mouse_keyboard::{
 use crate::persist::LoadError;
 use crate::startup::{Source, StartupLock, StartupState};
 use crate::tweaks::{CustomReason, TweakGroup};
+use crate::visual_effects::{EffectId, VeFailure, VeIssue, VeProblem, VeSection};
 
 pub fn rule_problem(tr: Tr, p: &RuleProblem) -> String {
     match p {
@@ -279,6 +280,172 @@ pub fn mk_issue(tr: Tr, issue: &MkIssue) -> String {
     }
 }
 
+/// The two Visual effects failures that say the effects gated by UI effects
+/// were not written (review T3-C6); `title` is the effect's translated
+/// title. `None` for every other failure, translated with the rest of the
+/// module's messages.
+pub fn ve_not_written(tr: Tr, f: &VeFailure, title: &str) -> Option<String> {
+    match f {
+        VeFailure::RereadFailed { code, .. } => {
+            Some(tr.t_args("ve.failure.reread", &[&title, code]))
+        }
+        VeFailure::GatedNotSaved(why) => Some(tr.t_args("ve.failure.gated_not_saved", &[why])),
+        _ => None,
+    }
+}
+
+/// The title of a visual effect.
+pub fn ve_title(tr: Tr, id: EffectId) -> String {
+    tr.t(match id {
+        EffectId::UiEffects => "ve.ui_effects.title",
+        EffectId::WindowAnimation => "ve.window_animation.title",
+        EffectId::ClientAreaAnimation => "ve.client_area_animation.title",
+        EffectId::ComboboxAnimation => "ve.combobox_animation.title",
+        EffectId::ListboxSmoothScroll => "ve.listbox_smooth_scroll.title",
+        EffectId::MenuAnimation => "ve.menu_animation.title",
+        EffectId::MenuFade => "ve.menu_fade.title",
+        EffectId::SelectionFade => "ve.selection_fade.title",
+        EffectId::TooltipAnimation => "ve.tooltip_animation.title",
+        EffectId::TooltipFade => "ve.tooltip_fade.title",
+        EffectId::CursorShadow => "ve.cursor_shadow.title",
+        EffectId::DropShadow => "ve.drop_shadow.title",
+        EffectId::FontSmoothing => "ve.font_smoothing.title",
+        EffectId::FontSmoothingType => "ve.font_smoothing_type.title",
+        EffectId::CleartypeContrast => "ve.cleartype_contrast.title",
+        EffectId::CaretWidth => "ve.caret_width.title",
+        EffectId::FocusBorderWidth => "ve.focus_border_width.title",
+        EffectId::FocusBorderHeight => "ve.focus_border_height.title",
+    })
+}
+
+/// The line under an effect's title, for the effects that have one.
+pub fn ve_description(tr: Tr, id: EffectId) -> Option<String> {
+    (id == EffectId::UiEffects).then(|| tr.t("ve.ui_effects.description"))
+}
+
+/// The title of a section of the Visual effects page.
+pub fn ve_section(tr: Tr, s: VeSection) -> String {
+    tr.t(match s {
+        VeSection::UiEffects => "ve.section.ui_effects",
+        VeSection::Animations => "ve.section.animations",
+        VeSection::MenusTooltips => "ve.section.menus",
+        VeSection::Shadows => "ve.section.shadows",
+        VeSection::Text => "ve.section.text",
+        VeSection::CaretFocus => "ve.section.caret",
+    })
+}
+
+/// `n` with its digits grouped by threes, `sep` between the groups.
+fn grouped(n: u32, sep: &str) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push_str(sep);
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// An effect's value as the page shows it ("On", "Slide", "ClearType",
+/// "1,200", "2 px"). Without an id (a key this version does not know), a
+/// flag is On / Off and a number is shown as it is.
+pub fn ve_value(tr: Tr, id: Option<EffectId>, v: &SettingValue) -> String {
+    use crate::visual_effects::{FE_CLEARTYPE, FE_STANDARD};
+    use EffectId::*;
+    match *v {
+        SettingValue::Flag(on) => match (id, on) {
+            (Some(MenuFade | TooltipFade), true) => tr.t("ve.value.fade"),
+            (Some(MenuFade | TooltipFade), false) => tr.t("ve.value.slide"),
+            (_, true) => tr.t("ve.value.on"),
+            (_, false) => tr.t("ve.value.off"),
+        },
+        SettingValue::Number(n) => match id {
+            Some(FontSmoothingType) if n == FE_STANDARD => tr.t("ve.value.standard"),
+            Some(FontSmoothingType) if n == FE_CLEARTYPE => tr.t("ve.value.cleartype"),
+            Some(FontSmoothingType) => tr.t_args("ve.value.unknown", &[&n]),
+            Some(CleartypeContrast) => grouped(n, &tr.t("ve.value.thousands")),
+            Some(CaretWidth | FocusBorderWidth | FocusBorderHeight) => {
+                tr.t_args("ve.value.px", &[&n])
+            }
+            _ => n.to_string(),
+        },
+        SettingValue::Mouse([a, b, c]) => format!("{{{a}, {b}, {c}}}"),
+    }
+}
+
+/// An effect named by its stored key: its title, else the raw key.
+fn ve_key_name(tr: Tr, key: &str) -> String {
+    match EffectId::from_key(key) {
+        Some(id) => ve_title(tr, id),
+        None => key.to_string(),
+    }
+}
+
+/// Why a visual effects Apply or Restore was refused (nothing written).
+pub fn ve_problem(tr: Tr, p: &VeProblem) -> String {
+    match p {
+        VeProblem::OutOfRange(id) => tr.t_args("ve.problem.out_of_range", &[&ve_title(tr, *id)]),
+        VeProblem::UnknownSetting(key) => tr.t_args("ve.problem.unknown", &[&ve_key_name(tr, key)]),
+        VeProblem::Unreadable { id, code } => {
+            tr.t_args("ve.problem.unreadable", &[&ve_title(tr, *id), code])
+        }
+        VeProblem::WrongAccount { process, session } => {
+            tr.t_args("ve.problem.wrong_account", &[process, session])
+        }
+        VeProblem::AccountUnknown(why) => tr.t_args("ve.problem.account_unknown", &[why]),
+        VeProblem::NotSaved(why) => tr.t_args("ve.problem.not_saved", &[why]),
+        VeProblem::NoOriginal(key) => tr.t_args("ve.problem.no_original", &[&ve_key_name(tr, key)]),
+    }
+}
+
+/// Why one effect of a visual effects job failed. The two failures that
+/// say gated rows were not written read as [`ve_not_written`] gives them.
+pub fn ve_failure(tr: Tr, f: &VeFailure) -> String {
+    match f {
+        VeFailure::SetFailed { id, code } => {
+            tr.t_args("ve.failure.set", &[&ve_title(tr, *id), code])
+        }
+        VeFailure::Mismatch { id, wanted, read } => tr.t_args(
+            "ve.failure.mismatch",
+            &[
+                &ve_title(tr, *id),
+                &ve_value(tr, Some(*id), read),
+                &ve_value(tr, Some(*id), wanted),
+            ],
+        ),
+        VeFailure::Unverified { id, code } => {
+            tr.t_args("ve.failure.unverified", &[&ve_title(tr, *id), code])
+        }
+        VeFailure::HeldByMaster { id, .. } => tr.t_args("ve.failure.held", &[&ve_title(tr, *id)]),
+        VeFailure::StoreNotSaved(why) => tr.t_args("ve.failure.store", &[why]),
+        VeFailure::RereadFailed { id, .. } => {
+            ve_not_written(tr, f, &ve_title(tr, *id)).unwrap_or_default()
+        }
+        // No title: the text names UI effects and the rows it gates itself.
+        VeFailure::GatedNotSaved(_) => ve_not_written(tr, f, "").unwrap_or_default(),
+    }
+}
+
+pub fn ve_issue(tr: Tr, issue: &VeIssue) -> String {
+    match issue {
+        VeIssue::Problem(p) => ve_problem(tr, p),
+        VeIssue::Failure(f) => ve_failure(tr, f),
+    }
+}
+
+/// The restore question's line for the master's companions: "Also
+/// restores {n} effects: {titles}".
+pub fn ve_companions(tr: Tr, n: usize, titles: &[String]) -> String {
+    let key = if n == 1 {
+        "ve.also_restores_one"
+    } else {
+        "ve.also_restores"
+    };
+    tr.t_args(key, &[&n, &titles.join(", ")])
+}
+
 /// The pill of an entry: its state in the registry.
 pub fn entry_status(tr: Tr, s: &EntryStatus) -> String {
     match s {
@@ -369,6 +536,7 @@ pub fn history_module(tr: Tr, stored: &str) -> String {
         "Startup apps" => tr.t("history.module.startup"),
         "Environment variables" => tr.t("history.module.environment"),
         "Mouse & keyboard" => tr.t("history.module.mouse_keyboard"),
+        "Visual effects" => tr.t("history.module.visual_effects"),
         other => other.to_string(),
     }
 }

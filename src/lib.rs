@@ -19,3 +19,4 @@ pub mod sysparams;
 pub mod tasks;
 pub mod tweaks;
 pub mod ui;
+pub mod visual_effects;

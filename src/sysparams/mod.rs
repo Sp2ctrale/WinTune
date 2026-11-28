@@ -8,7 +8,7 @@ mod store;
 
 pub use account::{compare_accounts, session_account_check, AccountCheck};
 pub use spi::ApiError;
-pub(crate) use spi::{last_error, spi_get, spi_set, SetCall, WRONG_SHAPE};
+pub(crate) use spi::{last_error, spi_get, spi_get_animation, spi_set, SetCall, WRONG_SHAPE};
 pub use store::{export_values, SpiBackup, SpiBackupStore};
 
 use serde::{Deserialize, Serialize};

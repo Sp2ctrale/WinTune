@@ -13,9 +13,51 @@ pub(crate) const WRONG_SHAPE: ApiError = ApiError { code: 87 };
 /// The parameters of one `SystemParametersInfoW` SET.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SetCall {
-    Ui { action: u32, ui: u32 },
-    PvValue { action: u32, pv: usize },
-    PvArray { action: u32, array: [i32; 3] },
+    Ui {
+        action: u32,
+        ui: u32,
+    },
+    PvValue {
+        action: u32,
+        pv: usize,
+    },
+    PvArray {
+        action: u32,
+        array: [i32; 3],
+    },
+    /// `SPI_SETANIMATION`: a pointer to `ANIMATIONINFO { 8, on }`.
+    Animation {
+        action: u32,
+        on: bool,
+    },
+}
+
+/// `SPI_GETANIMATION`: whether minimize/maximize animation is on (any
+/// non-zero `iMinAnimate`).
+pub(crate) fn spi_get_animation() -> Result<bool, ApiError> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SystemParametersInfoW, ANIMATIONINFO, SPI_GETANIMATION,
+    };
+    let size = std::mem::size_of::<ANIMATIONINFO>() as u32;
+    let mut info = ANIMATIONINFO {
+        cbSize: size,
+        iMinAnimate: 0,
+    };
+    // SAFETY: `info` is a live ANIMATIONINFO with `cbSize` set, and uiParam
+    // is its size, as SPI_GETANIMATION requires.
+    let ok = unsafe {
+        SystemParametersInfoW(
+            SPI_GETANIMATION,
+            size,
+            (&mut info as *mut ANIMATIONINFO).cast(),
+            0,
+        )
+    };
+    if ok == 0 {
+        Err(last_error())
+    } else {
+        Ok(info.iMinAnimate != 0)
+    }
 }
 
 pub(crate) fn last_error() -> ApiError {
@@ -60,10 +102,40 @@ pub(crate) fn spi_set(call: SetCall) -> Result<(), ApiError> {
             // the layout SPI_SETMOUSE reads; it outlives the call.
             unsafe { SystemParametersInfoW(action, 0, array.as_mut_ptr().cast(), flags) }
         }
+        SetCall::Animation { action, on } => {
+            use windows_sys::Win32::UI::WindowsAndMessaging::ANIMATIONINFO;
+            let size = std::mem::size_of::<ANIMATIONINFO>() as u32;
+            let mut info = ANIMATIONINFO {
+                cbSize: size,
+                iMinAnimate: i32::from(on),
+            };
+            // SAFETY: pvParam points to a live ANIMATIONINFO with `cbSize`
+            // set and uiParam is its size, as SPI_SETANIMATION requires; it
+            // outlives the call.
+            unsafe {
+                SystemParametersInfoW(
+                    action,
+                    size,
+                    (&mut info as *mut ANIMATIONINFO).cast(),
+                    flags,
+                )
+            }
+        }
     };
     if ok == 0 {
         Err(last_error())
     } else {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn animation_info_is_eight_bytes() {
+        assert_eq!(
+            std::mem::size_of::<windows_sys::Win32::UI::WindowsAndMessaging::ANIMATIONINFO>(),
+            8
+        );
     }
 }

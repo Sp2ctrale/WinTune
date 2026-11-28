@@ -1,7 +1,7 @@
 # WinTune
 
 WinTune is a Windows 10/11 desktop app for customizing the system. Every change it
-makes can be undone. It has seven modules:
+makes can be undone. It has eight modules:
 
 - **File associations**: custom icons, the double-click action (open in your
   editor or run the script), right-click verbs, and Explorer preview metadata.
@@ -28,6 +28,10 @@ makes can be undone. It has seven modules:
   double-click speed, the wheel, key repeat and menu timing, applied live
   through the Windows API and read back, with a Windows default and a Restore
   original for each setting.
+- **Visual effects**: the animations, fades, shadows, font smoothing, caret and
+  focus settings of Performance Options, applied live through the Windows API
+  and read back, with two presets, a Windows default and a Restore original for
+  each setting.
 
 Built with Rust and [egui](https://github.com/emilk/egui). The interface is
 available in English and Français, and the theme follows Windows (or can be
@@ -353,6 +357,63 @@ drag full windows).
 Details and the evidence for each claim are in
 [docs/registry-reference.md](docs/registry-reference.md#mouse--keyboard).
 
+## Visual effects
+
+The **Visual effects** page has six sections: **UI effects** (the switch that
+turns Windows' effects on or off at once), **Animations** (windows when
+minimizing and maximizing, controls inside windows, combo boxes, smooth list
+scrolling), **Menus and tooltips** (menu animation and Fade or Slide, selection
+fade, tooltip animation and Fade or Slide), **Shadows** (under the pointer and
+under windows), **Text** (font smoothing, Standard or ClearType, ClearType
+contrast) and **Caret and focus** (caret width, focus rectangle width and
+height).
+
+- **Live apply.** As for Mouse & keyboard, WinTune does not write the registry.
+  It asks Windows to change each setting (`SystemParametersInfoW`, kept in your
+  profile and sent to running programs), reads it back, and reports a setting
+  as failed if Windows kept another value. Some programs show a change only
+  after a restart, and WinTune itself never changes (it draws its own text and
+  animations), so look at another window such as Notepad to see it.
+- **Presets.** **For appearance** and **For performance** only fill in pending
+  choices for the first four sections (nothing is applied until you press
+  Apply). Performance also turns UI effects on, pending, so the rows it gates
+  can be set off and show their real state. Neither touches Text or Caret and
+  focus.
+- **Gates.** A row is disabled while the effect it depends on is off, with a
+  hover text saying why: the master switch for most effects, menu animation for
+  menu fade, tooltip animation for tooltip fade, font smoothing for its type,
+  and ClearType for its contrast.
+- **Windows default and Restore original.** The `...` menu of each row has
+  **Windows default** (it sets the pending value) and, once WinTune has changed
+  the setting, **Restore original** (the value it had before).
+- **UI effects and its companions.** Windows does not say whether turning the
+  switch off clears the effects it controls or only pauses them. So the first
+  time you change the switch, WinTune also saves the eight effects it controls
+  (the combo box, list box, menu and its fade, selection fade, tooltip and its
+  fade, and the pointer shadow). Restoring the switch brings them back too, and
+  the History row says "also restores 8 effects". They have no History rows of
+  their own unless you change them directly.
+- **Safety.** If WinTune runs as another account than the one signed in, the
+  page shows a banner ("WinTune runs as ..., but ... is signed in") and changes
+  nothing, because the settings would be saved for the wrong account.
+- **Undo.** In **History**, **Saved originals** has a **Visual effects** group,
+  with a row per setting. Every apply and restore is logged under "Visual
+  effects". The Home tile reads "{n} effects changed by WinTune".
+- **The `.reg` file.** Each apply also writes a `.reg` file of the values in
+  `HKCU\Control Panel\Desktop` and `Desktop\WindowMetrics` to `reg-backups`. It
+  is a last resort and WinTune never imports it. Do not double-click it:
+  importing it also puts back `UserPreferencesMask` (which undoes ClickLock,
+  Sonar and Vanish from Mouse & keyboard too), the wallpaper and the window
+  metrics, and takes effect only at the next sign-in. Use **Restore original**
+  instead.
+- **Not covered.** Thumbnails instead of icons, the translucent selection
+  rectangle, icon label shadows, taskbar animations, Peek and thumbnail
+  previews, Transparency effects and gradient captions. Show window contents
+  while dragging is on the Mouse & keyboard page.
+
+Details and the evidence for each claim are in
+[docs/registry-reference.md](docs/registry-reference.md#visual-effects).
+
 ## Safety and undo
 
 Before anything is written:
@@ -399,7 +460,7 @@ leave that key alone.
 
 The **History** page lists every operation and, under **Saved originals**,
 every snapshot WinTune holds. You can restore one item, or a whole group
-(File associations, Explorer & Taskbar, Start & Privacy, Context menu, Startup apps, Environment variables, Mouse & keyboard). Each restore asks
+(File associations, Explorer & Taskbar, Start & Privacy, Context menu, Startup apps, Environment variables, Mouse & keyboard, Visual effects). Each restore asks
 first. Restoring a renamed environment variable brings back both names
 together. Restoring an extension puts it back to its exact pre-WinTune state. It
 also removes every ProgID that WinTune created, including ones you renamed
@@ -419,6 +480,7 @@ Everything lives in `%ProgramData%\Wintune`:
 | `startup-backups.json` | Original state of each Startup apps switch, per user |
 | `environment-backups.json` | Original state of each environment variable WinTune changed, per user, plus the pairs of names a rename restores together |
 | `mouse-keyboard-backups.json` | The value each Mouse & keyboard setting had before WinTune changed it, per user |
+| `visual-effects-backups.json` | The value each Visual effects setting had before WinTune changed it, per user, with the companions of UI effects marked |
 | `history.jsonl` | One line per operation (apply, rollback, restore), shown by the **History** page |
 | `reg-backups\*.reg` | `.reg` safety net written before each apply |
 | `gallery.pak` | Optional compressed icon pack, built from the icon folder |
@@ -437,6 +499,8 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `startup` | Startup apps engine (scan of the Run keys and Startup folders, `StartupApproved` switch, apply, restore) on an injectable `StartupTarget` |
 | `environment` | Environment variables engine (`path` and `rules` are pure; `scan` reads `HKCU\Environment` and the system key; `engine` applies, restores and broadcasts) on an injectable `EnvTarget` |
 | `mouse_keyboard` | Mouse & keyboard engine (catalog, `store`, `backend` with the real `SystemParametersInfoW` calls, `engine` for scan, apply with readback and restore) on an injectable `InputApi`; it writes no registry value |
+| `sysparams` | What Mouse & keyboard and Visual effects share: `SettingValue` and `Shape`, the raw `SystemParametersInfoW` GET and SET calls, the account check, the snapshot store type and the read-only `.reg` export |
+| `visual_effects` | Visual effects engine (catalog with gates and ranges, `store`, `backend` with the real calls and the fake, `engine` for scan, apply with the master's companions and readback, and restore) on an injectable `EffectsApi`; it writes no registry value |
 | `persist` | JSON stores: a missing file is empty, a corrupt or unreadable file is a `LoadError` (a code the UI translates), saves are atomic |
 | `history` | Operation log (`history.jsonl`): append one line per operation, read the most recent |
 | `models` | Config and backup data types, `ThemeMode`, plus the default rules |
@@ -445,7 +509,7 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `detector` | VS Code, WSL and user-hive detection |
 | `clock` | Local timestamps |
 | `i18n` | Translations: `.resx` catalogs in `i18n/`, the `Tr` handle, and engine message codes turned into text |
-| `ui` | egui interface, one file per page (`home`, `associations_tab`, `tweaks_tab` for both tweak pages, `context_menu_tab`, `startup_tab`, `environment_tab`, `mouse_keyboard_tab`, `gallery_tab` for Icons, `history_panel`, `settings`), `originals` (History's saved originals), `icon_grid` (the shared icon grid) and `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation and action bars), `autosave`, `confirm`, `rule_status`, `jobs`, and `kit/`, the design kit that holds the theme and every control |
+| `ui` | egui interface, one file per page (`home`, `associations_tab`, `tweaks_tab` for both tweak pages, `context_menu_tab`, `startup_tab`, `environment_tab`, `mouse_keyboard_tab`, `visual_effects_tab`, `gallery_tab` for Icons, `history_panel`, `settings`), `originals` (History's saved originals), `icon_grid` (the shared icon grid) and `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation and action bars), `autosave`, `confirm`, `rule_status`, `jobs`, and `kit/`, the design kit that holds the theme and every control |
 | `main.rs` | Window setup only |
 
 Apply, rollback and pack building run on a background thread, a progress bar
@@ -501,7 +565,7 @@ The binary is not code-signed yet, so SmartScreen may warn on first launch.
   operation history. Still to do: a diff preview before applying, and config
   import/export.
 - **Customization modules**: Explorer & Taskbar, Start & Privacy, Context
-  menu, Startup apps and Environment variables are built on the snapshot engine, and Mouse & keyboard on the
-  Windows settings API with its own snapshot store. More can follow, built on the same
+  menu, Startup apps and Environment variables are built on the snapshot engine, and Mouse & keyboard and Visual effects on the
+  Windows settings API with their own snapshot stores. More can follow, built on the same
   snapshot and rollback ideas.
 - **Phase 4**: the release workflow (draft releases from tags) is done. Still to do: an installer and code signing.

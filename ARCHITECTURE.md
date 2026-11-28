@@ -32,8 +32,16 @@ the library, so it can be tested without the GUI and without elevation.
   importing one restores the exact state.
 - **Engines**: `associations`, `tweaks`, `context_menu`, `startup` and `environment`. Each one works on
   an injectable target (`AssocTarget`, `TweakTarget`, `MenuTarget`, `StartupTarget`, `EnvTarget`). Production uses the real hives;
-  tests point the target at `HKCU\Software\WinTuneTest\<unique>`. `mouse_keyboard` is the exception: it
-  works on an injectable `InputApi` (the Windows settings API, not the registry), and tests use a fake.
+  tests point the target at `HKCU\Software\WinTuneTest\<unique>`. `mouse_keyboard` and `visual_effects` are the exception: each
+  works on an injectable API trait (`InputApi`, `EffectsApi`: the Windows settings API, not the registry), and tests use a fake.
+- **`sysparams`**: what those two modules share, and nothing more: `SettingValue`
+  and `Shape`, `ApiError` and the raw `SystemParametersInfoW` GET and SET
+  executor (the value in `uiParam`, in `pvParam`, an array in `pvParam`, or an
+  `ANIMATIONINFO`), the account check, the snapshot store type
+  (`SpiBackupStore`) and the read-only `.reg` value export (`export_values`).
+  Each module keeps its own id enum, descriptor table, trait, fake, catalog and
+  engine; `mouse_keyboard` re-exports the moved names, so its code and tests
+  and its store file are unchanged.
 - **Stores**: small JSON files under `%ProgramData%\Wintune`.
 
 | File | Owner | Rule |
@@ -45,6 +53,7 @@ the library, so it can be tested without the GUI and without elevation.
 | `startup-backups.json` | `startup` | Same rule as `backups.json`. Snapshots are keyed by user, then by slot id: one `StartupApproved` value of HKCU (a value path and name) |
 | `environment-backups.json` | `environment` | Same rule as `backups.json`. Snapshots are keyed by user, then by slot id: one value of HKCU `Environment` (the value path `Environment` and the variable name). Next to `users` it holds `renames`, per user: groups of slot ids (a rename's two slots) restored together. A store without `renames` loads |
 | `mouse-keyboard-backups.json` | `mouse_keyboard` | Same rule as `backups.json`: unreadable blocks Apply and Restore. Snapshots are keyed by user, then by setting id, as `{ timestamp, value }`, where `value` is what the setting's GET returned (`Number`, `Flag` or the precision array). No registry bytes: its type is parallel to `backups::UserBackups`, not that type |
+| `visual-effects-backups.json` | `visual_effects` | Same rule and the same shared type (`sysparams::SpiBackupStore`) as `mouse-keyboard-backups.json`. Snapshots are keyed by user, then by effect id, as `{ timestamp, value }` plus an optional `companion_of` (the master's id), left out of the JSON when empty so the Mouse & keyboard file stays byte-identical |
 | `history.jsonl` | `history` | Append-only. A damaged line is skipped, never fatal |
 | `reg-backups\*.reg` | engines | A `.reg` safety net written before each apply |
 
@@ -365,6 +374,75 @@ thread.
   when it swaps the buttons; Restore always asks. A failed account check shows
   a banner in place of the sections. Engine reasons are translated in
   `i18n/messages.rs`.
+- **Moved to `sysparams`.** `SettingValue` and `Shape`, `ApiError`, the raw
+  GET and SET executor, the account check (`AccountCheck`), the store type
+  (`MkBackupStore` is now an alias of `SpiBackupStore`) and the `.reg` export
+  (`export_control_panel` calls `export_values` with `CONTROL_PANEL_KEYS`).
+  `mouse_keyboard` re-exports them, and keeps its ids, descriptors, `InputApi`,
+  `FakeInput`, catalog and engine.
+
+## Visual effects engine
+
+`visual_effects` (`src/visual_effects/`) reads and changes 18 effects of the
+signed-in user through `SystemParametersInfoW`, built like Mouse & keyboard on
+`sysparams`. It never writes under `HKCU\Control Panel`, `Explorer\Advanced` or
+`DWM`, never writes `UserPreferencesMask`, and every SET runs on the job
+worker thread.
+
+- **Catalog and gates** (`catalog.rs`): pure. `EffectId` (18 ids, `key()` is
+  the join key between row, pending choice, store and History), `VeSection`
+  (six), `VeControl`, the page ranges, the Windows defaults, `Gate` (`Master`,
+  `On(id)` or `ClearType`) and `MASTER_COMPANIONS`. A gated row is disabled
+  while its gate is off; a gate that is itself disabled disables its rows
+  (transitive), and the page drops their pending choices. Gating is a page
+  rule: the engine writes what it is given. `write_order` puts `ui_effects`
+  first when it goes on and last when it goes off.
+- **Backend** (`backend.rs`): the `EffectsApi` trait (`get`, `set`). `SpiEffects`
+  is the real one: one static `VeDescriptor` per id (GET action, SET action and
+  family: `uiParam`, `pvParam` or `ANIMATIONINFO`), always with
+  `SPIF_UPDATEINIFILE | SPIF_SENDCHANGE`. `FakeEffects` is a map with a call
+  log, switches to fail a GET or SET or keep another value, and three
+  `MasterMode`s for what the master does to its companions: `Gates` (every
+  value independent), `Clears` (turning it off stores off for them) and
+  `ReadsOff` (their GETs read off while it is off). `AppEnv` carries an
+  `Arc<dyn EffectsApi>` (`SpiEffects` only in `AppEnv::system`). A drift test
+  checks `registry-reference.md` against the descriptors (ids, both GET and SET
+  actions in hex, the two Control Panel keys).
+- **Store** (`store.rs`): `VeBackupStore` is `SpiBackupStore`, saved through
+  `persist`. `export_desktop` writes the `.reg` net (the values directly in
+  `Control Panel\Desktop` and `\Desktop\WindowMetrics`, `DESKTOP_KEYS`), read
+  only, never imported by WinTune.
+- **Scan** (`scan_visual_effects`): one GET per effect plus the account check;
+  an effect whose GET fails is locked.
+- **Apply** (`apply_visual_effects`): the account check, then validate every
+  change (any problem refuses, nothing written), then read each touched effect
+  and, when a master-gated row or the master is touched, every companion; take
+  the snapshots (companions marked `companion_of`), save the store and write
+  the `.reg` (if either fails, nothing is applied). Then write in
+  `write_order`, each SET followed by its GET. When the master goes from live
+  off to on, the companions and gated rows snapshotted in the job are read
+  again right after its SET, replacing their snapshots, and the store is saved
+  before any gated row is written (the one exception to "all snapshot GETs
+  before the first SET"). Last, each snapshot whose live value is back at its
+  original is forgotten, except those the companion rules keep (a row held by
+  the master, an unverified one, and a companion touched in a batch that turns
+  the master off), and the store is saved again. `VeReport.issues` are enums
+  (`VeProblem`, `VeFailure`) and match `report.errors` one to one.
+- **`HeldByMaster`**: after a differing readback of a gated row, one GET of
+  `ui_effects` decides: if it is live off the issue is `HeldByMaster` (not a
+  plain `Mismatch`) and the snapshot is kept; if that GET fails the issue is
+  `Unverified`. A companion is never written while the master stays off.
+- **Restore** (`restore_visual_effects`): SET the stored value exactly, GET it
+  back, forget the snapshot only if they match. Restoring the master restores
+  its companions with it (the master first when it goes on, last when it goes
+  off). After a master-off restore, each companion written before it is read
+  again and only one still at its original is forgotten; any other stays as a
+  held row. Under `ReadsOff` that leaves the companions that are on listed,
+  which pre-merge checklist item 4 decides. No `.reg`.
+- **Forget** a companion when it is restored, or when the master is back at
+  its original; the page then drops the pending choices of restored effects.
+- **Page** (`ui/visual_effects_tab.rs`, `ui/visual_effects_state.rs`): see the
+  UI section.
 
 ## Safety model (every module that writes to the registry)
 
@@ -385,11 +463,11 @@ thread.
 - **The frame** (`ui/shell.rs`). A grouped navigation on the left, one page
   in the middle, and two kinds of notice: toasts for results and a progress
   bar while a job runs. The pages are Home, File associations, Explorer &
-  Taskbar, Start & Privacy, Context menu, Startup apps, Environment variables, Mouse & keyboard, Icons, History and Settings. Home (`home.rs`) shows one tile per
+  Taskbar, Start & Privacy, Context menu, Startup apps, Environment variables, Mouse & keyboard, Visual effects, Icons, History and Settings. Home (`home.rs`) shows one tile per
   module (the Startup apps tile reads "{n} apps, {m} turned off", counting
   every item that is not On; the Environment variables tile reads "{n} variables, {m} folders in Path",
   counting `Path` among the variables; the Mouse & keyboard tile reads "{n} settings changed by WinTune",
-  this user's snapshot count), a drift banner and the recent operations. Settings (`settings.rs`)
+  this user's snapshot count; the Visual effects tile reads "{n} effects changed by WinTune", the same count with the master's companions left out), a drift banner and the recent operations. Settings (`settings.rs`)
   and History (`history_panel.rs`) are pages too. `config.json` is saved by `autosave.rs`
   one second after the last edit, and always before the window closes.
 - **`open_page` is the single entry** for switching page. It reloads the
@@ -414,6 +492,16 @@ thread.
   apply and restore jobs live in `jobs.rs`, and `history_panel.rs` and
   `originals.rs` add the History filter chip (the filter row scrolls
   horizontally, as eight chips no longer fit) and the Saved originals group.
+- **Visual effects modules.** `visual_effects_tab.rs` draws the page (six
+  kit sections, a `SettingRow` per effect, the **For appearance** and **For
+  performance** presets that only fill pending choices, a disabled row with a
+  hover reason, the account banner and a link to Mouse & keyboard for drag full
+  windows), `visual_effects_state.rs` holds the scan job and the pending
+  choices (a scan and a gate turned off drop the choices of rows now disabled),
+  the apply and restore jobs live in `jobs.rs`, and `history_panel.rs` and
+  `originals.rs` add the History filter chip and the Saved originals group
+  (companions are not listed; the master's row says "also restores {0}
+  effects"). Nav icon `E771`.
 - **One file per page.** The two tweak tabs share `tweaks_tab.rs`, and each
   shows its own `TweakGroup`s. They are kit pages: a section per group, a
   `SettingRow` per tweak with its state pill, and a `…` menu on rows that

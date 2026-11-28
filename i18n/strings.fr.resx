@@ -1963,7 +1963,10 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
     <value>Restaurer les réglages d'origine ?</value>
   </data>
   <data name="ve.restore_message" xml:space="preserve">
-    <value>{0} retrouveront la valeur qu'ils avaient avant que WinTune les modifie.</value>
+    <value>{0} : les valeurs d'avant les changements de WinTune seront rétablies.</value>
+  </data>
+  <data name="ve.restore_message_one" xml:space="preserve">
+    <value>{0} : la valeur d'avant les changements de WinTune sera rétablie.</value>
   </data>
   <data name="ve.restore_many" xml:space="preserve">
     <value>{0} réglages</value>

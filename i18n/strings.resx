@@ -1966,6 +1966,9 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="ve.restore_message" xml:space="preserve">
     <value>{0} will get back the value they had before WinTune changed them.</value>
   </data>
+  <data name="ve.restore_message_one" xml:space="preserve">
+    <value>{0}: the value from before WinTune changed it will be restored.</value>
+  </data>
   <data name="ve.restore_many" xml:space="preserve">
     <value>{0} settings</value>
   </data>

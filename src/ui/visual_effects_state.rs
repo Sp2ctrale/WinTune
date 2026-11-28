@@ -8,7 +8,7 @@ use crate::i18n::messages;
 use crate::tasks::{BackgroundJob, JobPoll};
 use crate::visual_effects::{
     load_ve_store, scan_visual_effects, EffectId, Gate, SettingValue, VeBackupStore, VeChange,
-    VeControl, VeScan, VeSection, FE_CLEARTYPE,
+    VeControl, VeScan, VeSection, FE_CLEARTYPE, MASTER_COMPANIONS,
 };
 use eframe::egui;
 
@@ -71,13 +71,22 @@ impl WinTuneApp {
             match job.poll() {
                 JobPoll::Running => return,
                 JobPoll::Finished(scan) => {
+                    self.ve_scan = Some(scan);
                     // A choice the live value already matches (applied by a
                     // partial Apply, or changed in Performance Options), or
                     // for an effect Windows could not read, is no longer
-                    // pending.
-                    self.ve_pending
-                        .retain(|&id, wanted| scan.live(id).is_some_and(|live| live != *wanted));
-                    self.ve_scan = Some(scan);
+                    // pending; nor is one whose row the new values disable
+                    // (spec 5.3, review T4-I1).
+                    let stale: Vec<EffectId> = self
+                        .ve_pending
+                        .iter()
+                        .filter(|&(&id, wanted)| !self.ve_differs_from_live(id, wanted))
+                        .map(|(&id, _)| id)
+                        .collect();
+                    for id in stale {
+                        self.ve_pending.remove(&id);
+                    }
+                    self.drop_gated_choices();
                 }
                 JobPoll::Panicked(msg) => {
                     let text = self.tr.t_args("ve.scan_failed", &[&msg]);
@@ -145,18 +154,29 @@ impl WinTuneApp {
         }
     }
 
-    /// Records a choice; one the live value already matches is dropped.
-    /// Then every choice whose row is now disabled is dropped too, so a
-    /// disabled row never shows "Not applied" (spec 5.3).
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(super) fn set_ve_wanted(&mut self, id: EffectId, v: SettingValue) {
-        let live = self.ve_scan.as_ref().and_then(|s| s.live(id));
-        if live == Some(v) {
-            self.ve_pending.remove(&id);
-        } else {
-            self.ve_pending.insert(id, v);
-        }
-        // Dropping a choice can disable another row: until nothing changes.
+    /// Whether `wanted` is a change for `id`: the last scan read it and the
+    /// value differs. Under a master live off that the batch turns on, a
+    /// companion's live read may be masked (case 2 of spec 5.3), so it
+    /// counts as a change even when it reads the same (review T4-M1). Not
+    /// a change before the first scan.
+    fn ve_differs_from_live(&self, id: EffectId, wanted: &SettingValue) -> bool {
+        let Some(scan) = self.ve_scan.as_ref() else {
+            return false;
+        };
+        let Some(live) = scan.live(id) else {
+            return false;
+        };
+        let master = EffectId::UiEffects;
+        let masked = MASTER_COMPANIONS.contains(&id)
+            && scan.live(master) == Some(SettingValue::Flag(false))
+            && self.ve_pending.get(&master) == Some(&SettingValue::Flag(true));
+        masked || live != *wanted
+    }
+
+    /// Drops every choice whose row is disabled, so a disabled row never
+    /// shows "Not applied" (spec 5.3). Dropping one can disable another
+    /// row: until nothing changes.
+    fn drop_gated_choices(&mut self) {
         loop {
             let disabled: Vec<EffectId> = self
                 .ve_pending
@@ -171,6 +191,17 @@ impl WinTuneApp {
                 self.ve_pending.remove(&other);
             }
         }
+    }
+
+    /// Records a choice; one that is no change (`ve_differs_from_live`) is
+    /// dropped. Then every choice whose row is now disabled is dropped too.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(super) fn set_ve_wanted(&mut self, id: EffectId, v: SettingValue) {
+        self.ve_pending.insert(id, v);
+        if !self.ve_differs_from_live(id, &v) {
+            self.ve_pending.remove(&id);
+        }
+        self.drop_gated_choices();
     }
 
     /// "For appearance" / "For performance": pending values only, through
@@ -191,15 +222,16 @@ impl WinTuneApp {
     }
 
     /// The changes Apply writes, in table order: one per pending effect the
-    /// last scan read and whose live value differs. Empty before the first
-    /// scan and while WinTune runs as another account than the session's.
+    /// last scan read and whose live value differs (`ve_differs_from_live`).
+    /// Empty before the first scan and while WinTune runs as another account
+    /// than the session's.
     pub(super) fn ve_changes(&self) -> Vec<VeChange> {
-        let Some(scan) = self.ve_scan.as_ref().filter(|s| s.account_ok()) else {
+        if !self.ve_scan.as_ref().is_some_and(|s| s.account_ok()) {
             return Vec::new();
-        };
+        }
         self.ve_pending
             .iter()
-            .filter(|&(&id, wanted)| scan.live(id).is_some_and(|live| live != *wanted))
+            .filter(|&(&id, wanted)| self.ve_differs_from_live(id, wanted))
             .map(|(&id, &value)| VeChange { id, value })
             .collect()
     }
@@ -335,6 +367,62 @@ mod tests {
     }
 
     #[test]
+    fn a_scan_drops_choices_the_master_now_disables() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned(&fx, &ctx);
+        app.set_ve_wanted(CursorShadow, Flag(true));
+        assert_eq!(app.ve_pending_count(), 1);
+        // Performance Options turns the master off while WinTune is open.
+        fx.fake_effects().put(UiEffects, Flag(false));
+
+        rescan(&mut app, &ctx);
+
+        assert!(app.ve_pending.is_empty(), "{:?}", app.ve_pending);
+        assert_eq!(app.ve_pending_count(), 0);
+    }
+
+    #[test]
+    fn a_scan_drops_a_menu_effect_choice_when_menu_animation_reads_off() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = scanned(&fx, &ctx);
+        app.set_ve_wanted(MenuFade, Flag(false));
+        app.set_ve_wanted(CaretWidth, Number(2));
+        fx.fake_effects().put(MenuAnimation, Flag(false));
+
+        rescan(&mut app, &ctx);
+
+        assert_eq!(app.ve_pending, BTreeMap::from([(CaretWidth, Number(2))]));
+    }
+
+    #[test]
+    fn for_performance_under_a_hidden_master_queues_every_gated_toggle_off() {
+        use crate::visual_effects::MasterMode;
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        // Case 2: with the master off, every companion reads off whatever
+        // its stored value, so "off" may not be the real value.
+        fx.fake_effects().master_mode(MasterMode::ReadsOff);
+        fx.fake_effects().put(UiEffects, Flag(false));
+        let mut app = scanned(&fx, &ctx);
+        assert_eq!(app.ve_display(MenuAnimation), Some(Flag(false)), "masked");
+
+        app.apply_ve_preset(VePreset::Performance);
+
+        let mut want = off_all(&PERFORMANCE_OFF);
+        want.insert(CursorShadow, Flag(false));
+        want.insert(UiEffects, Flag(true));
+        assert_eq!(app.ve_pending, want);
+        assert_eq!(app.ve_pending_count(), 10, "Apply writes them all");
+        no_text_or_caret(&app.ve_pending);
+
+        // A rescan reads the same masked values: the choices stay.
+        rescan(&mut app, &ctx);
+        assert_eq!(app.ve_pending, want);
+    }
+
+    #[test]
     fn the_display_is_the_pending_value_else_the_live_one() {
         let fx = TempIcons::new(&[]);
         let ctx = egui::Context::default();
@@ -464,7 +552,10 @@ mod tests {
         rescan(&mut app, &ctx);
         app.apply_ve_preset(VePreset::Performance);
 
+        // T4-M1: under a master live off, a gated row's live read may be
+        // masked, so its "off" is queued even though it reads off already.
         let mut want = off_all(&PERFORMANCE_OFF);
+        want.insert(CursorShadow, Flag(false));
         want.insert(UiEffects, Flag(true));
         assert_eq!(app.ve_pending, want);
         no_text_or_caret(&app.ve_pending);

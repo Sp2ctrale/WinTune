@@ -315,7 +315,13 @@ impl WinTuneApp {
             ids.iter().map(|key| self.ve_slot_name(key)),
             "ve.restore_many",
         );
-        let mut message = tr.t_args("ve.restore_message", &[&named]);
+        let distinct: std::collections::BTreeSet<&String> = ids.iter().collect();
+        let message_key = if distinct.len() == 1 {
+            "ve.restore_message_one"
+        } else {
+            "ve.restore_message"
+        };
+        let mut message = tr.t_args(message_key, &[&named]);
         let master = crate::visual_effects::EffectId::UiEffects.key();
         if ids.iter().any(|key| key == master) {
             let mut companions: Vec<String> = self
@@ -1109,7 +1115,7 @@ mod tests {
             confirm.message,
             format!(
                 "{}\n\n{companions}",
-                tr.t_args("ve.restore_message", &[&"UI effects"])
+                tr.t_args("ve.restore_message_one", &[&"UI effects"])
             )
         );
         assert!(!app.is_busy(), "restored without confirmation");
@@ -1122,8 +1128,51 @@ mod tests {
         let message = &app.pending_confirm.as_ref().unwrap().message;
         assert_eq!(
             message,
-            &tr.t_args("ve.restore_message", &[&"Text cursor width"]),
+            &tr.t_args("ve.restore_message_one", &[&"Text cursor width"]),
             "no companions line"
+        );
+    }
+
+    #[test]
+    fn a_visual_effects_restore_reads_singular_or_counts() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        let message = |app: &WinTuneApp| app.pending_confirm.as_ref().unwrap().message.clone();
+
+        app.request_restore_visual_effects(vec!["caret_width".into()]);
+        assert_eq!(
+            message(&app),
+            "Text cursor width: the value from before WinTune changed it will be restored."
+        );
+        app.request_restore_visual_effects(vec!["caret_width".into(), "caret_width".into()]);
+        assert!(
+            message(&app).contains("it will be restored"),
+            "one distinct id"
+        );
+
+        app.request_restore_visual_effects(vec!["caret_width".into(), "hot_tracking".into()]);
+        assert_eq!(
+            message(&app),
+            app.tr
+                .t_args("ve.restore_message", &[&"Text cursor width, hot_tracking"])
+        );
+        let keys = ["caret_width", "drop_shadow", "menu_fade", "cursor_shadow"];
+        app.request_restore_visual_effects(keys.map(String::from).to_vec());
+        assert!(message(&app).contains("4 settings"), "{}", message(&app));
+
+        app.set_language("fr");
+        app.request_restore_visual_effects(vec!["caret_width".into()]);
+        assert_eq!(
+            message(&app),
+            "\u{c9}paisseur du curseur de texte : la valeur d'avant les changements de \
+             WinTune sera r\u{e9}tablie."
+        );
+        app.request_restore_visual_effects(vec!["caret_width".into(), "drop_shadow".into()]);
+        assert_eq!(
+            message(&app),
+            "\u{c9}paisseur du curseur de texte, Afficher des ombres sous les fen\u{ea}tres : \
+             les valeurs d'avant les changements de WinTune seront r\u{e9}tablies."
         );
     }
 

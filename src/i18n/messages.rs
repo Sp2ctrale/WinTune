@@ -423,6 +423,7 @@ pub fn ve_failure(tr: Tr, f: &VeFailure) -> String {
         VeFailure::RereadFailed { id, .. } => {
             ve_not_written(tr, f, &ve_title(tr, *id)).unwrap_or_default()
         }
+        // No title: the text names UI effects and the rows it gates itself.
         VeFailure::GatedNotSaved(_) => ve_not_written(tr, f, "").unwrap_or_default(),
     }
 }

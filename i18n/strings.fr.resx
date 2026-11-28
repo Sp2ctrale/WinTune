@@ -2130,4 +2130,52 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="ve.gate.cleartype" xml:space="preserve">
     <value>Sans effet si le type de lissage n'est pas ClearType</value>
   </data>
+  <data name="nav.visual_effects" xml:space="preserve">
+    <value>Effets visuels</value>
+  </data>
+  <data name="ve.subtitle" xml:space="preserve">
+    <value>Animations, ombres, lissage des polices et curseur de texte, chaque réglage avec une annulation.</value>
+  </data>
+  <data name="ve.note" xml:space="preserve">
+    <value>Les changements s'appliquent quand vous cliquez sur Appliquer et sont conservés quand vous fermez la session. Certains programmes ne les affichent qu'après un redémarrage.</value>
+  </data>
+  <data name="ve.preset.appearance" xml:space="preserve">
+    <value>Pour l'apparence</value>
+  </data>
+  <data name="ve.preset.performance" xml:space="preserve">
+    <value>Pour les performances</value>
+  </data>
+  <data name="ve.search" xml:space="preserve">
+    <value>Rechercher un réglage</value>
+  </data>
+  <data name="ve.scanning" xml:space="preserve">
+    <value>Lecture de vos réglages…</value>
+  </data>
+  <data name="ve.no_match" xml:space="preserve">
+    <value>Aucun réglage ne correspond à votre recherche.</value>
+  </data>
+  <data name="ve.pill.not_applied" xml:space="preserve">
+    <value>Non appliqué</value>
+  </data>
+  <data name="ve.windows_default" xml:space="preserve">
+    <value>Valeur par défaut de Windows</value>
+  </data>
+  <data name="ve.default_shown" xml:space="preserve">
+    <value>C'est déjà la valeur par défaut de Windows.</value>
+  </data>
+  <data name="ve.drag_link" xml:space="preserve">
+    <value>« Afficher le contenu des fenêtres pendant le déplacement » se trouve sur la page Souris et clavier</value>
+  </data>
+  <data name="ve.text_note" xml:space="preserve">
+    <value>WinTune dessine son propre texte : regardez une autre fenêtre, comme le Bloc-notes, pour voir le changement.</value>
+  </data>
+  <data name="ve.pending" xml:space="preserve">
+    <value>{0} changement(s) non appliqué(s)</value>
+  </data>
+  <data name="ve.up_to_date" xml:space="preserve">
+    <value>Tous les changements sont appliqués</value>
+  </data>
+  <data name="ve.nothing_to_apply" xml:space="preserve">
+    <value>Rien à appliquer</value>
+  </data>
 </root>

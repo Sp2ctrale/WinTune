@@ -15,7 +15,6 @@ use eframe::egui;
 pub(super) type VeScanJob = BackgroundJob<VeScan>;
 
 /// The page's two header buttons (spec 5.7). They set pending values only.
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum VePreset {
     /// Every effect of sections 1 to 4 on, fades as Fade.
@@ -112,7 +111,6 @@ impl WinTuneApp {
     }
 
     /// The value this user had before WinTune first changed `id`.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn ve_original(&self, id: EffectId) -> Option<SettingValue> {
         self.ve_store
             .original(&self.env.user_label, id.key())
@@ -121,7 +119,6 @@ impl WinTuneApp {
 
     /// The value the page shows: the pending one, else the live one. `None`
     /// before the first scan and for an effect Windows could not read.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn ve_display(&self, id: EffectId) -> Option<SettingValue> {
         let live = self.ve_scan.as_ref()?.live(id)?;
         Some(self.ve_pending.get(&id).copied().unwrap_or(live))
@@ -130,7 +127,6 @@ impl WinTuneApp {
     /// Why the row of `id` is disabled (its hover text), or `None` while it
     /// is enabled. A gate's state is the value the page shows for it (spec
     /// 5.3); a row under a disabled gate gives that gate's reason first.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn ve_gate_reason(&self, id: EffectId) -> Option<String> {
         let off = |g: EffectId| self.ve_display(g) == Some(SettingValue::Flag(false));
         match id.gate()? {
@@ -195,7 +191,6 @@ impl WinTuneApp {
 
     /// Records a choice; one that is no change (`ve_differs_from_live`) is
     /// dropped. Then every choice whose row is now disabled is dropped too.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn set_ve_wanted(&mut self, id: EffectId, v: SettingValue) {
         self.ve_pending.insert(id, v);
         if !self.ve_differs_from_live(id, &v) {
@@ -206,7 +201,6 @@ impl WinTuneApp {
 
     /// "For appearance" / "For performance": pending values only, through
     /// `set_ve_wanted`, the master first so its rows are enabled.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn apply_ve_preset(&mut self, preset: VePreset) {
         let on = SettingValue::Flag(true);
         self.set_ve_wanted(EffectId::UiEffects, on);
@@ -236,20 +230,17 @@ impl WinTuneApp {
             .collect()
     }
 
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn ve_pending_count(&self) -> usize {
         self.ve_changes().len()
     }
 
     /// "Discard": forgets the pending choices.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn discard_ve_changes(&mut self) {
         self.ve_pending.clear();
     }
 
     /// How the UI names a saved effect (as in History's saved originals):
     /// its title, else the raw key of an effect this version does not know.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn ve_slot_name(&self, key: &str) -> String {
         match EffectId::from_key(key) {
             Some(id) => messages::ve_title(self.tr, id),

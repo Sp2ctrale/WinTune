@@ -1077,7 +1077,6 @@ impl WinTuneApp {
     /// Writes the pending choices in one background job, without asking
     /// first: nothing here can lock the user out, and History undoes it
     /// (spec 5.4).
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn start_ve_apply(&mut self, ctx: &egui::Context) {
         if self.refuse_if_busy() {
             return;

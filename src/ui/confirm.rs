@@ -304,7 +304,6 @@ impl WinTuneApp {
     /// Asks before putting visual effects back to what they were before
     /// WinTune changed them. Restoring the master names the companions it
     /// restores with it (spec 5.3).
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn request_restore_visual_effects(&mut self, ids: Vec<String>) {
         if ids.is_empty() {
             return;

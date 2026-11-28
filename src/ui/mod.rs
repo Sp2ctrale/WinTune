@@ -37,6 +37,7 @@ mod startup_tab;
 mod test_support;
 mod tweaks_tab;
 mod visual_effects_state;
+mod visual_effects_tab;
 
 use crate::associations::{
     default_backup_store_path, default_reg_backup_dir, load_backup_store,
@@ -200,12 +201,13 @@ pub(crate) enum ActiveTab {
     Startup,
     Environment,
     MouseKeyboard,
+    VisualEffects,
 }
 
 impl ActiveTab {
     /// Every page that can be opened, in navigation order (the tests walk it).
     #[cfg(test)]
-    pub(crate) const ALL: [ActiveTab; 11] = [
+    pub(crate) const ALL: [ActiveTab; 12] = [
         ActiveTab::Home,
         ActiveTab::Associations,
         ActiveTab::Tweaks,
@@ -214,6 +216,7 @@ impl ActiveTab {
         ActiveTab::Startup,
         ActiveTab::Environment,
         ActiveTab::MouseKeyboard,
+        ActiveTab::VisualEffects,
         ActiveTab::Gallery,
         ActiveTab::History,
         ActiveTab::Settings,
@@ -230,6 +233,7 @@ impl ActiveTab {
             ActiveTab::Startup => Some("Startup apps"),
             ActiveTab::Environment => Some("Environment variables"),
             ActiveTab::MouseKeyboard => Some("Mouse & keyboard"),
+            ActiveTab::VisualEffects => Some("Visual effects"),
             ActiveTab::Home | ActiveTab::Gallery | ActiveTab::History | ActiveTab::Settings => None,
         }
     }
@@ -246,6 +250,7 @@ impl ActiveTab {
                 | ActiveTab::Startup
                 | ActiveTab::Environment
                 | ActiveTab::MouseKeyboard
+                | ActiveTab::VisualEffects
         )
     }
 }
@@ -393,9 +398,7 @@ pub struct WinTuneApp {
     ve_scan_needed: bool,
     /// Choices not applied yet, by effect.
     ve_pending: BTreeMap<EffectId, VeValue>,
-    /// Filter typed in the Visual effects page (titles). Read by the page
-    /// (Task 5).
-    #[allow(dead_code)]
+    /// Filter typed in the Visual effects page (titles).
     ve_search: String,
     tr: Tr,
     /// The theme actually shown this frame (Light or Dark, never System):
@@ -593,6 +596,7 @@ impl WinTuneApp {
             ActiveTab::Startup => self.show_startup_tab(ctx),
             ActiveTab::Environment => self.show_environment_tab(ctx),
             ActiveTab::MouseKeyboard => self.show_mouse_keyboard_tab(ctx),
+            ActiveTab::VisualEffects => self.show_visual_effects_tab(ctx),
         }
 
         self.toasts.show(ctx, &self.tr.t("toast.clear_all"));

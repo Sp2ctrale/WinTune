@@ -2131,4 +2131,52 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="ve.gate.cleartype" xml:space="preserve">
     <value>Has no effect unless the smoothing type is ClearType</value>
   </data>
+  <data name="nav.visual_effects" xml:space="preserve">
+    <value>Visual effects</value>
+  </data>
+  <data name="ve.subtitle" xml:space="preserve">
+    <value>Animations, shadows, font smoothing and the text cursor, each with an undo.</value>
+  </data>
+  <data name="ve.note" xml:space="preserve">
+    <value>Changes apply when you press Apply and are kept when you sign out. Some programs show them only after a restart.</value>
+  </data>
+  <data name="ve.preset.appearance" xml:space="preserve">
+    <value>For appearance</value>
+  </data>
+  <data name="ve.preset.performance" xml:space="preserve">
+    <value>For performance</value>
+  </data>
+  <data name="ve.search" xml:space="preserve">
+    <value>Search settings</value>
+  </data>
+  <data name="ve.scanning" xml:space="preserve">
+    <value>Reading your settings…</value>
+  </data>
+  <data name="ve.no_match" xml:space="preserve">
+    <value>No setting matches your search.</value>
+  </data>
+  <data name="ve.pill.not_applied" xml:space="preserve">
+    <value>Not applied</value>
+  </data>
+  <data name="ve.windows_default" xml:space="preserve">
+    <value>Windows default</value>
+  </data>
+  <data name="ve.default_shown" xml:space="preserve">
+    <value>This is already the Windows default.</value>
+  </data>
+  <data name="ve.drag_link" xml:space="preserve">
+    <value>Show window contents while dragging is on the Mouse &amp; keyboard page</value>
+  </data>
+  <data name="ve.text_note" xml:space="preserve">
+    <value>WinTune draws its own text, so look at another window, such as Notepad, to see the change.</value>
+  </data>
+  <data name="ve.pending" xml:space="preserve">
+    <value>{0} changes not applied</value>
+  </data>
+  <data name="ve.up_to_date" xml:space="preserve">
+    <value>All changes applied</value>
+  </data>
+  <data name="ve.nothing_to_apply" xml:space="preserve">
+    <value>Nothing to apply</value>
+  </data>
 </root>

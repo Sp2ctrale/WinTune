@@ -1954,6 +1954,15 @@ Restoring the original puts the choice back, but Windows protects it with a hash
   <data name="report.restored_visual_effects" xml:space="preserve">
     <value>{0} setting(s) restored</value>
   </data>
+  <data name="ve.original_desc" xml:space="preserve">
+    <value>Original: {0}, saved on {1}</value>
+  </data>
+  <data name="home.visual_effects_status" xml:space="preserve">
+    <value>{0} effects changed by WinTune</value>
+  </data>
+  <data name="home.visual_effects_status_one" xml:space="preserve">
+    <value>{0} effect changed by WinTune</value>
+  </data>
   <data name="history.module.visual_effects" xml:space="preserve">
     <value>Visual effects</value>
   </data>

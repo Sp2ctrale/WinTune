@@ -1953,6 +1953,15 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="report.restored_visual_effects" xml:space="preserve">
     <value>{0} réglage(s) restauré(s)</value>
   </data>
+  <data name="ve.original_desc" xml:space="preserve">
+    <value>Valeur d'origine : {0}, enregistrée le {1}</value>
+  </data>
+  <data name="home.visual_effects_status" xml:space="preserve">
+    <value>{0} effets modifiés par WinTune</value>
+  </data>
+  <data name="home.visual_effects_status_one" xml:space="preserve">
+    <value>{0} effet modifié par WinTune</value>
+  </data>
   <data name="history.module.visual_effects" xml:space="preserve">
     <value>Effets visuels</value>
   </data>

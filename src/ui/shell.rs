@@ -83,6 +83,7 @@ impl WinTuneApp {
             self.reload_startup_store();
             self.reload_env_store();
             self.reload_mk_store();
+            self.reload_ve_store();
         }
         if page == ActiveTab::Associations && self.active_tab != page {
             self.request_status_refresh();
@@ -1690,7 +1691,23 @@ mod tests {
             },
         );
         mk_entry.time = "2000-01-04 00:00:00".into();
-        app.history = vec![entry, menu_entry, startup_entry, env_entry, mk_entry];
+        let mut ve_entry = crate::history::HistoryEntry::from_report(
+            "Visual effects",
+            "Apply",
+            &crate::associations::OperationReport {
+                succeeded: vec!["UI effects".into()],
+                ..Default::default()
+            },
+        );
+        ve_entry.time = "2000-01-05 00:00:00".into();
+        app.history = vec![
+            entry,
+            menu_entry,
+            startup_entry,
+            env_entry,
+            mk_entry,
+            ve_entry,
+        ];
         app.open_page(ActiveTab::History);
         // A changed mouse setting's original (`open_page` reloaded the
         // store from disk).
@@ -1700,6 +1717,22 @@ mod tests {
             "2026-01-02 03:04:05",
             crate::mouse_keyboard::SettingValue::Number(10),
         );
+        // The Visual effects master's original, with two companions.
+        app.ve_store.record_first(
+            "TEST\\user",
+            "ui_effects",
+            "2026-01-02 03:04:06",
+            crate::visual_effects::SettingValue::Flag(true),
+        );
+        for id in ["menu_animation", "tooltip_animation"] {
+            app.ve_store.record_companion(
+                "TEST\\user",
+                id,
+                "2026-01-02 03:04:06",
+                crate::visual_effects::SettingValue::Flag(true),
+                "ui_effects",
+            );
+        }
         // Same for an environment variable's original.
         app.env_store
             .snapshots
@@ -1844,6 +1877,37 @@ mod tests {
             .t_args("mk.original_desc", &[&original, &"2026-01-02 03:04:05"]);
         assert!(texts.contains(&desc), "{desc:?} not drawn on History");
 
+        // The Visual effects operation and original, with its companions.
+        let module = app.tr.t("history.module.visual_effects");
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.starts_with("2000-01-05") && t.contains(&module)),
+            "no Visual effects operation: {texts:?}"
+        );
+        let original = crate::i18n::messages::ve_value(
+            app.tr,
+            Some(crate::visual_effects::EffectId::UiEffects),
+            &crate::visual_effects::SettingValue::Flag(true),
+        );
+        let desc = app
+            .tr
+            .t_args("ve.original_desc", &[&original, &"2026-01-02 03:04:06"]);
+        let titles = [
+            crate::i18n::messages::ve_title(app.tr, crate::visual_effects::EffectId::MenuAnimation),
+            crate::i18n::messages::ve_title(
+                app.tr,
+                crate::visual_effects::EffectId::TooltipAnimation,
+            ),
+        ];
+        let companions = crate::i18n::messages::ve_companions(app.tr, 2, &titles);
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.contains(&desc) && t.contains(&companions)),
+            "{desc:?} with {companions:?} not drawn on History"
+        );
+
         // Home: the Startup apps tile, with the counts of the last scan.
         app.active_tab = ActiveTab::Home;
         let mut home = Vec::new();
@@ -1868,6 +1932,8 @@ mod tests {
             app.tr.t_args("home.environment_status", &[&vars, &folders]),
             app.tr.t("nav.mouse_keyboard"),
             app.tr.t_args("home.mouse_keyboard_status_one", &[&1]),
+            app.tr.t("nav.visual_effects"),
+            app.tr.t_args("home.visual_effects_status_one", &[&1]),
         ] {
             assert!(
                 home.contains(&drawn),

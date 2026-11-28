@@ -492,6 +492,163 @@ fn every_environment_message_translates_in_every_shipped_language() {
 }
 
 #[test]
+fn every_mouse_keyboard_message_translates_in_every_shipped_language() {
+    use super::messages::{
+        history_module, mk_description, mk_failure, mk_issue, mk_problem, mk_section, mk_title,
+        mk_value,
+    };
+    use crate::mouse_keyboard::SettingId::*;
+    use crate::mouse_keyboard::SettingValue::*;
+    use crate::mouse_keyboard::{
+        MkFailure, MkIssue, MkProblem, Section, SettingId, WHEEL_PAGESCROLL,
+    };
+
+    for (code, _) in Tr::languages() {
+        let tr = Tr::new(code);
+        let titles: Vec<String> = SettingId::ALL.map(|id| mk_title(tr, id)).into();
+        let unique: BTreeSet<&String> = titles.iter().collect();
+        assert_eq!(unique.len(), 18, "{code}: {titles:?}");
+        let speed = mk_title(tr, PointerSpeed);
+        let mut texts = titles.clone();
+        texts.extend(Section::ALL.map(|s| mk_section(tr, s)));
+        let descriptions: Vec<String> = SettingId::ALL
+            .iter()
+            .filter_map(|&id| mk_description(tr, id))
+            .collect();
+        assert_eq!(descriptions.len(), 7, "{code}: {descriptions:?}");
+        texts.extend(descriptions);
+
+        // Each issue text, with the arguments it must show.
+        let problems: [(MkProblem, Vec<&str>); 8] = [
+            (MkProblem::OutOfRange(PointerSpeed), vec![&speed]),
+            (MkProblem::UnknownSetting("X".into()), vec!["X"]),
+            (
+                MkProblem::Unreadable {
+                    id: PointerSpeed,
+                    code: 5,
+                },
+                vec![&speed, "5"],
+            ),
+            (
+                MkProblem::WrongAccount {
+                    process: "X".into(),
+                    session: "Y".into(),
+                },
+                vec!["X", "Y"],
+            ),
+            (MkProblem::AccountUnknown("X".into()), vec!["X"]),
+            (MkProblem::NotSaved("X".into()), vec!["X"]),
+            (MkProblem::NoOriginal("X".into()), vec!["X"]),
+            (MkProblem::NoOriginal("pointer_speed".into()), vec![&speed]),
+        ];
+        for (problem, args) in problems {
+            let text = mk_problem(tr, &problem);
+            for arg in args {
+                assert!(text.contains(arg), "{code}: {arg:?} not in {text:?}");
+            }
+            assert_eq!(mk_issue(tr, &MkIssue::Problem(problem)), text);
+            texts.push(text);
+        }
+        let failures: [(MkFailure, Vec<&str>); 4] = [
+            (
+                MkFailure::SetFailed {
+                    id: PointerSpeed,
+                    code: 5,
+                },
+                vec![&speed, "5"],
+            ),
+            (
+                MkFailure::Mismatch {
+                    id: PointerSpeed,
+                    wanted: Number(14),
+                    read: Number(10),
+                },
+                vec![&speed, "14", "10"],
+            ),
+            (
+                MkFailure::Unverified {
+                    id: PointerSpeed,
+                    code: 5,
+                },
+                vec![&speed, "5"],
+            ),
+            (MkFailure::StoreNotSaved("X".into()), vec!["X"]),
+        ];
+        for (failure, args) in failures {
+            let text = mk_failure(tr, &failure);
+            for arg in args {
+                assert!(text.contains(arg), "{code}: {arg:?} not in {text:?}");
+            }
+            assert_eq!(mk_issue(tr, &MkIssue::Failure(failure)), text);
+            texts.push(text);
+        }
+
+        // Values, as on the page.
+        assert_eq!(
+            mk_value(tr, Some(WheelLines), &Number(WHEEL_PAGESCROLL)),
+            tr.t("mk.value.one_screen")
+        );
+        assert_eq!(
+            mk_value(tr, Some(WheelLines), &Number(0)),
+            tr.t("mk.value.no_scroll")
+        );
+        let ms = mk_value(tr, Some(DoubleClickTime), &Number(500));
+        assert!(ms.contains("500"), "{code}: {ms:?}");
+        assert_ne!(ms, "500", "{code}");
+        assert_eq!(
+            mk_value(tr, Some(PointerPrecision), &Mouse([6, 10, 1])),
+            "{6, 10, 1}"
+        );
+        let (on, off) = (tr.t("mk.value.on"), tr.t("mk.value.off"));
+        assert_eq!(mk_value(tr, None, &Flag(true)), on);
+        assert_eq!(mk_value(tr, Some(SwapButtons), &Flag(false)), off);
+        assert_eq!(mk_value(tr, Some(PointerTrails), &Number(1)), off);
+        assert_eq!(mk_value(tr, Some(PointerTrails), &Number(5)), "5");
+        assert_eq!(mk_value(tr, Some(ScrollInactive), &Number(0)), off);
+        assert_eq!(mk_value(tr, Some(ScrollInactive), &Number(2)), on);
+        assert_eq!(mk_value(tr, Some(PointerSpeed), &Number(10)), "10");
+        assert_eq!(mk_value(tr, None, &Number(500)), "500");
+        texts.extend([
+            on,
+            off,
+            ms,
+            mk_value(tr, Some(WheelLines), &Number(WHEEL_PAGESCROLL)),
+            mk_value(tr, Some(WheelLines), &Number(0)),
+        ]);
+
+        // An unmapped label passes through unchanged, so compare with the key.
+        let module = history_module(tr, "Mouse & keyboard");
+        assert_eq!(module, tr.t("history.module.mouse_keyboard"), "{code}");
+        assert_ne!(module, "history.module.mouse_keyboard", "{code}");
+        texts.push(module);
+
+        for text in &texts {
+            assert!(!text.is_empty() && !text.contains('{'), "{code}: {text:?}");
+            assert!(
+                !text.starts_with("mk.") && !text.starts_with("history."),
+                "{code}: looks like a bare key: {text:?}"
+            );
+        }
+    }
+    let en = Tr::english();
+    assert_eq!(
+        mk_failure(
+            en,
+            &MkFailure::Mismatch {
+                id: DoubleClickTime,
+                wanted: Number(700),
+                read: Number(500),
+            }
+        ),
+        "Double-click speed: Windows kept 500 ms instead of 700 ms."
+    );
+    assert_eq!(
+        history_module(Tr::new("fr"), "Mouse & keyboard"),
+        "Souris et clavier"
+    );
+}
+
+#[test]
 fn every_key_used_in_the_code_exists_in_english() {
     let en = keys_of("en").expect("English catalog");
     let re = regex::Regex::new(r#"\.t(?:_args)?\(\s*"([A-Za-z0-9_.]+)""#).unwrap();

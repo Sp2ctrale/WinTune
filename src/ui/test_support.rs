@@ -4,6 +4,7 @@
 use super::{AppEnv, WinTuneApp};
 use crate::associations::AssocTarget;
 use crate::models::AppConfig;
+use crate::mouse_keyboard::{AccountCheck, FakeInput};
 use crate::regsnap::test_support::Sandbox;
 use eframe::egui::{self, FullOutput, RawInput, ViewportCommand, ViewportEvent, ViewportId};
 use std::fs;
@@ -22,6 +23,11 @@ pub(super) struct TempIcons {
     opened: Arc<Mutex<Vec<PathBuf>>>,
     /// How many times the app announced an environment change (never sent).
     broadcasts: Arc<AtomicUsize>,
+    /// The mouse and keyboard settings the app reads and writes (never the
+    /// real ones).
+    input: Arc<FakeInput>,
+    /// What the account check answers (`Same` unless a test changes it).
+    account: Arc<Mutex<AccountCheck>>,
 }
 
 pub(super) const TEST_HIVE: &str = "S-1-5-21-test";
@@ -130,7 +136,31 @@ impl TempIcons {
                     cmd: exe("cmd.exe"),
                 }
             },
+            input: self.input.clone(),
+            input_account: {
+                let account = self.account.clone();
+                Arc::new(move || account.lock().unwrap().clone())
+            },
+            mk_store_path: self.dir.join("mouse-keyboard-backups.json"),
+            mk_reg_source: {
+                let base = format!("{}\\HKCU", self.sandbox.path);
+                Arc::new(move || crate::backups::RegTarget {
+                    root: RegKey::predef(HKEY_CURRENT_USER),
+                    root_name: "HKEY_CURRENT_USER".into(),
+                    base: base.clone(),
+                })
+            },
         }
+    }
+
+    /// The fake behind the app's mouse and keyboard settings.
+    pub(super) fn fake_input(&self) -> &FakeInput {
+        &self.input
+    }
+
+    /// What the account check answers from now on.
+    pub(super) fn set_account(&self, account: AccountCheck) {
+        *self.account.lock().unwrap() = account;
     }
 
     pub(super) fn app(&self, ctx: &egui::Context) -> WinTuneApp {
@@ -177,6 +207,8 @@ impl TempIcons {
             sandbox,
             opened: Arc::default(),
             broadcasts: Arc::default(),
+            input: Arc::new(FakeInput::new()),
+            account: Arc::new(Mutex::new(AccountCheck::Same)),
         }
     }
 
@@ -428,6 +460,19 @@ pub(super) fn run_until_env_scanned(app: &mut WinTuneApp, ctx: &egui::Context) {
     );
 }
 
+/// Runs frames until no mouse and keyboard scan is pending or running.
+pub(super) fn run_until_mk_scanned(app: &mut WinTuneApp, ctx: &egui::Context) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while (app.mk_scan_needed || app.mk_scan_job.is_some()) && Instant::now() < deadline {
+        frame(app, ctx, RawInput::default());
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(
+        !app.mk_scan_needed && app.mk_scan_job.is_none(),
+        "the mouse and keyboard scan never finished"
+    );
+}
+
 /// Runs frames until no startup scan is pending or running.
 pub(super) fn run_until_startup_scanned(app: &mut WinTuneApp, ctx: &egui::Context) {
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -596,9 +641,22 @@ pub(super) fn row_widget(
     id: &str,
     size: egui::Vec2,
 ) -> Option<egui::Pos2> {
-    let out = frame(app, ctx, tall_input(vec![]));
     let description = crate::i18n::messages::tweak_description(app.tr, id);
-    let at = text_center(&out, &description).unwrap_or_else(|| panic!("row {id} not drawn"));
+    widget_right_of(app, ctx, &description, size)
+}
+
+/// Center of the widget of exactly `size` right of the drawn row text
+/// `text` (a title or a description), on the same row, or `None` when the
+/// row has none. Panics when `text` is not drawn.
+pub(super) fn widget_right_of(
+    app: &mut WinTuneApp,
+    ctx: &egui::Context,
+    text: &str,
+    size: egui::Vec2,
+) -> Option<egui::Pos2> {
+    let out = frame(app, ctx, tall_input(vec![]));
+    let at = text_center(&out, text)
+        .unwrap_or_else(|| panic!("{text:?} not drawn: {:?}", drawn_texts(&out)));
     ctx.viewport_for(ViewportId::ROOT, |v| {
         v.prev_pass
             .widgets

@@ -1,7 +1,7 @@
 # WinTune
 
 WinTune is a Windows 10/11 desktop app for customizing the system. Every change it
-makes can be undone. It has six modules:
+makes can be undone. It has seven modules:
 
 - **File associations**: custom icons, the double-click action (open in your
   editor or run the script), right-click verbs, and Explorer preview metadata.
@@ -24,6 +24,10 @@ makes can be undone. It has six modules:
   (add, edit, remove, reorder, with missing and duplicate folders flagged),
   with the system variables shown read-only. Writes only `HKCU\Environment`
   and tells running programs about the change.
+- **Mouse & keyboard**: pointer speed and precision, the primary button,
+  double-click speed, the wheel, key repeat and menu timing, applied live
+  through the Windows API and read back, with a Windows default and a Restore
+  original for each setting.
 
 Built with Rust and [egui](https://github.com/emilk/egui). The interface is
 available in English and Français, and the theme follows Windows (or can be
@@ -302,6 +306,53 @@ Ctrl+F filters both sections by name, value or entry.
 Details and the evidence for each claim are in
 [docs/registry-reference.md](docs/registry-reference.md#environment-variables).
 
+## Mouse & keyboard
+
+The **Mouse & keyboard** page has five sections: **Pointer** (speed, Enhance
+pointer precision, trails, show location with Ctrl, hide while typing, snap to
+the default button), **Buttons and clicks** (swap the primary button,
+double-click speed, ClickLock and its time), **Wheel** (lines per notch or one
+screen at a time, horizontal characters, scroll inactive windows), **Keyboard**
+(repeat delay and rate) and **Windows and menus** (hover time, menu delay,
+drag full windows).
+
+- **Live apply.** WinTune does not write the registry for these settings. It
+  asks Windows to change them (`SystemParametersInfoW`, kept in your profile
+  and sent to running programs), so a change takes effect when you press
+  Apply, and is kept when you sign out. Some programs read the wheel setting
+  only when they start.
+- **Readback.** After each change WinTune asks Windows for the value again. If
+  Windows kept another value, that setting is reported as failed and the
+  others are still applied.
+- **Windows default and Restore original.** The `...` menu of each row has
+  **Windows default** (it sets the pending value) and, once WinTune has
+  changed the setting, **Restore original** (the value it had before).
+- **Tests.** The double-click row has a target that lights when two clicks land
+  within the time on the slider, so you can feel a speed before applying it.
+  The key repeat row has a text field; it uses the settings already applied.
+  Both hide while the search box is not empty.
+- **Safety.** Swapping the buttons asks first, because the buttons swap as
+  soon as it is applied; to undo it, click with the other button. If WinTune
+  runs as another account than the one signed in (an administrator account
+  approved over your shoulder), the page shows a banner and changes nothing,
+  because the settings would be saved for the wrong account. A note appears
+  when Filter Keys is on, since Windows may then use its own repeat settings.
+- **Undo.** In **History**, **Saved originals** has a **Mouse & keyboard**
+  group, with a row per setting. Every apply and restore is logged under
+  "Mouse & keyboard". The Home tile reads "{n} settings changed by WinTune".
+- **The `.reg` file.** Each apply also writes a `.reg` file of the values in
+  `HKCU\Control Panel\Mouse`, `Desktop` and `Keyboard` to `reg-backups`. It is
+  a last resort and WinTune never imports it. Do not double-click it:
+  importing it also puts back `UserPreferencesMask` (undoing visual effects you
+  changed since) and takes effect only at the next sign-in. Use **Restore
+  original** instead.
+- **Not covered.** Caret blink rate, focus follows mouse, pointer schemes and
+  the curves behind pointer precision, Filter Keys and Mouse Keys changes, and
+  touchpad settings.
+
+Details and the evidence for each claim are in
+[docs/registry-reference.md](docs/registry-reference.md#mouse--keyboard).
+
 ## Safety and undo
 
 Before anything is written:
@@ -348,7 +399,7 @@ leave that key alone.
 
 The **History** page lists every operation and, under **Saved originals**,
 every snapshot WinTune holds. You can restore one item, or a whole group
-(File associations, Explorer & Taskbar, Start & Privacy, Context menu, Startup apps, Environment variables). Each restore asks
+(File associations, Explorer & Taskbar, Start & Privacy, Context menu, Startup apps, Environment variables, Mouse & keyboard). Each restore asks
 first. Restoring a renamed environment variable brings back both names
 together. Restoring an extension puts it back to its exact pre-WinTune state. It
 also removes every ProgID that WinTune created, including ones you renamed
@@ -367,6 +418,7 @@ Everything lives in `%ProgramData%\Wintune`:
 | `context-menu-backups.json` | Original state of each Context menu key, hidden entry and name, per user |
 | `startup-backups.json` | Original state of each Startup apps switch, per user |
 | `environment-backups.json` | Original state of each environment variable WinTune changed, per user, plus the pairs of names a rename restores together |
+| `mouse-keyboard-backups.json` | The value each Mouse & keyboard setting had before WinTune changed it, per user |
 | `history.jsonl` | One line per operation (apply, rollback, restore), shown by the **History** page |
 | `reg-backups\*.reg` | `.reg` safety net written before each apply |
 | `gallery.pak` | Optional compressed icon pack, built from the icon folder |
@@ -384,6 +436,7 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `context_menu` | Context menu engine (entries, programs, catalog of Windows entries, scan of existing entries, apply, status, restore) on an injectable `MenuTarget` |
 | `startup` | Startup apps engine (scan of the Run keys and Startup folders, `StartupApproved` switch, apply, restore) on an injectable `StartupTarget` |
 | `environment` | Environment variables engine (`path` and `rules` are pure; `scan` reads `HKCU\Environment` and the system key; `engine` applies, restores and broadcasts) on an injectable `EnvTarget` |
+| `mouse_keyboard` | Mouse & keyboard engine (catalog, `store`, `backend` with the real `SystemParametersInfoW` calls, `engine` for scan, apply with readback and restore) on an injectable `InputApi`; it writes no registry value |
 | `persist` | JSON stores: a missing file is empty, a corrupt or unreadable file is a `LoadError` (a code the UI translates), saves are atomic |
 | `history` | Operation log (`history.jsonl`): append one line per operation, read the most recent |
 | `models` | Config and backup data types, `ThemeMode`, plus the default rules |
@@ -392,7 +445,7 @@ Icons used by associations are copied to `%ProgramData%\ico`.
 | `detector` | VS Code, WSL and user-hive detection |
 | `clock` | Local timestamps |
 | `i18n` | Translations: `.resx` catalogs in `i18n/`, the `Tr` handle, and engine message codes turned into text |
-| `ui` | egui interface, one file per page (`home`, `associations_tab`, `tweaks_tab` for both tweak pages, `context_menu_tab`, `startup_tab`, `environment_tab`, `gallery_tab` for Icons, `history_panel`, `settings`), `originals` (History's saved originals), `icon_grid` (the shared icon grid) and `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation and action bars), `autosave`, `confirm`, `rule_status`, `jobs`, and `kit/`, the design kit that holds the theme and every control |
+| `ui` | egui interface, one file per page (`home`, `associations_tab`, `tweaks_tab` for both tweak pages, `context_menu_tab`, `startup_tab`, `environment_tab`, `mouse_keyboard_tab`, `gallery_tab` for Icons, `history_panel`, `settings`), `originals` (History's saved originals), `icon_grid` (the shared icon grid) and `icon_picker` (the dialog that sets a rule's icon), plus `shell` (navigation and action bars), `autosave`, `confirm`, `rule_status`, `jobs`, and `kit/`, the design kit that holds the theme and every control |
 | `main.rs` | Window setup only |
 
 Apply, rollback and pack building run on a background thread, a progress bar
@@ -448,6 +501,7 @@ The binary is not code-signed yet, so SmartScreen may warn on first launch.
   operation history. Still to do: a diff preview before applying, and config
   import/export.
 - **Customization modules**: Explorer & Taskbar, Start & Privacy, Context
-  menu, Startup apps and Environment variables are built on the snapshot engine. More can follow, built on the same
-  snapshot and rollback engine.
+  menu, Startup apps and Environment variables are built on the snapshot engine, and Mouse & keyboard on the
+  Windows settings API with its own snapshot store. More can follow, built on the same
+  snapshot and rollback ideas.
 - **Phase 4**: the release workflow (draft releases from tags) is done. Still to do: an installer and code signing.

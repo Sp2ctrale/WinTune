@@ -87,6 +87,62 @@ pub fn toggle_enabled(ui: &mut Ui, on: &mut bool, disabled_reason: Option<&str>)
     response
 }
 
+/// Width of a `slider`'s track.
+pub const SLIDER_WIDTH: f32 = 160.0;
+
+/// A horizontal slider over `(min, max, step)`, with `label` (the value as
+/// the page words it) right of the track. The knob moves a copy clamped into
+/// the span, so a value outside it stays until the user moves the knob:
+/// `*value` changes only when the returned response `changed()`. Given a
+/// reason, it is greyed out, ignores input and shows the reason on hover.
+pub fn slider(
+    ui: &mut Ui,
+    value: &mut u32,
+    spec: (u32, u32, u32),
+    label: &str,
+    disabled_reason: Option<&str>,
+) -> Response {
+    let (min, max, step) = spec;
+    let enabled = disabled_reason.is_none();
+    let mut local = (*value).clamp(min, max);
+    let track = |ui: &mut Ui, local: &mut u32| {
+        ui.spacing_mut().slider_width = SLIDER_WIDTH;
+        let slider = egui::Slider::new(local, min..=max)
+            .show_value(false)
+            .step_by(f64::from(step.max(1)));
+        ui.add_enabled(enabled, slider)
+    };
+    let text = |ui: &mut Ui| {
+        ui.add_enabled(
+            enabled,
+            egui::Label::new(RichText::new(label).size(text_size::BODY)),
+        );
+    };
+    // The track first, then its label, in either direction of the parent.
+    let mut response = ui
+        .scope(|ui| {
+            if ui.layout().prefer_right_to_left() {
+                text(ui);
+                track(ui, &mut local)
+            } else {
+                let r = track(ui, &mut local);
+                text(ui);
+                r
+            }
+        })
+        .inner;
+    // A press on the track counts as a move, even onto the clamped value.
+    let moved = response.changed() || (enabled && response.interact_pointer_pos().is_some());
+    if moved && local != *value {
+        *value = local;
+        response.mark_changed();
+    }
+    if let Some(reason) = disabled_reason {
+        response = response.on_disabled_hover_text(reason);
+    }
+    response
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PillKind {
     Success,

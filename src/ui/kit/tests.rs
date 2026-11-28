@@ -336,12 +336,13 @@ fn icon_ordinal(i: Icon) -> usize {
         Folder => 19,
         Startup => 20,
         Environment => 21,
+        Mouse => 22,
     }
 }
 
 #[test]
 fn icon_all_lists_every_variant_once() {
-    assert_eq!(Icon::ALL.len(), 22);
+    assert_eq!(Icon::ALL.len(), 23);
     for (n, i) in Icon::ALL.iter().enumerate() {
         assert_eq!(icon_ordinal(*i), n);
     }
@@ -635,6 +636,40 @@ mod controls {
     }
 
     #[test]
+    fn slider_keeps_an_out_of_span_value_until_moved() {
+        for disabled in [false, true] {
+            let ctx = ctx_for(ThemeMode::Light);
+            let value = Cell::new(1200_u32);
+            let changed = Cell::new(false);
+            let rect = Cell::new(Rect::NOTHING);
+            let reason = disabled.then_some("not now");
+            let mut draw = |c: &Context| {
+                CentralPanel::default().show(c, |ui| {
+                    let mut v = value.get();
+                    let r = slider(ui, &mut v, (200, 900, 10), "1200 ms", reason);
+                    rect.set(r.rect);
+                    changed.set(changed.get() || r.changed());
+                    value.set(v);
+                });
+            };
+            let _ = layout(&ctx, &rect, &mut draw);
+            assert_eq!(value.get(), 1200, "a frame with no input");
+            assert!(!changed.get());
+            assert_eq!(rect.get().width(), SLIDER_WIDTH);
+
+            let r = rect.get();
+            click_frames(&ctx, egui::pos2(r.right() - 1.0, r.center().y), &mut draw);
+            if disabled {
+                assert_eq!(value.get(), 1200, "a disabled slider moved");
+                assert!(!changed.get());
+            } else {
+                assert_eq!(value.get(), 900);
+                assert!(changed.get());
+            }
+        }
+    }
+
+    #[test]
     fn segmented_clicking_the_selected_option_does_not_change() {
         let ctx = ctx_for(ThemeMode::Light);
         let changed = Cell::new(false);
@@ -673,6 +708,9 @@ mod controls {
                     }
                     let mut v = 1;
                     segmented(ui, &mut v, &[(1, "One"), (2, "Two")]);
+                    let mut n = 5;
+                    slider(ui, &mut n, (1, 20, 1), "5", None);
+                    slider(ui, &mut n, (1, 20, 1), "5", Some("why"));
                     let opened = disclosure(ui, "d", "More", true, |ui| ui.label("body"));
                     assert!(opened.is_some());
                     assert!(disclosure(ui, "d2", "Less", false, |ui| ui.label("x")).is_none());

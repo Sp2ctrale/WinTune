@@ -82,6 +82,7 @@ impl WinTuneApp {
             self.reload_menu_store();
             self.reload_startup_store();
             self.reload_env_store();
+            self.reload_mk_store();
         }
         if page == ActiveTab::Associations && self.active_tab != page {
             self.request_status_refresh();
@@ -109,6 +110,12 @@ impl WinTuneApp {
         if page == ActiveTab::Environment && self.active_tab != page {
             self.request_env_scan();
         }
+        if page == ActiveTab::MouseKeyboard && !self.is_busy() {
+            self.reload_mk_store();
+        }
+        if page == ActiveTab::MouseKeyboard && self.active_tab != page {
+            self.request_mk_scan();
+        }
         if self.active_tab != page {
             self.focus_search = false;
             self.close_popups_next_frame = true;
@@ -135,6 +142,7 @@ impl WinTuneApp {
         let context_menu = tr.t("nav.context_menu");
         let startup = tr.t("nav.startup");
         let environment = tr.t("nav.environment");
+        let mouse_keyboard = tr.t("nav.mouse_keyboard");
         let icons = tr.t("nav.icons");
         let history = tr.t("nav.history");
         let settings = tr.t("nav.settings");
@@ -172,6 +180,7 @@ impl WinTuneApp {
                     ),
                     item(ActiveTab::Startup, kit::Icon::Startup, &startup),
                     item(ActiveTab::Environment, kit::Icon::Environment, &environment),
+                    item(ActiveTab::MouseKeyboard, kit::Icon::Mouse, &mouse_keyboard),
                 ],
             },
             kit::NavGroup {
@@ -1361,6 +1370,129 @@ mod tests {
             app.active_tab = ActiveTab::Home;
         }
 
+        // The Mouse & keyboard page: a pending speed, precision toggle,
+        // trails on, wheel one screen and swap (so Discard and every pill
+        // show); Filter Keys on; an unreadable setting; the Pointer speed `…`
+        // menu open (with a saved original); the double-click target lit;
+        // the swap confirmation; then a search with no match, no scan yet,
+        // and a scan whose account is wrong, then unknown.
+        {
+            use super::super::mouse_keyboard_tab::{click_test_step, ClickTest};
+            use crate::i18n::messages::{mk_problem, mk_section, mk_title};
+            use crate::mouse_keyboard::SettingId::*;
+            use crate::mouse_keyboard::SettingValue::*;
+            use crate::mouse_keyboard::{AccountCheck, MkScan, Section, Wanted, WHEEL_PAGESCROLL};
+            fx.fake_input().set_filter_keys(true);
+            fx.fake_input().fail_get(HoverTime);
+            app.request_mk_scan();
+            run_until_mk_scanned(&mut app, &ctx);
+            app.mk_store
+                .record_first("TEST\\user", "pointer_speed", "x", Number(10));
+            for (id, wanted) in [
+                (PointerSpeed, Wanted::Value(Number(14))),
+                (PointerPrecision, Wanted::Toggle(false)),
+                (PointerTrails, Wanted::Value(Number(7))),
+                (WheelLines, Wanted::Value(Number(WHEEL_PAGESCROLL))),
+                (SwapButtons, Wanted::Value(Flag(true))),
+            ] {
+                app.set_mk_wanted(id, wanted);
+            }
+            assert_eq!(app.mk_pending_count(), 5);
+            app.active_tab = ActiveTab::MouseKeyboard;
+            let mut texts = Vec::new();
+            let draw = |app: &mut WinTuneApp, texts: &mut Vec<String>| {
+                for _ in 0..3 {
+                    texts.extend(drawn_texts(&frame(app, &ctx, tall_input(vec![]))));
+                }
+            };
+            draw(&mut app, &mut texts);
+            // The Pointer speed `…` menu.
+            let speed = mk_title(app.tr, PointerSpeed);
+            let menu = widget_right_of(&mut app, &ctx, &speed, kit::OVERFLOW_BUTTON)
+                .expect("no … on the Pointer speed row");
+            click_at(&mut app, &ctx, menu);
+            draw(&mut app, &mut texts);
+            frame(
+                &mut app,
+                &ctx,
+                tall_input(vec![key_press(egui::Key::Escape)]),
+            );
+            // The double-click target, lit.
+            let mut lit = ClickTest::default();
+            click_test_step(&mut lit, 0.0, 500);
+            click_test_step(&mut lit, 0.1, 500);
+            app.mk_click_test = lit;
+            draw(&mut app, &mut texts);
+            // The swap confirmation.
+            app.start_mk_apply(&ctx);
+            assert!(app.pending_confirm.is_some(), "{}", app.last_notice());
+            draw(&mut app, &mut texts);
+            app.resolve_confirm(&ctx, false);
+            // A search nothing matches, then no scan yet.
+            app.mk_search = "nothing like it".into();
+            draw(&mut app, &mut texts);
+            app.mk_search.clear();
+            let scan = app.mk_scan.take().expect("scanned");
+            draw(&mut app, &mut texts);
+            // Another account, then an account check that failed.
+            let wrong = AccountCheck::Different {
+                process: "PC\\Admin".into(),
+                session: "PC\\Ana".into(),
+            };
+            let unknown = AccountCheck::Unknown("no session".into());
+            for account in [wrong.clone(), unknown.clone()] {
+                app.mk_scan = Some(MkScan {
+                    account,
+                    ..scan.clone()
+                });
+                draw(&mut app, &mut texts);
+            }
+            let mut positive = vec![
+                app.tr.t("nav.mouse_keyboard"),
+                app.tr.t("mk.subtitle"),
+                app.tr.t("mk.note"),
+                app.tr.t("mk.search"),
+                app.tr.t("mk.scanning"),
+                app.tr.t("mk.no_match"),
+                app.tr.t("mk.pill.not_applied"),
+                app.tr.t("mk.windows_default"),
+                app.tr.t("tweaks.restore_original"),
+                app.tr.t("mk.wheel.lines"),
+                app.tr.t("mk.value.one_screen"),
+                app.tr.t("mk.click_test.title"),
+                app.tr.t("mk.click_test.desc"),
+                app.tr.t("mk.click_test.ok"),
+                app.tr.t("mk.key_test.title"),
+                app.tr.t("mk.key_test.note"),
+                app.tr.t("mk.key_test.hint"),
+                app.tr.t("mk.filter_keys"),
+                app.tr.t_args("mk.pending", &[&5]),
+                app.tr.t("mk.apply_title"),
+                app.tr.t("tweaks.discard"),
+                mk_title(app.tr, HoverTime),
+                mk_problem(app.tr, &wrong.problem().unwrap()),
+                mk_problem(app.tr, &unknown.problem().unwrap()),
+            ];
+            positive.extend(Section::ALL.map(|s| mk_section(app.tr, s)));
+            positive.retain(|t| !t.is_empty());
+            for drawn in positive {
+                assert!(
+                    texts.iter().any(|t| t.contains(&drawn)),
+                    "{drawn:?} not drawn on Mouse & keyboard: {texts:?}"
+                );
+            }
+            for (key, value) in &english_only {
+                assert!(
+                    !texts.iter().any(|t| t == *value),
+                    "the Mouse & keyboard page draws English-only text {value:?} (key {key})"
+                );
+            }
+            app.mk_scan = Some(scan);
+            app.discard_mk_changes();
+            app.mk_scan_needed = false;
+            app.active_tab = ActiveTab::Home;
+        }
+
         // The History page: saved originals in every group, one opened
         // operation with an error and a `.reg` path, then a broken store.
         app.config.extensions = vec![rule(".a"), rule(".b")];
@@ -1406,8 +1538,25 @@ mod tests {
             },
         );
         env_entry.time = "2000-01-03 00:00:00".into();
-        app.history = vec![entry, menu_entry, startup_entry, env_entry];
+        let mut mk_entry = crate::history::HistoryEntry::from_report(
+            "Mouse & keyboard",
+            "Apply",
+            &crate::associations::OperationReport {
+                succeeded: vec!["Pointer speed".into()],
+                ..Default::default()
+            },
+        );
+        mk_entry.time = "2000-01-04 00:00:00".into();
+        app.history = vec![entry, menu_entry, startup_entry, env_entry, mk_entry];
         app.open_page(ActiveTab::History);
+        // A changed mouse setting's original (`open_page` reloaded the
+        // store from disk).
+        app.mk_store.record_first(
+            "TEST\\user",
+            "pointer_speed",
+            "2026-01-02 03:04:05",
+            crate::mouse_keyboard::SettingValue::Number(10),
+        );
         // Same for an environment variable's original.
         app.env_store
             .snapshots
@@ -1497,6 +1646,8 @@ mod tests {
             "Off app".to_string(),
             // A changed environment variable.
             "FRVAR".to_string(),
+            // A changed mouse setting, by its French title.
+            crate::i18n::messages::mk_title(app.tr, crate::mouse_keyboard::SettingId::PointerSpeed),
         ];
         rows.extend(
             applied_tweaks
@@ -1532,6 +1683,24 @@ mod tests {
             "no Environment variables operation: {texts:?}"
         );
 
+        // The Mouse & keyboard operation, by its French module name.
+        let module = app.tr.t("history.module.mouse_keyboard");
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.starts_with("2000-01-04") && t.contains(&module)),
+            "no Mouse & keyboard operation: {texts:?}"
+        );
+        let original = crate::i18n::messages::mk_value(
+            app.tr,
+            Some(crate::mouse_keyboard::SettingId::PointerSpeed),
+            &crate::mouse_keyboard::SettingValue::Number(10),
+        );
+        let desc = app
+            .tr
+            .t_args("mk.original_desc", &[&original, &"2026-01-02 03:04:05"]);
+        assert!(texts.contains(&desc), "{desc:?} not drawn on History");
+
         // Home: the Startup apps tile, with the counts of the last scan.
         app.active_tab = ActiveTab::Home;
         let mut home = Vec::new();
@@ -1554,6 +1723,8 @@ mod tests {
             app.tr.t_args("home.startup_status", &[&items, &off]),
             app.tr.t("nav.environment"),
             app.tr.t_args("home.environment_status", &[&vars, &folders]),
+            app.tr.t("nav.mouse_keyboard"),
+            app.tr.t_args("home.mouse_keyboard_status_one", &[&1]),
         ] {
             assert!(
                 home.contains(&drawn),

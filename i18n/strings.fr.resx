@@ -1671,4 +1671,262 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
   <data name="env.nothing_to_apply" xml:space="preserve">
     <value>Rien à appliquer</value>
   </data>
+  <data name="job.apply_mouse_keyboard" xml:space="preserve">
+    <value>Application des changements de souris et clavier…</value>
+  </data>
+  <data name="job.restore_mouse_keyboard" xml:space="preserve">
+    <value>Restauration des réglages de souris et clavier…</value>
+  </data>
+  <data name="job.name.apply_mouse_keyboard" xml:space="preserve">
+    <value>L'application des changements de souris et clavier</value>
+  </data>
+  <data name="job.name.restore_mouse_keyboard" xml:space="preserve">
+    <value>La restauration des réglages de souris et clavier</value>
+  </data>
+  <data name="report.applied_mouse_keyboard" xml:space="preserve">
+    <value>{0} réglage(s) appliqué(s)</value>
+  </data>
+  <data name="report.restored_mouse_keyboard" xml:space="preserve">
+    <value>{0} réglage(s) restauré(s)</value>
+  </data>
+  <data name="history.module.mouse_keyboard" xml:space="preserve">
+    <value>Souris et clavier</value>
+  </data>
+  <data name="mk.scan_failed" xml:space="preserve">
+    <value>Impossible de lire les réglages de la souris et du clavier : {0}</value>
+  </data>
+  <data name="mk.apply_title" xml:space="preserve">
+    <value>Inverser les boutons de la souris ?</value>
+  </data>
+  <data name="mk.swap_warning" xml:space="preserve">
+    <value>Vos boutons principal et secondaire s'inversent dès que ce changement est appliqué. Pour l'annuler, cliquez avec l'autre bouton.</value>
+  </data>
+  <data name="mk.restore_title" xml:space="preserve">
+    <value>Restaurer les réglages d'origine ?</value>
+  </data>
+  <data name="mk.restore_message" xml:space="preserve">
+    <value>{0} : les valeurs d'avant les changements de WinTune seront rétablies.</value>
+  </data>
+  <data name="mk.restore_message_one" xml:space="preserve">
+    <value>{0} : la valeur d'avant les changements de WinTune sera rétablie.</value>
+  </data>
+  <data name="mk.restore_many" xml:space="preserve">
+    <value>{0} réglages</value>
+  </data>
+  <data name="mk.section.pointer" xml:space="preserve">
+    <value>Pointeur</value>
+  </data>
+  <data name="mk.section.buttons" xml:space="preserve">
+    <value>Boutons et clics</value>
+  </data>
+  <data name="mk.section.wheel" xml:space="preserve">
+    <value>Molette</value>
+  </data>
+  <data name="mk.section.keyboard" xml:space="preserve">
+    <value>Clavier</value>
+  </data>
+  <data name="mk.section.windows" xml:space="preserve">
+    <value>Fenêtres et menus</value>
+  </data>
+  <data name="mk.pointer_speed.title" xml:space="preserve">
+    <value>Vitesse du pointeur</value>
+  </data>
+  <data name="mk.pointer_precision.title" xml:space="preserve">
+    <value>Améliorer la précision du pointeur</value>
+  </data>
+  <data name="mk.pointer_precision.description" xml:space="preserve">
+    <value>Le pointeur va plus loin quand vous déplacez la souris plus vite.</value>
+  </data>
+  <data name="mk.pointer_trails.title" xml:space="preserve">
+    <value>Traînées du pointeur</value>
+  </data>
+  <data name="mk.pointer_sonar.title" xml:space="preserve">
+    <value>Afficher l'emplacement du pointeur quand j'appuie sur Ctrl</value>
+  </data>
+  <data name="mk.pointer_vanish.title" xml:space="preserve">
+    <value>Masquer le pointeur pendant la saisie</value>
+  </data>
+  <data name="mk.snap_to_default.title" xml:space="preserve">
+    <value>Placer le pointeur sur le bouton par défaut des boîtes de dialogue</value>
+  </data>
+  <data name="mk.swap_buttons.title" xml:space="preserve">
+    <value>Inverser les boutons principal et secondaire</value>
+  </data>
+  <data name="mk.double_click_time.title" xml:space="preserve">
+    <value>Vitesse du double-clic</value>
+  </data>
+  <data name="mk.click_lock.title" xml:space="preserve">
+    <value>Verrouillage du clic</value>
+  </data>
+  <data name="mk.click_lock.description" xml:space="preserve">
+    <value>Maintenez le bouton un instant pour le verrouiller ; cliquez à nouveau pour le libérer.</value>
+  </data>
+  <data name="mk.click_lock_time.title" xml:space="preserve">
+    <value>Délai du verrouillage du clic</value>
+  </data>
+  <data name="mk.click_lock_time.description" xml:space="preserve">
+    <value>Durée d'appui avant le verrouillage.</value>
+  </data>
+  <data name="mk.wheel_lines.title" xml:space="preserve">
+    <value>Lignes à faire défiler à la fois</value>
+  </data>
+  <data name="mk.wheel_chars.title" xml:space="preserve">
+    <value>Caractères à faire défiler horizontalement à la fois</value>
+  </data>
+  <data name="mk.scroll_inactive.title" xml:space="preserve">
+    <value>Faire défiler les fenêtres inactives au survol</value>
+  </data>
+  <data name="mk.key_repeat_delay.title" xml:space="preserve">
+    <value>Délai avant répétition</value>
+  </data>
+  <data name="mk.key_repeat_delay.description" xml:space="preserve">
+    <value>De court (0, environ 250 ms) à long (3, environ 1 seconde).</value>
+  </data>
+  <data name="mk.key_repeat_rate.title" xml:space="preserve">
+    <value>Vitesse de répétition</value>
+  </data>
+  <data name="mk.key_repeat_rate.description" xml:space="preserve">
+    <value>De lent (0) à rapide (31).</value>
+  </data>
+  <data name="mk.hover_time.title" xml:space="preserve">
+    <value>Délai de survol</value>
+  </data>
+  <data name="mk.hover_time.description" xml:space="preserve">
+    <value>Temps d'arrêt du pointeur avant qu'une info-bulle ou un effet de survol apparaisse.</value>
+  </data>
+  <data name="mk.menu_show_delay.title" xml:space="preserve">
+    <value>Délai d'ouverture des menus</value>
+  </data>
+  <data name="mk.menu_show_delay.description" xml:space="preserve">
+    <value>Temps avant l'ouverture d'un sous-menu.</value>
+  </data>
+  <data name="mk.drag_full_windows.title" xml:space="preserve">
+    <value>Afficher le contenu des fenêtres pendant le déplacement</value>
+  </data>
+  <data name="mk.value.on" xml:space="preserve">
+    <value>Activé</value>
+  </data>
+  <data name="mk.value.off" xml:space="preserve">
+    <value>Désactivé</value>
+  </data>
+  <data name="mk.value.ms" xml:space="preserve">
+    <value>{0} ms</value>
+  </data>
+  <data name="mk.value.one_screen" xml:space="preserve">
+    <value>Un écran à la fois</value>
+  </data>
+  <data name="mk.value.no_scroll" xml:space="preserve">
+    <value>0 (pas de défilement)</value>
+  </data>
+  <data name="mk.problem.out_of_range" xml:space="preserve">
+    <value>{0} : cette valeur est hors des limites permises par WinTune.</value>
+  </data>
+  <data name="mk.problem.unknown" xml:space="preserve">
+    <value>{0} est un réglage que cette version de WinTune ne connaît pas.</value>
+  </data>
+  <data name="mk.problem.unreadable" xml:space="preserve">
+    <value>{0} : Windows n'a pas pu lire ce réglage (erreur {1}).</value>
+  </data>
+  <data name="mk.problem.wrong_account" xml:space="preserve">
+    <value>WinTune s'exécute en tant que {0}, mais c'est {1} qui a ouvert la session. Les réglages de la souris et du clavier seraient enregistrés pour le mauvais compte.</value>
+  </data>
+  <data name="mk.problem.account_unknown" xml:space="preserve">
+    <value>WinTune ne peut pas savoir quel compte a ouvert la session ({0}) : il ne modifie donc pas les réglages de la souris et du clavier.</value>
+  </data>
+  <data name="mk.problem.not_saved" xml:space="preserve">
+    <value>Rien n'a été appliqué : les valeurs d'origine ou la sauvegarde .reg n'ont pas pu être enregistrées ({0}).</value>
+  </data>
+  <data name="mk.problem.no_original" xml:space="preserve">
+    <value>{0} : aucune valeur d'origine n'est enregistrée.</value>
+  </data>
+  <data name="mk.failure.set" xml:space="preserve">
+    <value>{0} : Windows a refusé le changement (erreur {1}).</value>
+  </data>
+  <data name="mk.failure.mismatch" xml:space="preserve">
+    <value>{0} : Windows a gardé {1} au lieu de {2}.</value>
+  </data>
+  <data name="mk.failure.unverified" xml:space="preserve">
+    <value>{0} : WinTune n'a pas pu relire le réglage (erreur {1}).</value>
+  </data>
+  <data name="mk.failure.store" xml:space="preserve">
+    <value>Le changement est fait, mais les valeurs d'origine n'ont pas pu être mises à jour : {0}</value>
+  </data>
+  <data name="nav.mouse_keyboard" xml:space="preserve">
+    <value>Souris et clavier</value>
+  </data>
+  <data name="mk.subtitle" xml:space="preserve">
+    <value>Pointeur, boutons, molette et clavier, chaque réglage avec une annulation.</value>
+  </data>
+  <data name="mk.note" xml:space="preserve">
+    <value>Les changements s'appliquent à tous les programmes quand vous cliquez sur Appliquer, et sont conservés quand vous fermez la session. Certains programmes ne lisent le réglage de la molette qu'à leur démarrage.</value>
+  </data>
+  <data name="mk.search" xml:space="preserve">
+    <value>Rechercher un réglage</value>
+  </data>
+  <data name="mk.scanning" xml:space="preserve">
+    <value>Lecture de vos réglages…</value>
+  </data>
+  <data name="mk.no_match" xml:space="preserve">
+    <value>Aucun réglage ne correspond à votre recherche.</value>
+  </data>
+  <data name="mk.pill.not_applied" xml:space="preserve">
+    <value>Non appliqué</value>
+  </data>
+  <data name="mk.windows_default" xml:space="preserve">
+    <value>Valeur par défaut de Windows</value>
+  </data>
+  <data name="mk.default_shown" xml:space="preserve">
+    <value>C'est déjà la valeur par défaut de Windows.</value>
+  </data>
+  <data name="mk.click_lock_off" xml:space="preserve">
+    <value>Activez d'abord le verrouillage du clic.</value>
+  </data>
+  <data name="mk.trails_off" xml:space="preserve">
+    <value>Activez d'abord les traînées du pointeur.</value>
+  </data>
+  <data name="mk.wheel.lines" xml:space="preserve">
+    <value>Lignes</value>
+  </data>
+  <data name="mk.click_test.title" xml:space="preserve">
+    <value>Test du double-clic</value>
+  </data>
+  <data name="mk.click_test.desc" xml:space="preserve">
+    <value>Utilise la vitesse du curseur, appliquée ou non.</value>
+  </data>
+  <data name="mk.click_test.target" xml:space="preserve">
+    <value>Double-cliquez ici pour tester</value>
+  </data>
+  <data name="mk.click_test.ok" xml:space="preserve">
+    <value>Double-clic détecté</value>
+  </data>
+  <data name="mk.key_test.title" xml:space="preserve">
+    <value>Test de la répétition</value>
+  </data>
+  <data name="mk.key_test.note" xml:space="preserve">
+    <value>Utilise les réglages appliqués</value>
+  </data>
+  <data name="mk.key_test.hint" xml:space="preserve">
+    <value>Tapez ici pour tester la répétition</value>
+  </data>
+  <data name="mk.filter_keys" xml:space="preserve">
+    <value>Les touches filtres sont activées : Windows peut utiliser ses propres réglages de répétition. Désactivez-les dans Paramètres &gt; Accessibilité &gt; Clavier.</value>
+  </data>
+  <data name="mk.pending" xml:space="preserve">
+    <value>{0} changement(s) non appliqué(s)</value>
+  </data>
+  <data name="mk.up_to_date" xml:space="preserve">
+    <value>Tous les changements sont appliqués</value>
+  </data>
+  <data name="mk.nothing_to_apply" xml:space="preserve">
+    <value>Rien à appliquer</value>
+  </data>
+  <data name="mk.original_desc" xml:space="preserve">
+    <value>Valeur d'origine : {0}, enregistrée le {1}</value>
+  </data>
+  <data name="home.mouse_keyboard_status" xml:space="preserve">
+    <value>{0} réglages modifiés par WinTune</value>
+  </data>
+  <data name="home.mouse_keyboard_status_one" xml:space="preserve">
+    <value>{0} réglage modifié par WinTune</value>
+  </data>
 </root>

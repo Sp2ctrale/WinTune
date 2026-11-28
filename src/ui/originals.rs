@@ -7,6 +7,7 @@ use super::{ActiveTab, WinTuneApp};
 use crate::backups::Slot;
 use crate::context_menu::{catalog_clsid, entry_key, Place, KEY_PREFIX};
 use crate::i18n::{messages, Tr};
+use crate::mouse_keyboard::SettingId;
 use crate::tweaks::find_tweak;
 use eframe::egui::{self, RichText};
 
@@ -19,6 +20,7 @@ pub(super) enum OriginalsModule {
     ContextMenu,
     Startup,
     Environment,
+    MouseKeyboard,
     /// A tweak id the catalog no longer knows (e.g. removed in a later
     /// version): listed with its raw id, still restorable.
     Other,
@@ -44,6 +46,7 @@ impl OriginalsModule {
             Self::ContextMenu => tr.t("history.module.context_menu"),
             Self::Startup => tr.t("history.module.startup"),
             Self::Environment => tr.t("history.module.environment"),
+            Self::MouseKeyboard => tr.t("history.module.mouse_keyboard"),
             Self::Other => tr.t("originals.other"),
         }
     }
@@ -64,6 +67,7 @@ enum RestoreRequest {
     MenuKeys(Vec<String>),
     Startup(Vec<String>),
     Environment(Vec<String>),
+    MouseKeyboard(Vec<String>),
 }
 
 /// A secondary button that, given a reason, is disabled and says why on
@@ -138,6 +142,22 @@ impl WinTuneApp {
                     key: key.clone(),
                     title: self.env_slot_name(key),
                     description: tr.t_args("originals.saved_on", &[&backup.timestamp]),
+                })
+                .collect();
+        }
+        if module == OriginalsModule::MouseKeyboard {
+            let Some(backups) = self.mk_store.backups_of(&self.env.user_label) else {
+                return Vec::new();
+            };
+            return backups
+                .iter()
+                .map(|(key, backup)| {
+                    let original = messages::mk_value(tr, SettingId::from_key(key), &backup.value);
+                    OriginalRow {
+                        key: key.clone(),
+                        title: self.mk_slot_name(key),
+                        description: tr.t_args("mk.original_desc", &[&original, &backup.timestamp]),
+                    }
                 })
                 .collect();
         }
@@ -254,6 +274,7 @@ impl WinTuneApp {
         let menu_reason = self.busy_or_blocked(&self.menu_store_error);
         let startup_reason = self.busy_or_blocked(&self.startup_store_error);
         let env_reason = self.busy_or_blocked(&self.env_store_error);
+        let mk_reason = self.busy_or_blocked(&self.mk_store_error);
         let mut request = None;
         let mut shown = 0;
 
@@ -361,6 +382,28 @@ impl WinTuneApp {
                 }
             }
         }
+        match &self.mk_store_error {
+            Some(e) => {
+                let text = tr.t_args("originals.unreadable", &[&messages::load_error(tr, e)]);
+                kit::banner(ui, kit::BannerKind::Error, &text, None);
+                shown += 1;
+            }
+            None => {
+                let rows = self.originals_of(OriginalsModule::MouseKeyboard);
+                if !rows.is_empty() {
+                    shown += 1;
+                    let reason = mk_reason.as_deref();
+                    originals_section(
+                        ui,
+                        tr,
+                        OriginalsModule::MouseKeyboard,
+                        rows,
+                        reason,
+                        &mut request,
+                    );
+                }
+            }
+        }
         if shown == 0 {
             kit::card(ui, |ui| {
                 kit::empty_state(ui, kit::Icon::Restore, &tr.t("originals.empty"), None);
@@ -374,6 +417,7 @@ impl WinTuneApp {
             Some(RestoreRequest::MenuKeys(keys)) => self.request_restore_menu_keys(keys),
             Some(RestoreRequest::Startup(ids)) => self.request_restore_startup(ids),
             Some(RestoreRequest::Environment(ids)) => self.request_restore_environment(ids),
+            Some(RestoreRequest::MouseKeyboard(ids)) => self.request_restore_mouse_keyboard(ids),
             None => {}
         }
     }
@@ -417,7 +461,12 @@ fn originals_section(
     let is_menu = module == OriginalsModule::ContextMenu;
     let is_startup = module == OriginalsModule::Startup;
     let is_env = module == OriginalsModule::Environment;
+    let is_mk = module == OriginalsModule::MouseKeyboard;
     let clicked = match (all, one) {
+        (true, _) if is_mk => {
+            RestoreRequest::MouseKeyboard(rows.into_iter().map(|r| r.key).collect())
+        }
+        (false, Some(key)) if is_mk => RestoreRequest::MouseKeyboard(vec![key]),
         (true, _) if is_env => {
             RestoreRequest::Environment(rows.into_iter().map(|r| r.key).collect())
         }
@@ -646,6 +695,111 @@ mod tests {
         let module = app.tr.t("history.module.environment");
         assert!(in_originals(&app, &out, &module).is_none());
         assert!(in_originals(&app, &out, "FOO").is_none());
+    }
+
+    /// Pointer speed 14 applied through the page's job, History open.
+    fn changed_speed(fx: &TempIcons, ctx: &egui::Context) -> WinTuneApp {
+        use crate::mouse_keyboard::{SettingId::PointerSpeed, SettingValue::Number, Wanted};
+        let mut app = fx.app(ctx);
+        app.request_mk_scan();
+        run_until_mk_scanned(&mut app, ctx);
+        app.set_mk_wanted(PointerSpeed, Wanted::Value(Number(14)));
+        app.start_mk_apply(ctx);
+        run_until_idle(&mut app, ctx);
+        assert!(
+            app.mk_store.has_backup("TEST\\user", "pointer_speed"),
+            "{}",
+            app.last_notice()
+        );
+        app.open_page(ActiveTab::History);
+        app
+    }
+
+    #[test]
+    fn a_changed_setting_is_listed_with_its_original_and_restores() {
+        use crate::mouse_keyboard::{SettingId::PointerSpeed, SettingValue::Number};
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = changed_speed(&fx, &ctx);
+        assert_eq!(fx.fake_input().value(PointerSpeed), Number(14));
+
+        let out = settle(&mut app, &ctx);
+        let module = app.tr.t("history.module.mouse_keyboard");
+        let m = in_originals(&app, &out, &module).expect("group title drawn");
+        let r = in_originals(&app, &out, "Pointer speed").expect("setting row drawn");
+        assert!(r.y > m.y);
+        let saved = app.mk_store.backups_of("TEST\\user").unwrap()["pointer_speed"]
+            .timestamp
+            .clone();
+        let desc = app.tr.t_args("mk.original_desc", &[&"10", &saved]);
+        assert!(drawn_texts(&out).contains(&desc), "{:?}", drawn_texts(&out));
+
+        let label = restore_label(&app);
+        let at = button_on_row(&mut app, &ctx, "Pointer speed", &label);
+        click_at(&mut app, &ctx, at);
+        assert_eq!(
+            pending(&app),
+            Some(ConfirmAction::RestoreMouseKeyboard(vec![
+                "pointer_speed".to_string()
+            ]))
+        );
+        assert!(!app.is_busy(), "a restore started without confirmation");
+
+        app.resolve_confirm(&ctx, true);
+        run_until_idle(&mut app, &ctx);
+        assert_eq!(fx.fake_input().value(PointerSpeed), Number(10));
+        let out = settle(&mut app, &ctx);
+        assert!(in_originals(&app, &out, &module).is_none());
+        assert!(in_originals(&app, &out, "Pointer speed").is_none());
+    }
+
+    #[test]
+    fn an_unknown_setting_is_listed_by_its_raw_key() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = fx.app(&ctx);
+        let mut store = crate::mouse_keyboard::MkBackupStore::default();
+        store.record_first(
+            "TEST\\user",
+            "caret_blink",
+            "2026-01-02 03:04:05",
+            crate::mouse_keyboard::SettingValue::Number(530),
+        );
+        crate::mouse_keyboard::save_mk_store(&store, &app.env.mk_store_path).unwrap();
+        app.open_page(ActiveTab::History);
+        assert_eq!(app.mk_store_error, None);
+
+        let out = settle(&mut app, &ctx);
+        assert!(in_originals(&app, &out, "caret_blink").is_some());
+        let label = restore_label(&app);
+        let at = button_on_row(&mut app, &ctx, "caret_blink", &label);
+        click_at(&mut app, &ctx, at);
+        assert_eq!(
+            pending(&app),
+            Some(ConfirmAction::RestoreMouseKeyboard(vec![
+                "caret_blink".to_string()
+            ]))
+        );
+    }
+
+    #[test]
+    fn an_unreadable_mouse_keyboard_store_shows_a_banner() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = changed_speed(&fx, &ctx);
+        std::fs::write(&app.env.mk_store_path, "{ broken").unwrap();
+        app.reload_mk_store();
+        let error = app.mk_store_error.clone().expect("store error");
+
+        let out = settle(&mut app, &ctx);
+        let banner = app.tr.t_args(
+            "originals.unreadable",
+            &[&messages::load_error(app.tr, &error)],
+        );
+        assert!(drawn_texts(&out).contains(&banner), "no banner");
+        let module = app.tr.t("history.module.mouse_keyboard");
+        assert!(in_originals(&app, &out, &module).is_none());
+        assert!(in_originals(&app, &out, "Pointer speed").is_none());
     }
 
     #[test]

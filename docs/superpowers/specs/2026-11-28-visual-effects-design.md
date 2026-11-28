@@ -249,7 +249,26 @@ change nothing.
   is off"), not a plain mismatch, and the row's snapshot is kept. A gated row
   written in an Apply that turns the master on is written and read back after
   the master's SET (5.4 step 4), but its snapshot GET still comes before any
-  write.
+  write. When that differing readback's GET of the master fails, WinTune
+  cannot tell the two apart: the issue is `VeFailure::Unverified` and the
+  snapshot is kept.
+- **Re-read after the master goes on (call, review T3-C1).** In case 2 a
+  companion's GET reads off while the master is off, whatever its stored
+  value, so a snapshot taken then can be wrong. When an Apply turns the
+  master from live off to on, or a Restore sets the master on before its
+  companions, every companion and gated row snapshotted in that job is read
+  again once the master's SET and readback succeed; that value replaces the
+  snapshot, and the store is saved again before any gated row is written.
+  This is the one exception to "every snapshot GET before any write". If
+  that save fails, no gated row is written and the report says so. If the
+  master does not end on, or a re-read fails, the snapshots it concerns are
+  dropped and their rows are not written (they were never changed). Cost if
+  wrong (a master SET on that does change a companion): its snapshot is the
+  value after that SET, not before.
+- **A gated row touched while the master goes off (review T3-C2).** In an
+  Apply that turns the master off, a touched master-gated row keeps its
+  snapshot even when its readback matches its original: the master's SET,
+  written last, may clear it (case 1).
 - The store entry gets an optional `companion_of` field (the master's id),
   left out of the JSON when empty, so Mouse & keyboard's file stays
   byte-identical.
@@ -270,9 +289,14 @@ On the job worker thread, as Mouse & keyboard:
    on, in case a SET under a disabled master misbehaves; no cost)**. Table
    order already puts each gate before its rows. Each SET is followed by its
    GET; a different value fails that setting (`HeldByMaster` while the
-   master is live off, 5.3) and the next is still tried.
+   master is live off, 5.3) and the next is still tried. When the master
+   goes from live off to on, the companions and gated rows snapshotted in
+   this Apply are read again right after its SET, and the store saved,
+   before any gated row is written (5.3, the one exception to step 2).
 5. **Forget** each snapshot whose live value is back at its original, with
-   the companion rules of 5.3, and save the store again.
+   the companion rules of 5.3 (an Unverified or held row, and a gated row
+   touched while the master goes off, keep theirs), and save the store
+   again.
 
 The report lists every success and failure. Pending choices: cleared after a
 clean Apply, kept after a refused or partial one, and each scan drops those

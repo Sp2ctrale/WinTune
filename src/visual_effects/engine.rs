@@ -11,7 +11,7 @@ use crate::associations::OperationReport;
 use crate::backups::RegTarget;
 use crate::clock;
 pub use crate::sysparams::AccountCheck;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 /// What a scan read: every effect (or its read error) and the account check.
@@ -150,11 +150,14 @@ fn held_or_mismatch(
     wanted: SettingValue,
     read: SettingValue,
 ) -> VeFailure {
-    let master_off = || api.get(EffectId::UiEffects) == Ok(SettingValue::Flag(false));
-    if MASTER_COMPANIONS.contains(&id) && master_off() {
-        VeFailure::HeldByMaster { id, wanted, read }
-    } else {
-        VeFailure::Mismatch { id, wanted, read }
+    if !MASTER_COMPANIONS.contains(&id) {
+        return VeFailure::Mismatch { id, wanted, read };
+    }
+    match api.get(EffectId::UiEffects) {
+        Ok(SettingValue::Flag(false)) => VeFailure::HeldByMaster { id, wanted, read },
+        Ok(_) => VeFailure::Mismatch { id, wanted, read },
+        // Cannot tell held from mismatch: unverified, snapshot kept (T3-C3).
+        Err(e) => VeFailure::Unverified { id, code: e.code },
     }
 }
 
@@ -190,19 +193,20 @@ fn write_and_read_back(
         }
         Ok(read) if read != value => {
             let failure = held_or_mismatch(api, id, value, read);
-            let held = matches!(failure, VeFailure::HeldByMaster { .. });
+            let written = match failure {
+                VeFailure::HeldByMaster { .. } => Written::Held,
+                VeFailure::Unverified { .. } => Written::Unknown,
+                _ => Written::Other(read),
+            };
             out.failure(failure);
-            if held {
-                Written::Held
-            } else {
-                Written::Other(read)
-            }
+            written
         }
         Ok(read) => Written::Kept(read),
     }
 }
 
-/// Saves the store after the writes, when they changed it.
+/// Saves the store after the writes, when they changed it. A save failure
+/// already reported in this job is not reported twice.
 fn save_if_changed(
     store: &VeBackupStore,
     saved: &VeBackupStore,
@@ -211,9 +215,67 @@ fn save_if_changed(
 ) {
     if store != saved {
         if let Err(e) = save_ve_store(store, &opts.store_path) {
-            out.failure(VeFailure::StoreNotSaved(e));
+            let reported = out
+                .issues
+                .iter()
+                .any(|i| matches!(i, VeIssue::Failure(VeFailure::StoreNotSaved(_))));
+            if !reported {
+                out.failure(VeFailure::StoreNotSaved(e));
+            }
         }
     }
+}
+
+/// Ruling T3-C1 (spec 5.3 call): while the master is live off, a companion's
+/// GET may read off whatever its value (case 2), so the snapshots this job
+/// took for `fresh` may be wrong. Once the master's SET on is read back
+/// (`master_on`), each is read again and replaced, and the store is saved
+/// before any gated row is written. A master that did not end on leaves
+/// them unreliable: they are dropped and their rows not written. Returns the
+/// ids not to write.
+fn reread_after_master_on(
+    api: &dyn EffectsApi,
+    store: &mut VeBackupStore,
+    fresh: &[EffectId],
+    master_on: bool,
+    saved: &mut VeBackupStore,
+    opts: &VeOptions,
+    out: &mut VeReport,
+) -> BTreeSet<EffectId> {
+    let user = opts.user.as_str();
+    let mut skip = BTreeSet::new();
+    if fresh.is_empty() {
+        return skip;
+    }
+    if !master_on {
+        for &id in fresh {
+            store.forget(user, id.key());
+            skip.insert(id);
+        }
+        return skip;
+    }
+    for &id in fresh {
+        match api.get(id) {
+            Ok(v) => {
+                if let Some(b) = store.users.get_mut(user).and_then(|b| b.get_mut(id.key())) {
+                    b.value = v;
+                }
+            }
+            Err(e) => {
+                out.problem(VeProblem::Unreadable { id, code: e.code });
+                store.forget(user, id.key());
+                skip.insert(id);
+            }
+        }
+    }
+    match save_ve_store(store, &opts.store_path) {
+        Ok(()) => *saved = store.clone(),
+        Err(e) => {
+            out.failure(VeFailure::StoreNotSaved(e));
+            skip.extend(MASTER_COMPANIONS);
+        }
+    }
+    skip
 }
 
 /// After the master's snapshot was forgotten: a companion back at its
@@ -284,6 +346,12 @@ pub fn apply_visual_effects(
         return out;
     }
 
+    // The gated rows whose snapshot this batch takes (T3-C1).
+    let fresh: Vec<EffectId> = MASTER_COMPANIONS
+        .into_iter()
+        .filter(|id| live.contains_key(id) && !store.has_backup(user, id.key()))
+        .collect();
+
     // 3. Snapshot on first touch, save the store, then write the `.reg`.
     let before = store.clone();
     let timestamp = clock::now_local();
@@ -307,29 +375,46 @@ pub fn apply_visual_effects(
     match export_desktop(opts.reg_source, &opts.reg_backup_dir) {
         Ok(file) => out.report.reg_backup_file = Some(file),
         Err(e) => {
-            // Nothing is applied: put the store back, in memory and (best
-            // effort) in its file.
+            // Nothing is applied: put the store back, in memory and in its
+            // file; a failure of that save is part of the reason.
             *store = before;
-            let _ = save_ve_store(store, &opts.store_path);
-            out.problem(VeProblem::NotSaved(e));
+            let why = match save_ve_store(store, &opts.store_path) {
+                Ok(()) => e,
+                Err(back) => {
+                    format!("{e}; the saved originals could not be put back either: {back}")
+                }
+            };
+            out.problem(VeProblem::NotSaved(why));
             return out;
         }
     }
-    let saved = store.clone();
+    let mut saved = store.clone();
 
     // 4. Write, the master first going on and last going off, each SET
-    // followed by its GET.
+    // followed by its GET. A master going from live off to on is followed
+    // by the re-read of T3-C1 before any gated row.
     let master_target = match wanted.get(&master) {
         Some(SettingValue::Flag(on)) => Some(*on),
         _ => None,
     };
+    let reread =
+        master_target == Some(true) && live.get(&master) == Some(&SettingValue::Flag(false));
     let ids: Vec<EffectId> = wanted.keys().copied().collect();
     let order = write_order(&ids, master_target);
     let total = order.len();
     let mut after: Vec<(EffectId, SettingValue)> = Vec::new();
+    let mut skip: BTreeSet<EffectId> = BTreeSet::new();
     for (n, &id) in order.iter().enumerate() {
+        if skip.contains(&id) {
+            continue;
+        }
         (opts.progress)(n, total, &format!("Writing {}", id.key()));
-        match write_and_read_back(api, id, wanted[&id], &mut out) {
+        let written = write_and_read_back(api, id, wanted[&id], &mut out);
+        if id == master && reread {
+            let on = matches!(written, Written::Kept(_));
+            skip = reread_after_master_on(api, store, &fresh, on, &mut saved, opts, &mut out);
+        }
+        match written {
             Written::Kept(read) => {
                 out.report.succeeded.push(id.key().to_string());
                 after.push((id, read));
@@ -344,9 +429,20 @@ pub fn apply_visual_effects(
 
     // 5. Forget each snapshot back at its original; the master's companions
     // go with it, or become their own rows (spec 5.3). While the master
-    // stays changed, they are kept.
+    // stays changed, they are kept. A touched gated row this batch took a
+    // snapshot of but did not write is forgotten (T3-C1).
+    for &id in &skip {
+        if wanted.contains_key(&id) && fresh.contains(&id) {
+            store.forget(user, id.key());
+        }
+    }
     let mut master_forgotten = false;
     for (id, value) in after {
+        // T3-C2: the master's SET off, written last, may clear a gated row
+        // read back before it.
+        if master_target == Some(false) && MASTER_COMPANIONS.contains(&id) {
+            continue;
+        }
         if store.original(user, id.key()) == Some(&value) {
             store.forget(user, id.key());
             master_forgotten |= id == master;
@@ -399,6 +495,7 @@ pub fn restore_visual_effects(
         Some(SettingValue::Flag(on)) if targets.contains(&master) => Some(*on),
         _ => None,
     };
+    let mut fresh: Vec<EffectId> = Vec::new();
     if targets.contains(&master) {
         // Companion snapshots first, all read before any write.
         let mut read: Vec<(EffectId, SettingValue)> = Vec::new();
@@ -418,6 +515,7 @@ pub fn restore_visual_effects(
         if unreadable {
             return out;
         }
+        fresh = read.iter().map(|(id, _)| *id).collect();
         if !read.is_empty() {
             let before = store.clone();
             let timestamp = clock::now_local();
@@ -439,20 +537,39 @@ pub fn restore_visual_effects(
         }
     }
 
-    let saved = store.clone();
+    let mut saved = store.clone();
     let order = write_order(&targets, master_target);
     let total = order.len();
     let mut master_forgotten = false;
+    let mut skip: BTreeSet<EffectId> = BTreeSet::new();
     for (n, &id) in order.iter().enumerate() {
         let key = id.key();
+        if skip.contains(&id) {
+            continue;
+        }
         (opts.progress)(n, total, &format!("Restoring {key}"));
         let Some(&original) = store.original(user, key) else {
             continue;
         };
-        if let Written::Kept(_) = write_and_read_back(api, id, original, &mut out) {
+        let kept = matches!(
+            write_and_read_back(api, id, original, &mut out),
+            Written::Kept(_)
+        );
+        if kept {
             store.forget(user, key);
             out.report.succeeded.push(key.to_string());
             master_forgotten |= id == master;
+        }
+        // T3-C1: the companions just snapshotted are read again once the
+        // master is on, before any of them is written.
+        if id == master && master_target == Some(true) {
+            skip = reread_after_master_on(api, store, &fresh, kept, &mut saved, opts, &mut out);
+        }
+    }
+    // A companion snapshotted for this restore but not written is dropped.
+    for &id in &skip {
+        if fresh.contains(&id) {
+            store.forget(user, id.key());
         }
     }
     if master_forgotten {
@@ -689,7 +806,9 @@ mod tests {
         );
         assert_errors_match(&r);
         assert!(r.report.succeeded.is_empty());
-        // Back at its original: forgotten.
+        // The master is live on, so nothing hides or clears the value: the
+        // readback is the true live value, back at its original, and the
+        // snapshot is forgotten.
         assert!(!store.has_backup(USER, "cursor_shadow"));
     }
 
@@ -1425,5 +1544,144 @@ mod tests {
         );
         assert_eq!(fake.sets(), []);
         assert_eq!(store.backups_of(USER).unwrap().len(), 1);
+    }
+
+    // ---- review T3-C1, T3-C2, T3-C3: originals the master hides or clears ----
+
+    /// T3-C1: in case 2, the snapshot GETs taken while the master is off all
+    /// read off. Turning the master on, and touching menu fade in the same
+    /// batch, then restoring everything must give back the hidden values.
+    #[test]
+    fn case_2_a_master_turned_on_from_off_keeps_the_hidden_originals() {
+        let f = fixture();
+        let fake = FakeEffects::new();
+        fake.master_mode(MasterMode::ReadsOff);
+        fake.put(UiEffects, Flag(false));
+        let seed = values(&fake);
+        let mut store = VeBackupStore::default();
+
+        let r = apply(
+            &fake,
+            &mut store,
+            &f,
+            &[change(UiEffects, Flag(true)), change(MenuFade, Flag(false))],
+        );
+        assert_eq!(r.issues, []);
+        assert_eq!(r.report.succeeded, ["ui_effects", "menu_fade"]);
+        for (id, seed) in companion_seeds() {
+            assert_eq!(store.original(USER, id.key()), Some(&seed), "{}", id.key());
+        }
+        assert_eq!(store.companion_of(USER, "menu_fade"), None);
+        assert_eq!(load_ve_store(&store_path(&f)).unwrap(), store);
+
+        let ids: Vec<String> = store.backups_of(USER).unwrap().keys().cloned().collect();
+        let r = restore_visual_effects(&fake, &mut store, &ids, &opts(&f, &same));
+
+        assert_eq!(r.issues, []);
+        assert!(store.users.is_empty());
+        assert_eq!(values(&fake), seed);
+    }
+
+    /// T3-C1, restore side: a restore that sets the master on reads the
+    /// companions it lacks again after that SET.
+    #[test]
+    fn case_2_a_master_on_restore_rereads_the_companions_it_snapshotted() {
+        let f = fixture();
+        let fake = FakeEffects::new();
+        fake.master_mode(MasterMode::ReadsOff);
+        fake.put(UiEffects, Flag(false));
+        let mut store = VeBackupStore::default();
+        store.record_first(USER, "ui_effects", "x", Flag(true));
+
+        let r = restore(&fake, &mut store, &f, &["ui_effects"]);
+
+        assert_eq!(r.issues, []);
+        assert!(store.users.is_empty());
+        assert_eq!(values(&fake), values(&FakeEffects::new()));
+        let mut want = vec![(UiEffects, Flag(true))];
+        want.extend(companion_seeds());
+        assert_eq!(fake.sets(), want);
+    }
+
+    /// T3-C2: the master's SET, written last, clears a touched companion
+    /// that was read back before it; its snapshot must survive.
+    #[test]
+    fn case_1_a_companion_touched_with_the_master_going_off_keeps_its_snapshot() {
+        let f = fixture();
+        let fake = FakeEffects::new();
+        fake.master_mode(MasterMode::Clears);
+        let seed = values(&fake);
+        let mut store = VeBackupStore::default();
+
+        let r = apply(
+            &fake,
+            &mut store,
+            &f,
+            &[
+                change(UiEffects, Flag(false)),
+                change(MenuAnimation, Flag(true)),
+            ],
+        );
+        assert_eq!(r.issues, []);
+        assert_eq!(fake.value(MenuAnimation), Flag(false));
+        assert_eq!(store.original(USER, "menu_animation"), Some(&Flag(true)));
+        assert_eq!(store.companion_of(USER, "menu_animation"), None);
+
+        let ids: Vec<String> = store.backups_of(USER).unwrap().keys().cloned().collect();
+        let r = restore_visual_effects(&fake, &mut store, &ids, &opts(&f, &same));
+
+        assert_eq!(r.issues, []);
+        assert_eq!(fake.value(MenuAnimation), Flag(true));
+        assert!(store.users.is_empty());
+        assert_eq!(values(&fake), seed);
+    }
+
+    /// Passes everything through, but the first GET of the master fails.
+    struct MasterGetFailsOnce<'a> {
+        inner: &'a FakeEffects,
+        failed: std::sync::atomic::AtomicBool,
+    }
+
+    impl EffectsApi for MasterGetFailsOnce<'_> {
+        fn get(&self, id: EffectId) -> Result<SettingValue, ApiError> {
+            use std::sync::atomic::Ordering;
+            if id == UiEffects && !self.failed.swap(true, Ordering::SeqCst) {
+                return Err(ApiError { code: 5 });
+            }
+            self.inner.get(id)
+        }
+
+        fn set(&self, id: EffectId, value: &SettingValue) -> Result<(), ApiError> {
+            self.inner.set(id, value)
+        }
+    }
+
+    /// T3-C3: a differing companion readback whose master GET fails cannot
+    /// tell held from mismatch, so the snapshot is kept.
+    #[test]
+    fn a_failed_master_get_on_a_differing_companion_keeps_the_snapshot() {
+        let f = fixture();
+        let fake = FakeEffects::new();
+        fake.master_mode(MasterMode::ReadsOff);
+        fake.put(UiEffects, Flag(false));
+        let api = MasterGetFailsOnce {
+            inner: &fake,
+            failed: std::sync::atomic::AtomicBool::new(false),
+        };
+        let mut store = VeBackupStore::default();
+
+        let r = apply(&api, &mut store, &f, &[change(CursorShadow, Flag(true))]);
+
+        assert_eq!(
+            r.issues,
+            [VeIssue::Failure(VeFailure::Unverified {
+                id: CursorShadow,
+                code: 5
+            })]
+        );
+        assert_errors_match(&r);
+        assert!(r.report.succeeded.is_empty());
+        assert_eq!(store.original(USER, "cursor_shadow"), Some(&Flag(false)));
+        assert_eq!(load_ve_store(&store_path(&f)).unwrap(), store);
     }
 }

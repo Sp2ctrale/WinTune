@@ -146,10 +146,13 @@ impl WinTuneApp {
     }
 
     /// The page's bar: how much is not applied, Discard and Apply; or the
-    /// job's progress while one runs.
+    /// job's progress while one runs. The count and Discard both come from
+    /// the choices kept (each one a row marked "Not applied"), so a choice
+    /// held while the account check fails is still counted and can be
+    /// discarded; Apply's own reason says why it cannot be written.
     fn ve_action_bar(&mut self, ctx: &egui::Context) {
         let tr = self.tr;
-        let pending = self.ve_pending_count();
+        let pending = self.ve_pending.len();
         let status = if pending > 0 {
             tr.t_args("ve.pending", &[&pending])
         } else {
@@ -159,7 +162,7 @@ impl WinTuneApp {
         let p = kit::current_palette(ctx);
         let apply_label = tr.t("tweaks.apply");
         let discard_label = tr.t("tweaks.discard");
-        let can_discard = !self.ve_pending.is_empty();
+        let can_discard = pending > 0;
 
         let (mut apply, mut discard) = (false, false);
         // Right to left: Apply sits at the far right.
@@ -722,6 +725,39 @@ mod tests {
         assert!(!app.is_busy());
         let hover = hover_texts(&mut app, &ctx, apply);
         assert!(hover.contains(&banner), "{hover:?}");
+    }
+
+    /// Final review: the bar's count and Discard come from one source, so
+    /// choices kept under the wrong account never read "All changes
+    /// applied" beside Discard.
+    #[test]
+    fn choices_kept_under_the_wrong_account_are_counted_beside_discard() {
+        let fx = TempIcons::new(&[]);
+        let ctx = egui::Context::default();
+        let mut app = page_app(&fx, &ctx);
+        app.set_ve_wanted(CursorShadow, Flag(true));
+        app.set_ve_wanted(CaretWidth, Number(2));
+        fx.set_account(AccountCheck::Different {
+            process: "PC\\Admin".into(),
+            session: "PC\\Ana".into(),
+        });
+        rescan(&mut app, &ctx);
+        assert_eq!(app.ve_pending.len(), 2, "the choices are kept");
+
+        let shown = texts(&mut app, &ctx);
+        assert!(
+            shown.contains(&app.tr.t_args("ve.pending", &[&2])),
+            "{shown:?}"
+        );
+        assert!(shown.contains(&app.tr.t("tweaks.discard")), "{shown:?}");
+        assert!(!shown.contains(&app.tr.t("ve.up_to_date")), "{shown:?}");
+
+        let text = app.tr.t("tweaks.discard");
+        click_text(&mut app, &ctx, &text);
+        assert!(app.ve_pending.is_empty());
+        let shown = texts(&mut app, &ctx);
+        assert!(shown.contains(&app.tr.t("ve.up_to_date")), "{shown:?}");
+        assert!(!shown.contains(&app.tr.t("tweaks.discard")), "{shown:?}");
     }
 
     #[test]

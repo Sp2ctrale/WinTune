@@ -415,10 +415,14 @@ worker thread.
 - **Scan** (`scan_visual_effects`): one GET per effect plus the account check;
   an effect whose GET fails is locked.
 - **Apply** (`apply_visual_effects`): the account check, then validate every
-  change (any problem refuses, nothing written), then read each touched effect
-  and, when a master-gated row or the master is touched, every companion; take
-  the snapshots (companions marked `companion_of`), save the store and write
-  the `.reg` (if either fails, nothing is applied). Then write in
+  change (any problem refuses, nothing written), then read each touched effect,
+  the master when a master-gated row is touched, and every companion when the
+  master is touched. A master that is live off and not turned on in the batch
+  holds its rows: a touched gated row gets no snapshot and no SET
+  (`HeldByMaster`), and no companion is read or snapshotted, since its GET may
+  read a masked off. Then take the snapshots (companions marked
+  `companion_of`), save the store and write the `.reg` (if either fails,
+  nothing is applied). Then write in
   `write_order`, each SET followed by its GET. When the master goes from live
   off to on, the companions and gated rows snapshotted in the job are read
   again right after its SET, replacing their snapshots, and the store is saved
@@ -431,16 +435,24 @@ worker thread.
 - **`HeldByMaster`**: after a differing readback of a gated row, one GET of
   `ui_effects` decides: if it is live off the issue is `HeldByMaster` (not a
   plain `Mismatch`) and the snapshot is kept; if that GET fails the issue is
-  `Unverified`. A companion is never written while the master stays off.
+  `Unverified`. No master-gated row is written while the master is live off
+  and the job leaves it off: an Apply holds it (above), and a Restore of a
+  master that is live off and stays off writes none of its companions.
 - **Restore** (`restore_visual_effects`): SET the stored value exactly, GET it
   back, forget the snapshot only if they match. Restoring the master restores
   its companions with it (the master first when it goes on, last when it goes
-  off). After a master-off restore, each companion written before it is read
-  again and only one still at its original is forgotten; any other stays as a
-  held row. Under `ReadsOff` that leaves the companions that are on listed,
+  off). When the master is already live off and is restored to off, no
+  companion is read, snapshotted or written: each one with a snapshot is
+  reported `HeldByMaster` and keeps it (ruling FW-1). When a master that is on
+  is restored to off, each companion written before it is read again after
+  its SET and only one still at its original is forgotten; any other stays as
+  a held row. Under `ReadsOff` that leaves the companions that are on listed,
   which pre-merge checklist item 4 decides. No `.reg`.
 - **Forget** a companion when it is restored, or when the master is back at
-  its original; the page then drops the pending choices of restored effects.
+  its original and the companion's live value is too; a companion that still
+  differs (or cannot be read) then becomes its own row. When a master restore
+  is forgotten, the companions it did not settle become their own rows. The
+  page then drops the pending choices of restored effects.
 - **Page** (`ui/visual_effects_tab.rs`, `ui/visual_effects_state.rs`): see the
   UI section.
 

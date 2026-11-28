@@ -870,17 +870,20 @@ does not depend on checklist item 4, which only records which case happens.
 The master's **companions** are the 8 rows gated by `ui_effects`, directly or
 through another row: `combobox_animation`, `listbox_smooth_scroll`,
 `menu_animation`, `menu_fade`, `selection_fade`, `tooltip_animation`,
-`tooltip_fade` and `cursor_shadow`. The spec text says six: the rows the
-master gates directly. WinTune keeps eight because `tooltip_fade` is a member of
-Learn's UI effects list and `menu_fade` is gated by `menu_animation`, which the
-master gates, so either can be cleared or masked along with the master too.
+`tooltip_fade` and `cursor_shadow`. Beside the six rows the master gates
+directly, WinTune counts `tooltip_fade` and `menu_fade`, because
+`tooltip_fade` is a member of Learn's UI effects list and `menu_fade` is gated
+by `menu_animation`, which the master gates, so either can be cleared or
+masked along with the master too.
 Cost of the two extra rows: one more snapshot and SET each, which change
 nothing when the master only gates.
 
 - **Snapshots.** Any Apply or Restore that touches `ui_effects` first reads
   every companion through its GET and records it, before any write, as a
   companion of the master (`companion_of` in the store). A failed GET refuses
-  the job. A row that already has its own snapshot keeps it.
+  the job. A row that already has its own snapshot keeps it. Except when the
+  master is live off and the job leaves it off: then no companion is read or
+  snapshotted, since its GET may read a masked off (see "Master staying off").
 - **History.** Companions are not History rows of their own and are not counted
   on Home; the master's row says "also restores {0} effects". A companion the
   user changes directly keeps its first-touch original but becomes its own
@@ -900,24 +903,27 @@ nothing when the master only gates.
 - **Master going off.** In a batch that turns the master off, the snapshot of a
   touched companion is kept even when its readback matches its original, as the
   master's SET (written last) may clear it.
-- **Master staying off.** A companion is not written while the master stays
-  off: when the master is live off and the batch does not turn it on, the
-  companion gets no snapshot (its GET may read masked) and no SET, and is
-  reported held by the master. The page cannot ask for this (the row is
-  disabled); the engine refuses it anyway.
-- **Master-off restore.** When the master is already live off, a Restore that
-  sets it off takes no new companion snapshot and writes no companion without
-  one. After the master's SET off, each companion written before it is read
-  again: a value still at its original is forgotten, any other keeps its
-  snapshot and is reported held by the master (never forgotten on a readback
-  taken before the master went off). So the companions are re-checked after a
-  master-off restore.
+- **Master staying off.** No companion is read, snapshotted or written while
+  the master is live off and the job leaves it off. In an Apply that does not
+  turn the master on, a touched companion gets no snapshot (its GET may read
+  masked) and no SET, and is reported held by the master; the page cannot ask
+  for this (the row is disabled), the engine refuses it anyway. An Apply that
+  sets such a master off again (a page that saw it on) takes no companion
+  snapshot either. A Restore that sets such a master off takes no new
+  companion snapshot and writes no companion, even one that has a snapshot:
+  each is reported held by the master and keeps its snapshot, to be restored
+  once the master is on.
+- **Master-off restore.** When the master is live on and a Restore sets it
+  off, its companions are written first. After the master's SET off, each
+  companion written before it is read again: a value still at its original is
+  forgotten, any other keeps its snapshot and is reported held by the master
+  (never forgotten on a readback taken before the master went off).
 - **HeldByMaster.** When a companion's SET is read back while `ui_effects` is
   live off and the value differs, the issue is "Windows keeps this effect off
   while UI effects is off", not a plain mismatch, and the snapshot is kept. If
   that GET of the master fails, WinTune cannot tell the two apart: the issue is
   "unverified" and the snapshot is kept.
-- **Under case 2 (GETs read off).** A master-off restore leaves the companions
+- **When the GETs read off.** A master-off restore leaves the companions
   that are on as held rows: WinTune cannot verify them, so it keeps their
   snapshots and shows them. That is safe and visible, and checklist item 4
   decides whether it is the real behaviour.
@@ -994,9 +1000,14 @@ Settings that have an action pair but are left out: gradient captions
 hot tracking (`SPI_[GS]ETHOTTRACKING`, not in the dialog and its effect under
 visual styles is unclear, FOLKLORE), `SPI_[GS]ETCLEARTYPE` (a second ClearType
 switch; Learn documents smoothing plus smoothing type, DOCUMENTED), font
-smoothing orientation (per-panel tuning, the ClearType Text Tuner's job),
-menu underlines and "disable overlapped content" (accessibility, not effects)
-and "Show window contents while dragging" (`SPI_[GS]ETDRAGFULLWINDOWS`, owned
+smoothing orientation (`SPI_[GS]ETFONTSMOOTHINGORIENTATION`, RGB or BGR
+per panel, the ClearType Text Tuner's job; the pair is DOCUMENTED, RGB was
+OBSERVED on the development PC), menu underlines
+(`SPI_[GS]ETMENUUNDERLINES`, keyboard cues for accessibility, not an
+effect; DOCUMENTED, off on the development PC, OBSERVED), "disable
+overlapped content" (`SPI_[GS]ETDISABLEOVERLAPPEDCONTENT`, a low-vision
+accessibility setting that is not in the dialog; DOCUMENTED, off on the
+development PC, OBSERVED) and "Show window contents while dragging" (`SPI_[GS]ETDRAGFULLWINDOWS`, owned
 by Mouse & keyboard as `drag_full_windows`; this page links there).
 
 #### Pre-merge checklist (Visual effects)
@@ -1018,17 +1029,18 @@ first (or use History's **Restore all** at the end).
   shadow and Performance Options shows it checked. Result: ______
 - [ ] 4. Note the gated rows, turn UI effects off, Apply: Registry Editor menus
   no longer animate. After the rescan, record which case happens: the gated rows
-  keep their values (the master only gates), or they read off (case 1: cleared,
-  or case 2: the GETs report off). Then restore UI effects from History: menus
+  keep their values (the master only gates), or they read off (either cleared:
+  the master stored off for them; or reads off: their GETs report off while
+  the master is off). Then restore UI effects from History: menus
   animate again and the gated rows show their noted values. What each outcome
   means:
   - The gated rows keep their values (the master only gates): nothing special;
     the extra companion snapshots were harmless, and the restore only brings the
     master back.
-  - The rows are cleared (case 1): the master's restore brings the effects back
+  - The rows are cleared: the master's restore brings the effects back
     from its companions; the menus animating again and the gated rows showing
     their noted values is the proof.
-  - The GETs read off (case 2): a write is reported as "Windows keeps this
+  - The rows read off (their GETs report off): a write is reported as "Windows keeps this
     effect off while UI effects is off", and nothing is lost, but a master-off
     restore leaves the companions that are on as held rows (WinTune cannot
     verify them). If rows remain listed under History after the restore, a

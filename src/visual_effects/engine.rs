@@ -354,10 +354,15 @@ pub fn apply_visual_effects(
 
     // 2. Read each touched effect, every companion when the master is
     // touched, and the master when a gated row is, in table order: these
-    // are the snapshots.
+    // are the snapshots. The master comes first in the table, so its value
+    // is known before any companion: under a master live off that this
+    // batch does not turn on, a companion's GET may read masked (case 2),
+    // so the untouched companions are not read (the T3-C5 (a) rule).
     let mut live: BTreeMap<EffectId, SettingValue> = BTreeMap::new();
     for id in EffectId::ALL {
-        let companion = master_touched && MASTER_COMPANIONS.contains(&id);
+        let held =
+            master_target != Some(true) && live.get(&master) == Some(&SettingValue::Flag(false));
+        let companion = master_touched && !held && MASTER_COMPANIONS.contains(&id);
         let gate = gated_touched && id == master;
         if !wanted.contains_key(&id) && !companion && !gate {
             continue;
@@ -376,7 +381,8 @@ pub fn apply_visual_effects(
     // T3-C4: under a master live off that this batch does not turn on, a
     // gated row reads masked and its SET would be held: no snapshot, no SET.
     let master_live_off = live.get(&master) == Some(&SettingValue::Flag(false));
-    if master_live_off && master_target != Some(true) {
+    let held = master_live_off && master_target != Some(true);
+    if held {
         for id in MASTER_COMPANIONS {
             if let Some(value) = wanted.remove(&id) {
                 out.failure(VeFailure::HeldByMaster {
@@ -391,20 +397,24 @@ pub fn apply_visual_effects(
         }
     }
 
-    // The gated rows whose snapshot this batch takes (T3-C1).
+    // The gated rows whose snapshot this batch takes (T3-C1); none under a
+    // master that is live off and stays off.
     let fresh: Vec<EffectId> = MASTER_COMPANIONS
         .into_iter()
-        .filter(|id| live.contains_key(id) && !store.has_backup(user, id.key()))
+        .filter(|id| !held && live.contains_key(id) && !store.has_backup(user, id.key()))
         .collect();
 
     // 3. Snapshot on first touch, save the store, then write the `.reg`.
+    // Under a master live off that stays off, no companion snapshot: its
+    // value would be the masked off, which a later restore would write over
+    // the hidden real value (final review; the cost is in spec 5.3).
     let before = store.clone();
     let timestamp = clock::now_local();
     for &id in wanted.keys() {
         store.record_first(user, id.key(), &timestamp, live[&id]);
         store.clear_companion(user, id.key());
     }
-    if master_touched {
+    if master_touched && !held {
         for id in MASTER_COMPANIONS {
             if !wanted.contains_key(&id) {
                 store.record_companion(user, id.key(), &timestamp, live[&id], master.key());
@@ -507,8 +517,9 @@ pub fn apply_visual_effects(
 /// Sets each id back to its stored original exactly (no range check), in
 /// the master order of spec 5.4 using the stored master value, and forgets
 /// the snapshot when the readback matches. Restoring the master snapshots
-/// the companions it lacks first, then restores every companion with it.
-/// No `.reg`.
+/// the companions it lacks first, then restores every companion with it;
+/// a master that is live off and stays off touches no companion (T3-C5 (a),
+/// ruling FW-1). No `.reg`.
 pub fn restore_visual_effects(
     api: &dyn EffectsApi,
     store: &mut VeBackupStore,
@@ -593,11 +604,29 @@ pub fn restore_visual_effects(
                 return out;
             }
         }
+        // Ruling FW-1 (spec 5.4: an effect is written only while the master
+        // is on): under a master that is live off and stays off, no
+        // companion is written, even one asked for by its key. Each keeps
+        // its snapshot and is reported held.
+        let mut held: Vec<EffectId> = Vec::new();
         for key in store.companions_of(user, master.key()) {
             match EffectId::from_key(&key) {
+                Some(id) if master_stays_off => held.push(id),
                 Some(id) if !targets.contains(&id) => targets.push(id),
                 Some(_) => {}
                 None => out.problem(VeProblem::UnknownSetting(key)),
+            }
+        }
+        targets.retain(|id| !held.contains(id));
+        for id in MASTER_COMPANIONS.into_iter().filter(|id| held.contains(id)) {
+            if let Some(&wanted) = store.original(user, id.key()) {
+                // Not read (its GET may read masked): `read` is the off
+                // that a master that is off shows for it.
+                out.failure(VeFailure::HeldByMaster {
+                    id,
+                    wanted,
+                    read: SettingValue::Flag(false),
+                });
             }
         }
     }
@@ -1901,6 +1930,138 @@ mod tests {
         assert_eq!(fake.sets(), [(UiEffects, Flag(false))]);
         assert!(store.users.is_empty());
         assert_eq!(values(&fake), seed);
+    }
+
+    // ---- final review: a master that is live off and stays off ----
+
+    /// Loss path (a): the master has a snapshot (on), a companion lacks one,
+    /// and the page saw a stale master. Turning the master "off" while it is
+    /// live off must take no masked companion snapshot, so a later restore
+    /// of the master reads the companions once it is on and gives back the
+    /// hidden values.
+    #[test]
+    fn case_2_a_master_off_apply_under_a_master_already_off_takes_no_companion_snapshot() {
+        let f = fixture();
+        let fake = FakeEffects::new();
+        fake.master_mode(MasterMode::ReadsOff);
+        let seed = values(&fake);
+        let mut store = VeBackupStore::default();
+        store.record_first(USER, "ui_effects", "x", Flag(true));
+        // Turned off elsewhere after the page's scan.
+        fake.put(UiEffects, Flag(false));
+
+        let r = apply(&fake, &mut store, &f, &[change(UiEffects, Flag(false))]);
+
+        assert_eq!(r.issues, []);
+        assert_eq!(
+            fake.calls(),
+            [
+                VeCall::Get(UiEffects),
+                VeCall::Set(UiEffects, Flag(false)),
+                VeCall::Get(UiEffects),
+            ],
+            "no companion is read under a master that stays off"
+        );
+        assert_eq!(store.backups_of(USER).unwrap().len(), 1);
+        assert_eq!(store.original(USER, "ui_effects"), Some(&Flag(true)));
+        assert_eq!(load_ve_store(&store_path(&f)).unwrap(), store);
+
+        let r = restore(&fake, &mut store, &f, &["ui_effects"]);
+
+        assert_eq!(r.issues, []);
+        assert_eq!(values(&fake), seed);
+        assert!(store.users.is_empty());
+    }
+
+    /// Loss path (b): the master has no snapshot and its readback fails, so
+    /// its snapshot (off) stays. No companion snapshot may be taken beside
+    /// it; the restore that keeps the master off then writes nothing over
+    /// the hidden values and forgets nothing it cannot check.
+    #[test]
+    fn case_2_a_master_off_apply_whose_readback_fails_takes_no_companion_snapshot() {
+        let f = fixture();
+        let fake = FakeEffects::new();
+        fake.master_mode(MasterMode::ReadsOff);
+        let mut store = VeBackupStore::default();
+        fake.put(UiEffects, Flag(false));
+        let seed = values(&fake);
+        // GET 1 of the master is the snapshot, GET 2 its readback.
+        let api = GetFailsOnce::new(&fake, UiEffects, 2);
+
+        let r = apply(&api, &mut store, &f, &[change(UiEffects, Flag(false))]);
+
+        assert_eq!(
+            r.issues,
+            [VeIssue::Failure(VeFailure::Unverified {
+                id: UiEffects,
+                code: 5
+            })]
+        );
+        assert_eq!(store.backups_of(USER).unwrap().len(), 1);
+        assert_eq!(store.original(USER, "ui_effects"), Some(&Flag(false)));
+        let applied = fake.sets().len();
+
+        let r = restore(&fake, &mut store, &f, &["ui_effects"]);
+
+        assert_eq!(r.issues, []);
+        assert_eq!(fake.sets()[applied..], [(UiEffects, Flag(false))]);
+        assert!(store.users.is_empty());
+        assert_eq!(values(&fake), seed);
+        // The hidden values are still there once the master is on.
+        fake.put(UiEffects, Flag(true));
+        assert_eq!(values(&fake), values(&FakeEffects::new()));
+    }
+
+    /// Ruling FW-1: a restore that keeps a master that is live off off
+    /// writes no companion, even one with a snapshot: each is reported held
+    /// and keeps its snapshot (as its own row once the master is forgotten).
+    fn a_master_staying_off_writes_no_companion(mode: MasterMode) {
+        let f = fixture();
+        let fake = FakeEffects::new();
+        fake.master_mode(mode);
+        fake.put(UiEffects, Flag(false));
+        let mut store = VeBackupStore::default();
+        store.record_first(USER, "ui_effects", "x", Flag(false));
+        for (id, seed) in companion_seeds() {
+            store.record_companion(USER, id.key(), "x", seed, "ui_effects");
+        }
+        let before = values(&fake);
+
+        // Restore all: the companions' keys are asked for too.
+        let ids: Vec<String> = store.backups_of(USER).unwrap().keys().cloned().collect();
+        let r = restore_visual_effects(&fake, &mut store, &ids, &opts(&f, &same));
+
+        let held: Vec<VeIssue> = companion_seeds()
+            .into_iter()
+            .map(|(id, wanted)| {
+                VeIssue::Failure(VeFailure::HeldByMaster {
+                    id,
+                    wanted,
+                    read: Flag(false),
+                })
+            })
+            .collect();
+        assert_eq!(r.issues, held, "{mode:?}");
+        assert_errors_match(&r);
+        assert_eq!(fake.sets(), [(UiEffects, Flag(false))], "{mode:?}");
+        assert_eq!(r.report.succeeded, ["ui_effects"]);
+        assert_eq!(values(&fake), before);
+        assert!(!store.has_backup(USER, "ui_effects"));
+        for (id, seed) in companion_seeds() {
+            assert_eq!(store.original(USER, id.key()), Some(&seed), "{}", id.key());
+            assert_eq!(store.companion_of(USER, id.key()), None, "{}", id.key());
+        }
+        assert_eq!(load_ve_store(&store_path(&f)).unwrap(), store);
+    }
+
+    #[test]
+    fn a_master_staying_off_writes_no_companion_when_it_only_gates() {
+        a_master_staying_off_writes_no_companion(MasterMode::Gates);
+    }
+
+    #[test]
+    fn case_2_a_master_staying_off_writes_no_companion() {
+        a_master_staying_off_writes_no_companion(MasterMode::ReadsOff);
     }
 
     /// T3-C5 (b): the companions are re-read after the master's SET off; one

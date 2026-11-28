@@ -229,7 +229,17 @@ change nothing.
   every master-gated row (5.1) through its GET and records it with
   `record_first`, before any write, as a **companion** of the master. A
   failed GET refuses the whole job, as for a touched row. A row that already
-  has its own snapshot keeps it.
+  has its own snapshot keeps it. **Except under a master that stays off
+  (call, final review):** when `ui_effects` is live off and the job does
+  not turn it on (an Apply that sets it off again because the page saw it
+  on, or a Restore of an original that is off), no companion is read or
+  snapshotted, since in case 2 its GET reads off whatever its value, and a
+  later restore of the master would write that masked off over the hidden
+  real one. The Apply reads the master first (it is first in the table), so
+  it knows before any companion GET. Cost if wrong (case 1, where a master
+  SET off that is already off might clear a companion changed elsewhere
+  while the master was off): that companion's value is not saved; WinTune
+  never changed it.
 - **History and Home.** Companions are not History rows of their own and are
   not counted on Home; the master's row says "also restores {0} effects".
   A gated row the user changes directly keeps its first-touch original but
@@ -289,8 +299,13 @@ On the job worker thread, as Mouse & keyboard:
 1. **Account check**, then **validate** every pending value (known id,
    right shape, in range). Any problem refuses the whole Apply with nothing
    written.
-2. **Read** each touched setting through its GET, and every master-gated row
-   when `ui_effects` is touched (5.3); a failure refuses all.
+2. **Read** each touched setting through its GET, `ui_effects` when a
+   master-gated row is touched, and every master-gated row when `ui_effects`
+   is touched (5.3); a failure refuses all. When the master reads live off
+   and the batch does not turn it on, the untouched master-gated rows are not
+   read and get no companion snapshot **(call, final review: their GETs may
+   read masked; cost in 5.3 "Snapshots")**, and a touched one is held (5.3,
+   review T3-C4).
 3. **Snapshot on first touch** (`record_first`, companions included), save
    the store, then write the `.reg` (5.6). If either fails, nothing is
    applied.
@@ -321,11 +336,16 @@ as Apply, using the restored master value; restoring the master also takes
 companion snapshots first and restores the companions in the order of 5.3.
 **Restoring the master to off (call, review T3-C5):** when the master is
 already live off, no new companion snapshot is taken (its GET may read
-masked) and no companion without one is written. After the master's SET
-off, each gated row written before it is read again: only a value still at
-its original is forgotten; any other keeps its snapshot and is reported
-`HeldByMaster` (a readback taken before the master went off never forgets
-it).
+masked) and no companion is written, not even one that has a snapshot
+**(call, ruling FW-1: 5.4 step 4 writes an effect only while the master is
+on; cost: each such companion is reported `HeldByMaster`, keeps its
+snapshot and stays listed, as its own History row once the master's
+snapshot is forgotten, until it is restored with the master on)**. A
+companion asked for by its own key in that restore (Restore all) is held
+the same way; a master-gated row that is its own row is written as asked.
+After the master's SET off, each gated row written before it is read again: only a value still at its original is
+forgotten; any other keeps its snapshot and is reported `HeldByMaster` (a
+readback taken before the master went off never forgets it).
 The pending choices of restored settings are dropped. No `.reg` for a
 restore.
 

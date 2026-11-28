@@ -372,8 +372,9 @@ height).
   It asks Windows to change each setting (`SystemParametersInfoW`, kept in your
   profile and sent to running programs), reads it back, and reports a setting
   as failed if Windows kept another value. Some programs show a change only
-  after a restart, and WinTune itself never changes (it draws its own text and
-  animations), so look at another window such as Notepad to see it.
+  after a restart, and WinTune's own window may not show it (it is drawn by its
+  own toolkit, egui, not by Windows' controls), so look at another window such
+  as Notepad to see it.
 - **Presets.** **For appearance** and **For performance** only fill in pending
   choices for the first four sections (nothing is applied until you press
   Apply). Performance also turns UI effects on, pending, so the rows it gates
@@ -392,7 +393,12 @@ height).
   (the combo box, list box, menu and its fade, selection fade, tooltip and its
   fade, and the pointer shadow). Restoring the switch brings them back too, and
   the History row says "also restores 8 effects". They have no History rows of
-  their own unless you change them directly.
+  their own, except in three cases, where an effect keeps its saved value as
+  its own row: you change it directly; the switch is back at its original
+  value while the effect still differs from its saved one; or Windows holds it
+  off (the switch is off, so WinTune cannot write or check it, for example
+  when a restore leaves the switch off). Restore that row once the switch is
+  on.
 - **Safety.** If WinTune runs as another account than the one signed in, the
   page shows a banner ("WinTune runs as ..., but ... is signed in") and changes
   nothing, because the settings would be saved for the wrong account.

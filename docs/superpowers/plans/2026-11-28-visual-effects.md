@@ -429,7 +429,7 @@ Content (spec 5.7):
 
 Each ruling gives the decision, then what it costs if it is wrong.
 
-1. **Companions are seven:** the six `master` rows of 5.1 plus `tooltip_fade`, the kept members of Learn's UI effects list (spec 3 and 5.1 "Gates"). The page gate of `tooltip_fade` stays `tooltip_animation`. If wrong: one extra snapshot and SET that change nothing.
+1. **Companions are seven (superseded by F10: eight):** the six `master` rows of 5.1 plus `tooltip_fade`, the kept members of Learn's UI effects list (spec 3 and 5.1 "Gates"). The page gate of `tooltip_fade` stays `tooltip_animation`. If wrong: one extra snapshot and SET that change nothing.
 2. **Gating is transitive:** a row whose gate row is itself disabled is disabled with the outer reason (Menu effect while UI effects is off), and its pending value is dropped. If wrong: a row looks enabled that does nothing.
 3. **`HeldByMaster` is decided by one GET of `ui_effects`** right after a differing readback of a companion, so "live off" is the value at that moment. If wrong: one GET more per failure.
 4. **A `HeldByMaster` row keeps its snapshot** even when the read value equals the original (spec 5.3 says kept). If wrong: one History row to clear by hand.

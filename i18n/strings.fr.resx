@@ -2122,7 +2122,7 @@ Restaurer l'original remet ce choix en place, mais Windows le protège par un ha
     <value>{0} : Windows garde cet effet désactivé tant que les effets de l'interface sont désactivés.</value>
   </data>
   <data name="ve.failure.store" xml:space="preserve">
-    <value>Le changement est fait, mais les valeurs d'origine n'ont pas pu être mises à jour : {0}</value>
+    <value>Le changement a été effectué, mais les valeurs d'origine n'ont pas pu être mises à jour : {0}</value>
   </data>
   <data name="ve.gate.master" xml:space="preserve">
     <value>Sans effet tant que les effets de l'interface sont désactivés</value>

@@ -85,7 +85,8 @@ Anti-goals:
   area animation are in other tables. Whether the master overwrites each
   effect or only gates it, and whether an effect's GET still reports its own
   value while the master is off, is not documented: FOLKLORE says it is a
-  separate bit that gates the others, which keep theirs. Checklist item 4.
+  separate bit that gates the others, which keep theirs. The design is safe
+  either way (5.3); checklist item 4 records which case happens.
 - **Pairs.** Menu fade is ignored unless menu animation is on; tooltip fade
   likewise (DOCUMENTED). Smoothing type needs smoothing on; contrast needs
   type ClearType, valid 1,000..2,200, default 1,400 (DOCUMENTED).
@@ -205,7 +206,7 @@ read-only test runs every real GET once and checks shape and range (type 1
 or 2, contrast 1,000..2,200, caret and borders at least 1); it never calls
 `set`, and is `#[ignore]` if CI's session makes it flaky.
 
-### 5.3 Gating and the page rules
+### 5.3 Gating, and the master's companions
 
 - A gated row is **disabled** while its gate is off, where the gate's state
   is its pending value, else its live value (Mouse & keyboard's ClickLock
@@ -219,22 +220,59 @@ or 2, contrast 1,000..2,200, caret and borders at least 1); it never calls
 - A disabled gated row says why on hover: "Has no effect while UI effects
   is off" / "while Menu animation is off" / "while font smoothing is off".
 
+**The master's companions (call, builder check).** Turning `ui_effects` off
+may clear the gated effects, or make their GETs read off (FOLKLORE, 3). The
+design is safe in both cases, so the PR does not depend on checklist item 4.
+Cost if wrong (the master only gates): a few extra snapshots and SETs that
+change nothing.
+- **Snapshots.** Any Apply or Restore that touches `ui_effects` first reads
+  every master-gated row (5.1) through its GET and records it with
+  `record_first`, before any write, as a **companion** of the master. A
+  failed GET refuses the whole job, as for a touched row. A row that already
+  has its own snapshot keeps it.
+- **History and Home.** Companions are not History rows of their own and are
+  not counted on Home; the master's row says "also restores {0} effects".
+  A gated row the user changes directly keeps its first-touch original but
+  becomes its own History row (its companion mark is cleared).
+- **Restore.** Restoring the master restores its companions with it: when
+  the restored master is on, the master first, then the gated rows; when it
+  is off, the gated rows first, the master last.
+- **Forget.** A companion is forgotten on its own once its value is back at
+  its original. Companions are forgotten with the master when the master is
+  back at its original, after a GET of each **(call: a companion whose live
+  value still differs is kept, as its own History row, instead of being
+  dropped; cost: one more History row in case 1, where a master turned back on
+  in Apply did not bring the effects back)**.
+- **Readback while the master is off.** When a gated row's SET is read back
+  while `ui_effects` is live off and the value differs, the issue is
+  `VeFailure::HeldByMaster` ("Windows keeps this effect off while UI effects
+  is off"), not a plain mismatch, and the row's snapshot is kept. A gated row
+  written in an Apply that turns the master on is written and read back after
+  the master's SET (5.4 step 4), but its snapshot GET still comes before any
+  write.
+- The store entry gets an optional `companion_of` field (the master's id),
+  left out of the JSON when empty, so Mouse & keyboard's file stays
+  byte-identical.
+
 ### 5.4 Apply
 
 On the job worker thread, as Mouse & keyboard:
 1. **Account check**, then **validate** every pending value (known id,
    right shape, in range). Any problem refuses the whole Apply with nothing
    written.
-2. **Read** each touched setting through its GET; a failure refuses all.
-3. **Snapshot on first touch** (`record_first`), save the store, then write
-   the `.reg` (5.6). If either fails, nothing is applied.
+2. **Read** each touched setting through its GET, and every master-gated row
+   when `ui_effects` is touched (5.3); a failure refuses all.
+3. **Snapshot on first touch** (`record_first`, companions included), save
+   the store, then write the `.reg` (5.6). If either fails, nothing is
+   applied.
 4. **Write** in table order, except `ui_effects`: first when it goes on,
    last when it goes off **(call: each effect is written while the master is
    on, in case a SET under a disabled master misbehaves; no cost)**. Table
    order already puts each gate before its rows. Each SET is followed by its
-   GET; a different value fails that setting and the next is still tried.
-5. **Forget** each snapshot whose live value is back at its original, and
-   save the store again.
+   GET; a different value fails that setting (`HeldByMaster` while the
+   master is live off, 5.3) and the next is still tried.
+5. **Forget** each snapshot whose live value is back at its original, with
+   the companion rules of 5.3, and save the store again.
 
 The report lists every success and failure. Pending choices: cleared after a
 clean Apply, kept after a refused or partial one, and each scan drops those
@@ -245,13 +283,16 @@ can lock the user out; the worst case is ugly text, undone from the row)**.
 
 From a row or History, after a confirmation. Each id: SET the stored value
 exactly, GET it back, forget the snapshot only if they match. Same order rule
-as Apply, using the restored master value. The pending choices of restored
-settings are dropped. No `.reg` for a restore.
+as Apply, using the restored master value; restoring the master also takes
+companion snapshots first and restores the companions in the order of 5.3.
+The pending choices of restored settings are dropped. No `.reg` for a
+restore.
 
 ### 5.6 Store and `.reg` net
 
 - `visual-effects-backups.json`, the shared store type (today's
-  `MkBackupStore`, moved): `users` → user → id → `{ timestamp, value }`,
+  `MkBackupStore`, moved): `users` → user → id → `{ timestamp, value }`
+  plus the optional `companion_of` (5.3),
   `record_first`, `forget`, `has_backup`, `original`. An unreadable store
   blocks Apply and Restore. A key this version does not know is listed with
   its raw id and its restore fails.
@@ -286,8 +327,12 @@ keyboard. Header note: "Changes apply when you press Apply and are kept when
 you sign out. Some programs show them only after a restart." Header buttons
 **For appearance** and **For performance (call)**: they set pending values
 only, for the toggles and fade choices of sections 1 to 4. Appearance turns
-everything on, fades as Fade; Performance turns every effect off and leaves
-the master on, so each row shows its real state. Neither touches Text or
+everything on, fades as Fade. Performance turns every effect off and sets the
+master on (pending, when it is off), so the gated rows are enabled and get
+their pending "off" and each row shows its real state **(call, builder
+check: with the master left off, the gated rows would stay disabled and keep
+their values; cost if wrong: a user who wanted the master itself off turns it
+off with one more click)**. Neither touches Text or
 Caret and focus: Windows' own "best performance" also turns font smoothing
 off (FOLKLORE), which costs readability for no gain today. Cost if wrong:
 one more click for a user who wants smoothing off too.
@@ -312,13 +357,14 @@ checks in another window)**. Action bar (`owns_action_bar`):
   setting's title and described "Original: {0}, saved on {1}" with the value
   as on the page ("On", "Slide", "ClearType", "1,200", "2 px"). Item and group
   restore run the restore job. A slot back at its original is forgotten.
-- Home tile: "{0} effects changed by WinTune", this user's snapshot count.
+- Home tile: "{0} effects changed by WinTune", this user's snapshot count,
+  companions left out (5.3).
   No drift count **(call; cost: no Home warning when Performance Options
   changes a setting after WinTune)**.
 - English and French for every text. Engine reasons are enums (`VeProblem`:
   out of range, unreadable, unknown setting, wrong account, account unknown,
   not saved, no original; `VeFailure`: SET failed, readback mismatch,
-  unverified, store not saved) translated in `i18n/messages.rs`; report
+  unverified, held by master, store not saved) translated in `i18n/messages.rs`; report
   detail lines stay English.
 
 ## 6. Constraints
@@ -357,9 +403,15 @@ this before merge and records each result:
    Result: ______
 3. Turn "Show shadows under mouse pointer" on, Apply: the pointer has a
    shadow and Performance Options shows it checked. Result: ______
-4. Turn UI effects off, Apply: Registry Editor menus no longer animate, and
-   after the rescan the gated rows keep their values (if they all read off,
-   note it: 5.1 gating). Turn it on: menus animate again. Result: ______
+4. Note the gated rows, turn UI effects off, Apply: Registry Editor menus no
+   longer animate. After the rescan, record which case happens: the gated
+   rows keep their values (the master only gates), or they read off (case 1:
+   cleared, or case 2: GETs report off). Then restore UI effects from
+   History: menus animate again and the gated rows show their noted values.
+   Both cases are safe by design (5.3): in case 1 the master's restore brings
+   the effects back from its companions; in case 2 a write is reported as
+   "Windows keeps this effect off while UI effects is off" and nothing is
+   lost. Result: ______
 5. Set smoothing type Standard, Apply: Magnifier shows grey text edges, no
    colour fringes. Back to ClearType, contrast 2,200: text is darker.
    Restore both from the rows. Result: ______
